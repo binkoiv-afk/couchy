@@ -155,6 +155,13 @@ fun HomeContent(
             posters("films", "Популярные фильмы", feed.films, CatalogFilter(sort = CatalogSort.POPULAR))
             posters("series", "Популярные сериалы", feed.series, CatalogFilter(CatalogType.SERIES, CatalogSort.POPULAR))
             posters("cartoons", "Мультфильмы", feed.cartoons, CatalogFilter(CatalogType.CARTOONS, CatalogSort.POPULAR))
+            posters("cinema", "Сейчас в кино", feed.cinema)
+            posters("best", "Лучшие фильмы всех времён", feed.best, CatalogFilter(sort = CatalogSort.BEST))
+            posters("bestSeries", "Лучшие сериалы", feed.bestSeries, CatalogFilter(CatalogType.SERIES, CatalogSort.BEST))
+            feed.genres.forEach { (g, list) ->
+                posters("genre-${g.slug}", "Топ: ${g.name.lowercase()}", list, CatalogFilter(sort = CatalogSort.POPULAR, genre = g.slug))
+            }
+            posters("anime", "Аниме", feed.anime, CatalogFilter(CatalogType.ANIME, CatalogSort.POPULAR))
             posters("rezka", "Новое на HDrezka", feed.rezka)
         }
         media("favorites", "Избранное", state.favorites)

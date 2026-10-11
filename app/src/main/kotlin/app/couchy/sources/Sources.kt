@@ -151,6 +151,9 @@ class SiteClient(private val web: Web) {
  * Film data independent of any site that plays films: TMDB in Russian with the person's key,
  * Cinemeta without one.
  */
+/** Genres that get their own "top" row on Home. */
+private val HOME_GENRES = listOf("comedy", "action", "fiction", "thriller", "horror", "detective", "family")
+
 class MetaClient(private val web: Web, private val key: () -> String) {
     val tmdb: Boolean get() = key().isNotBlank()
 
@@ -241,7 +244,23 @@ class MetaClient(private val web: Web, private val key: () -> String) {
         val series = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.SERIES, app.couchy.core.sources.CatalogSort.POPULAR))
         val cartoons = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.CARTOONS, app.couchy.core.sources.CatalogSort.POPULAR))
         val fresh = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.FILMS, app.couchy.core.sources.CatalogSort.LAST))
+        val best = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.FILMS, app.couchy.core.sources.CatalogSort.BEST))
+        val bestSeries = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.SERIES, app.couchy.core.sources.CatalogSort.BEST))
+        val anime = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.ANIME, app.couchy.core.sources.CatalogSort.POPULAR))
+        val cinema = async {
+            runCatching {
+                if (tmdb) app.couchy.core.sources.Tmdb.parseList(tmdbGet("/movie/now_playing"), TitleKind.MOVIE) else emptyList()
+            }.getOrDefault(emptyList())
+        }
+        val genres = HOME_GENRES.mapNotNull { app.couchy.core.sources.Genres.bySlug(it) }.map { g ->
+            g to shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.FILMS, app.couchy.core.sources.CatalogSort.POPULAR, genre = g.slug))
+        }
         Feed(
+            cinema = cinema.await(),
+            best = best.await(),
+            bestSeries = bestSeries.await(),
+            anime = anime.await(),
+            genres = genres.map { (g, list) -> g to list.await() }.filter { it.second.isNotEmpty() },
             fresh = fresh.await(),
             films = films.await(),
             series = series.await(),

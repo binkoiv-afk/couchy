@@ -79,6 +79,13 @@ data class Feed(
     val trending: List<Title> = emptyList(),
     /** HDrezka's new arrivals, when the site answers. */
     val rezka: List<Title> = emptyList(),
+    /** In cinemas now (TMDB). */
+    val cinema: List<Title> = emptyList(),
+    val best: List<Title> = emptyList(),
+    val bestSeries: List<Title> = emptyList(),
+    val anime: List<Title> = emptyList(),
+    /** The most popular in a few genres, each its own row. */
+    val genres: List<Pair<app.couchy.core.sources.Genre, List<Title>>> = emptyList(),
     val loaded: Boolean = false,
 ) {
     /** Titles for the big banner at the top of Home: wide stills first. */

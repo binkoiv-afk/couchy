@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -87,6 +88,19 @@ fun SiteWindowDialog(
         bypass.prepare(window.url)
         value = true
     }
+    // A film page plays without being seen: Couchy presses ▶ in the site's player itself and only
+    // shows the site when that does not start the video.
+    var hidden by remember { mutableStateOf(window.key != null) }
+    LaunchedEffect(web, hidden) {
+        val view = web ?: return@LaunchedEffect
+        if (!hidden) return@LaunchedEffect
+        delay(2_500)
+        repeat(6) {
+            pressPlay(view)
+            delay(2_500)
+        }
+        hidden = false
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false)) {
         BackHandler { web?.takeIf { it.canGoBack() }?.goBack() ?: onDismiss() }
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -118,6 +132,7 @@ fun SiteWindowDialog(
                 }
                 return@Column
             }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -139,8 +154,61 @@ fun SiteWindowDialog(
                     v.loadUrl("about:blank")
                     v.destroy()
                 },
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxSize(),
             )
+            if (hidden) {
+                Column(
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Text("Запускаю видео…", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                    Text(
+                        "Couchy сам включает плеер сайта и забирает видео в свой плеер.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SecondaryButton("Показать сайт", null) { hidden = false }
+                }
+            }
+            }
+        }
+    }
+}
+
+/**
+ * Finds the biggest player on the page, scrolls to it and taps its middle, the way a person would.
+ * A real tap also reaches players inside frames from other sites, which scripts cannot.
+ */
+private fun pressPlay(view: WebView) {
+    val script = """
+        (function(){
+          var best=null,area=0;
+          document.querySelectorAll('video,iframe,[id*=player],[class*=player]').forEach(function(e){
+            var r=e.getBoundingClientRect(),a=r.width*r.height;
+            if(a>area&&r.width>120&&r.height>80){area=a;best=e;}
+          });
+          var v=document.querySelector('video'); if(v&&v.play){try{v.play();}catch(x){}}
+          if(!best)return '';
+          best.scrollIntoView({block:'center'});
+          var r=best.getBoundingClientRect();
+          return (r.left+r.width/2)+','+(r.top+r.height/2);
+        })()
+    """.trimIndent()
+    view.evaluateJavascript(script) { answer ->
+        val point = answer?.trim('"')?.split(',')?.mapNotNull { it.toFloatOrNull() }
+        if (point == null || point.size != 2) return@evaluateJavascript
+        val density = view.resources.displayMetrics.density
+        val x = point[0] * density
+        val y = point[1] * density
+        if (x <= 0 || y <= 0 || x > view.width || y > view.height) return@evaluateJavascript
+        val time = android.os.SystemClock.uptimeMillis()
+        listOf(android.view.MotionEvent.ACTION_DOWN to time, android.view.MotionEvent.ACTION_UP to time + 60).forEach { (action, at) ->
+            val event = android.view.MotionEvent.obtain(time, at, action, x, y, 0)
+            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            view.dispatchTouchEvent(event)
+            event.recycle()
         }
     }
 }

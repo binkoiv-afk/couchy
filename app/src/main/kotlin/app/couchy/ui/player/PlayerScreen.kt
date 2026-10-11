@@ -10,6 +10,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -62,6 +64,7 @@ import app.couchy.Playback
 import app.couchy.core.LinkKind
 import app.couchy.core.Links
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.math.abs
 
@@ -73,7 +76,9 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP }
+
+private val sleepMinutes = listOf(15, 30, 45, 60, 90)
 
 /**
  * Full-screen playback on Media3. Saves the position every few seconds and on exit, remembers
@@ -99,6 +104,14 @@ fun PlayerScreen(
     onCast: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
     /** Another quality of the same video, to continue from the given position. */
     onVariant: ((url: String, positionMs: Long) -> Unit)? = null,
+    /** Set when [onFinished] starts the next episode: a countdown card shows over the credits. */
+    hasNext: Boolean = false,
+    /** Stars or unstars the live channel. */
+    onFavorite: (() -> Unit)? = null,
+    /** Back to the channel watched before; also the remote's "last channel" key. */
+    onPrevious: (() -> Unit)? = null,
+    /** A channel number typed on the remote. */
+    onNumber: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri) { buildPlayer(context, playback) }
@@ -111,6 +124,24 @@ fun PlayerScreen(
     var speed by remember { mutableFloatStateOf(1f) }
     var resize by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
+    var hint by remember { mutableStateOf<String?>(null) }
+    var hintAt by remember { mutableLongStateOf(0L) }
+    var typed by remember { mutableStateOf("") }
+    var boosting by remember { mutableStateOf(false) }
+    // The sleep timer outlives the episode, so it is not keyed to the video.
+    var sleepAt by remember { mutableStateOf<Long?>(null) }
+    var sleepAfterEpisode by remember { mutableStateOf(false) }
+    var nextCancelled by remember(playback.uri) { mutableStateOf(false) }
+
+    fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
+    LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
+    // Digits on the remote collect into a channel number, which opens after a short pause.
+    LaunchedEffect(typed) {
+        if (typed.isEmpty()) return@LaunchedEffect
+        delay(1_500)
+        typed.toIntOrNull()?.let { onNumber?.invoke(it) }
+        typed = ""
+    }
 
     fun poke() { lastTouch = System.currentTimeMillis(); overlay = true }
 
@@ -121,7 +152,11 @@ fun PlayerScreen(
         val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+        onDispose {
+            bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            // Brightness set by a swipe belongs to the video only.
+            window?.attributes = window?.attributes?.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
     }
 
     fun save() {
@@ -131,6 +166,9 @@ fun PlayerScreen(
     }
 
     fun exit() { save(); onExit() }
+
+    // Sleep timer "to the end of the episode" and "stay on the credits" both stop here instead of going on.
+    fun finished() { if (sleepAfterEpisode || nextCancelled) onExit() else onFinished() }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -147,7 +185,7 @@ fun PlayerScreen(
                 } else if (state == Player.STATE_ENDED) {
                     val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
                     onProgress(duration, duration)
-                    onFinished()
+                    finished()
                 }
             }
 
@@ -200,6 +238,12 @@ fun PlayerScreen(
             delay(500)
             sinceSave += 500
             if (sinceSave >= 5_000 && player.isPlaying) { save(); sinceSave = 0 }
+            // The sleep timer turns the sound down over the last ten seconds, then stops.
+            sleepAt?.let { at ->
+                val left = at - System.currentTimeMillis()
+                player.volume = (left / 10_000f).coerceIn(0f, 1f)
+                if (left <= 0) { player.volume = 1f; sleepAt = null; exit() }
+            }
         }
     }
 
@@ -221,6 +265,11 @@ fun PlayerScreen(
         }
     }
 
+    val remaining = ui.durationMs - ui.positionMs
+    val nextIn = if (hasNext && playback.live == null && !nextCancelled && !sleepAfterEpisode && ui.durationMs > 60_000 && remaining in 0..15_000) {
+        ((remaining + 999) / 1000).toInt()
+    } else null
+
     val controls = PlayerControls(
         onBack = ::exit,
         onTogglePlay = { poke(); if (player.isPlaying) player.pause() else player.play() },
@@ -241,6 +290,11 @@ fun PlayerScreen(
         },
         onInteract = ::poke,
         onRotate = if (phone) ({ poke(); upright = !upright }) else null,
+        onSleep = { poke(); sheet = Sheet.SLEEP },
+        onFavorite = onFavorite?.let { f -> { poke(); f() } },
+        onPrevious = onPrevious?.let { f -> { poke(); f() } },
+        onNextNow = { save(); onFinished() },
+        onNextCancel = { nextCancelled = true; poke() },
         onCast = onCast?.let { cast ->
             {
                 poke()
@@ -266,6 +320,15 @@ fun PlayerScreen(
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
                     Key.ChannelUp -> { onZap?.invoke(1); onZap != null }
                     Key.ChannelDown -> { onZap?.invoke(-1); onZap != null }
+                    Key.LastChannel -> { onPrevious?.invoke(); onPrevious != null }
+                    Key.Zero, Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine,
+                    Key.NumPad0, Key.NumPad1, Key.NumPad2, Key.NumPad3, Key.NumPad4, Key.NumPad5, Key.NumPad6, Key.NumPad7, Key.NumPad8, Key.NumPad9 -> {
+                        if (onNumber == null) return@onPreviewKeyEvent false
+                        val digit = digitOf(event.key)
+                        if (typed.length < 4) typed += digit
+                        flash("Канал $typed")
+                        true
+                    }
                     else -> false
                 }
             }
@@ -296,6 +359,57 @@ fun PlayerScreen(
                     },
                 )
             }
+            // Videos on a phone: a swipe on the left half sets brightness, on the right half volume.
+            .pointerInput(touch, onZap == null) {
+                if (!touch || onZap != null) return@pointerInput
+                val activity = context as? Activity ?: return@pointerInput
+                val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                val maxVolume = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                var left = true
+                var level = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { start ->
+                        left = start.x < size.width / 2f
+                        level = if (left) {
+                            activity.window.attributes.screenBrightness.takeIf { it >= 0 }
+                                ?: (android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, 128) / 255f)
+                        } else audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / maxVolume
+                    },
+                    onVerticalDrag = { change, dy ->
+                        change.consume()
+                        level = (level - dy / (size.height * 0.8f)).coerceIn(0f, 1f)
+                        val percent = (level * 100).toInt()
+                        if (left) {
+                            activity.window.attributes = activity.window.attributes.apply { screenBrightness = level.coerceAtLeast(0.01f) }
+                            flash("Яркость $percent%")
+                        } else {
+                            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (level * maxVolume).toInt(), 0)
+                            flash("Громкость $percent%")
+                        }
+                    },
+                )
+            }
+            // Holding a finger on a video plays it at double speed until the finger lifts.
+            .pointerInput(touch, onZap == null) {
+                if (!touch || onZap != null) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val moved = withTimeoutOrNull(500) {
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed || change.isConsumed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                        }
+                        true
+                    }
+                    if (moved == null && player.isPlaying) {
+                        player.setPlaybackSpeed(2f)
+                        boosting = true
+                        do { val event = awaitPointerEvent() } while (event.changes.any { it.pressed })
+                        player.setPlaybackSpeed(speed)
+                        boosting = false
+                    }
+                }
+            }
             // On a touch screen a vertical swipe switches channels.
             .pointerInput(onZap != null) {
                 if (onZap == null) return@pointerInput
@@ -323,7 +437,20 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
-        PlayerOverlay(ui.copy(live = live, status = status), overlay, controls, touch)
+        PlayerOverlay(
+            ui.copy(
+                live = live,
+                status = status,
+                hint = if (boosting) "2× пока держите" else hint,
+                nextIn = nextIn,
+                sleepLabel = when {
+                    sleepAfterEpisode -> "До конца серии"
+                    sleepAt != null -> "Сон в " + java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(sleepAt!!))
+                    else -> null
+                },
+            ),
+            overlay, controls, touch,
+        )
     }
 
     when (sheet) {
@@ -380,8 +507,35 @@ fun PlayerScreen(
             ),
             onDismiss = { sheet = null },
         )
+        Sheet.SLEEP -> OptionsDialog(
+            "Таймер сна",
+            listOf(
+                OptionSection(
+                    null,
+                    listOf(Option("Выключен", sleepAt == null && !sleepAfterEpisode) { sleepAt = null; sleepAfterEpisode = false; player.volume = 1f }) +
+                        sleepMinutes.map { m ->
+                            Option("$m мин", false) { sleepAfterEpisode = false; sleepAt = System.currentTimeMillis() + m * 60_000L }
+                        } +
+                        (if (playback.live == null) listOf(Option("До конца серии", sleepAfterEpisode) { sleepAt = null; sleepAfterEpisode = true }) else emptyList()),
+                ),
+            ),
+            onDismiss = { sheet = null },
+        )
         null -> Unit
     }
+}
+
+private fun digitOf(key: Key): String = when (key) {
+    Key.Zero, Key.NumPad0 -> "0"
+    Key.One, Key.NumPad1 -> "1"
+    Key.Two, Key.NumPad2 -> "2"
+    Key.Three, Key.NumPad3 -> "3"
+    Key.Four, Key.NumPad4 -> "4"
+    Key.Five, Key.NumPad5 -> "5"
+    Key.Six, Key.NumPad6 -> "6"
+    Key.Seven, Key.NumPad7 -> "7"
+    Key.Eight, Key.NumPad8 -> "8"
+    else -> "9"
 }
 
 @OptIn(UnstableApi::class)
@@ -425,7 +579,8 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
             else -> Unit
         }
     }.build()
-    player.setMediaItem(item, playback.startMs)
+    // Resuming steps back a few seconds, so the last line before the stop is heard again.
+    player.setMediaItem(item, if (playback.startMs > 30_000) playback.startMs - 4_000 else playback.startMs)
     player.prepare()
     player.playWhenReady = true
     return player

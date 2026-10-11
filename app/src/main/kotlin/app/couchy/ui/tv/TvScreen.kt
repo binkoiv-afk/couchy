@@ -1,5 +1,9 @@
 package app.couchy.ui.tv
 
+import androidx.compose.foundation.shape.CircleShape
+
+import androidx.compose.material.icons.rounded.StarBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +64,8 @@ class TvActions(
     val onAdd: () -> Unit,
     val onRefresh: () -> Unit,
     val onPlaylists: () -> Unit,
+    /** The star on a channel row: favorite in one tap. */
+    val onStar: (ChannelNow) -> Unit = {},
 )
 
 private val time = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -195,7 +201,7 @@ private fun ChannelRow(item: ChannelNow, nowMs: Long, actions: TvActions) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(item.channel.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (item.channel.favorite) Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                if (item.channel.favorite && LocalFormFactor.current.isTv) Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                 if (item.channel.catchup != null) Icon(Icons.Rounded.History, "Архив", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val now = item.now
@@ -207,6 +213,15 @@ private fun ChannelRow(item: ChannelNow, nowMs: Long, actions: TvActions) {
                 overflow = TextOverflow.Ellipsis,
             )
             if (now != null) ProgressLine(now, nowMs)
+        }
+        // On a remote the menu key stars a channel; a finger gets the star itself.
+        if (!LocalFormFactor.current.isTv) {
+            Icon(
+                if (item.channel.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                if (item.channel.favorite) "Убрать из избранного" else "В избранное",
+                tint = if (item.channel.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(44.dp).couchyClickable(CircleShape) { actions.onStar(item) }.padding(10.dp),
+            )
         }
     }
 }

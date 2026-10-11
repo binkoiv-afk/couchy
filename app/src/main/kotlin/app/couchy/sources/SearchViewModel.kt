@@ -201,6 +201,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Past searches' results, so a search from the history opens at once. */
     private val cacheFile = java.io.File(app.filesDir, "search-cache.json")
+    /** The voice-over picked per title, and the last one picked at all. */
+    private val voices = app.getSharedPreferences("voices", android.content.Context.MODE_PRIVATE)
     private val cache: MutableMap<String, List<Title>> by lazy {
         runCatching {
             val o = org.json.JSONObject(cacheFile.readText())
@@ -583,10 +585,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 return
             }
             val page = catalog.rezka.page(url)
-            val translator = page.defaultTranslator ?: page.translators.firstOrNull()?.id
+            val default = page.defaultTranslator ?: page.translators.firstOrNull()?.id
+            // The voice-over picked for this title before, or else the studio picked last anywhere.
+            val remembered = voices.getInt("id:${page.id}", -1).takeIf { id -> page.translators.any { it.id == id } }
+                ?: voices.getString("last", null)?.let { name -> page.translators.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id }
             val firstSeason = page.episodes.firstOrNull()?.season
-            patchRezka { RezkaUi(SourceStatus.READY, url = url, page = page, translator = translator, episodes = page.episodes, season = firstSeason) }
+            patchRezka { RezkaUi(SourceStatus.READY, url = url, page = page, translator = default, episodes = page.episodes, season = firstSeason) }
             patch { it.copy(description = page.description ?: it.description, title = it.title.copy(rezkaUrl = url, poster = it.title.poster ?: page.poster)) }
+            if (remembered != null && remembered != default) selectTranslator(remembered, remember = false)
         } catch (e: ChallengeException) {
             patchRezka { RezkaUi(SourceStatus.BLOCKED, url = title.rezkaUrl) }
             ask(e.url) { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title) } } }
@@ -612,10 +618,16 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     fun retryRezka() { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title) } } }
 
-    fun selectTranslator(id: Int) {
+    fun selectTranslator(id: Int, remember: Boolean = true) {
         val r = _title.value?.rezka ?: return
         val page = r.page ?: return
         patchRezka { it.copy(translator = id) }
+        if (remember) {
+            voices.edit()
+                .putInt("id:${page.id}", id)
+                .apply { page.translators.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() }?.let { putString("last", it) } }
+                .apply()
+        }
         if (!page.series) return
         viewModelScope.launch {
             patchRezka { it.copy(episodesLoading = true) }

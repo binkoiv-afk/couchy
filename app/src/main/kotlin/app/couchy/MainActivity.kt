@@ -389,9 +389,17 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         )
     }
 
+    // The last two live channels, for the "previous channel" button and key.
+    var channelTrail by remember { mutableStateOf(listOf<Long>()) }
+    val liveId = playback?.live?.takeIf { it.archiveOf == null }?.channelId
+    LaunchedEffect(liveId) {
+        if (liveId != null && channelTrail.lastOrNull() != liveId) channelTrail = (channelTrail + liveId).takeLast(2)
+    }
+
     val current = playback
     if (current != null) {
         val live = current.live
+        val onAir = live?.takeIf { it.archiveOf == null }
         PlayerScreen(
             playback = current,
             touch = !form.isTv,
@@ -410,6 +418,19 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 )
             }),
             onVariant = { url, position -> vm.playDirect(current.copy(uri = url, startMs = position)) },
+            hasNext = current.torrent?.nextFileId != null || current.nextRef != null,
+            onFavorite = onAir?.let { l -> { tvVm.toggleFavorite(l.channelId); Unit } },
+            onPrevious = onAir?.let { l ->
+                channelTrail.takeIf { it.size == 2 && it.last() == l.channelId }?.first()?.let { prev ->
+                    { scope.launch { tvVm.jump(l, prev)?.let(vm::playDirect) }; Unit }
+                }
+            },
+            onNumber = onAir?.takeIf { it.zapOrder.isNotEmpty() }?.let { l ->
+                { n: Int ->
+                    scope.launch { tvVm.byNumber(l, n)?.let(vm::playDirect) }
+                    Unit
+                }
+            },
             onFinished = {
                 // Series: the next episode starts by itself, from the torrent or the online source.
                 val next = current.torrent?.nextFileId
@@ -494,6 +515,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         onGroup = tvVm::selectGroup,
         onPlay = { item -> vm.playDirect(tvVm.live(item.channel, tv.channels.map { it.channel })) },
         onFocus = { tvVm.focus(it) },
+        onStar = { tvVm.toggleFavorite(it.channel) },
         onMore = { item ->
             // On a TV the guide already sits next to the list, so the menu key just stars the channel.
             if (form.isTv) tvVm.toggleFavorite(item.channel) else { tvVm.focus(item.channel); channelFor = item }
@@ -741,5 +763,6 @@ private fun liveUi(tv: TvState, channelId: Long, title: String): LiveUi {
         nextTitle = item?.next?.title,
         nextStart = item?.next?.start ?: 0,
         nowMs = tv.nowMs,
+        favorite = item?.channel?.favorite == true,
     )
 }

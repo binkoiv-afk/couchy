@@ -30,6 +30,11 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Subtitles
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +81,12 @@ data class PlayerUi(
     val live: LiveUi? = null,
     /** Torrent peers and speed, shown under the spinner while buffering. */
     val status: String? = null,
+    /** A short note in the middle of the top edge: volume, brightness, 2×, a channel number being typed. */
+    val hint: String? = null,
+    /** Seconds until the next episode starts by itself; null when no countdown runs. */
+    val nextIn: Int? = null,
+    /** Set while the sleep timer runs: when it stops. */
+    val sleepLabel: String? = null,
 )
 
 /** What a live channel shows instead of a timeline: the programme now and the next one. */
@@ -88,6 +99,7 @@ data class LiveUi(
     val nextTitle: String? = null,
     val nextStart: Long = 0,
     val nowMs: Long = System.currentTimeMillis(),
+    val favorite: Boolean = false,
 )
 
 class PlayerControls(
@@ -106,6 +118,14 @@ class PlayerControls(
     val onCast: (() -> Unit)? = null,
     /** Turns a phone between sideways and upright; null elsewhere. */
     val onRotate: (() -> Unit)? = null,
+    val onSleep: () -> Unit = {},
+    /** Stars or unstars the live channel. */
+    val onFavorite: (() -> Unit)? = null,
+    /** Back to the channel watched before this one. */
+    val onPrevious: (() -> Unit)? = null,
+    /** The next episode right now, and keeping this one to its end. */
+    val onNextNow: () -> Unit = {},
+    val onNextCancel: () -> Unit = {},
 )
 
 /**
@@ -135,7 +155,35 @@ fun PlayerOverlay(ui: PlayerUi, visible: Boolean, controls: PlayerControls, touc
         AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
             Chrome(ui, controls, touch)
         }
+        if (ui.hint != null) {
+            Text(
+                ui.hint,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        ui.nextIn?.let { NextCard(it, controls, Modifier.align(Alignment.BottomEnd).padding(horizontal = 24.dp, vertical = if (visible) 120.dp else 28.dp)) }
     }
+}
+
+/** Netflix-style: the next episode is coming, start it now or stay on the credits. */
+@Composable
+private fun NextCard(seconds: Int, controls: PlayerControls, modifier: Modifier) {
+    val now = remember { FocusRequester() }
+    Column(
+        modifier.background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Следующая серия через $seconds", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Pill(Icons.Rounded.PlayArrow, "Смотреть", Modifier.focusRequester(now), highlighted = true, onClick = controls.onNextNow)
+            Pill(Icons.Rounded.Close, "Остаться", onClick = controls.onNextCancel)
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { now.requestFocus() } }
 }
 
 @Composable
@@ -221,6 +269,11 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
                     if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
                     Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
+                    Pill(Icons.Rounded.Bedtime, ui.sleepLabel ?: if (touch) null else "Таймер сна", highlighted = ui.sleepLabel != null, onClick = controls.onSleep)
+                    if (ui.live != null) {
+                        controls.onFavorite?.let { Pill(if (ui.live.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (touch) null else "Избранное", highlighted = ui.live.favorite, onClick = it) }
+                        controls.onPrevious?.let { Pill(Icons.Rounded.History, if (touch) null else "Предыдущий", onClick = it) }
+                    }
                     controls.onRotate?.let { Pill(Icons.Rounded.ScreenRotation, null, onClick = it) }
                 }
             }

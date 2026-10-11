@@ -163,6 +163,22 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
         return live(channel, emptyList()).copy(live = LiveChannel(channel.id, channel.epgId, order))
     }
 
+    /** Another channel by its id, keeping the zapping list; for "previous channel". */
+    suspend fun jump(live: LiveChannel, channelId: Long): Playback? {
+        val channel = repo.channel(channelId) ?: return null
+        return live(channel, emptyList()).copy(live = LiveChannel(channel.id, channel.epgId, live.zapOrder))
+    }
+
+    /** The channel with this number in the zapping list, as typed on the remote. */
+    suspend fun byNumber(live: LiveChannel, number: Int): Playback? {
+        val id = live.zapOrder.getOrNull(number - 1) ?: return null
+        return jump(live, id)
+    }
+
+    fun toggleFavorite(channelId: Long) = viewModelScope.launch {
+        repo.channel(channelId)?.let { repo.setFavorite(it, !it.favorite) }
+    }
+
     private fun filter(all: List<ChannelNow>, group: String) = when (group) {
         GROUP_ALL -> all
         GROUP_FAVORITES -> all.filter { it.channel.favorite }

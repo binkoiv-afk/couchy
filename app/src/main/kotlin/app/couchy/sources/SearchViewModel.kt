@@ -1,5 +1,6 @@
 package app.couchy.sources
 
+import app.couchy.BuildConfig
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -215,7 +216,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             couchy.settings.prefs.collect { p ->
                 host = p.rezkaHost.ifBlank { Rezka.DEFAULT_HOST }
                 // A key typed in settings wins over the one built into the app.
-                val key = p.tmdbKey.ifBlank { app.couchy.BuildConfig.TMDB_KEY }
+                val key = p.tmdbKey.ifBlank { BuildConfig.TMDB_KEY }
                 if (key != tmdbKey) {
                     val changed = _feed.value.loaded
                     tmdbKey = key

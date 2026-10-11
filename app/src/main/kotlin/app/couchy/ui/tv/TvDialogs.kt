@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -45,6 +46,8 @@ fun AddPlaylistDialog(
     onM3u: (name: String, url: String, epg: String?) -> Unit,
     onXtream: (name: String, server: String, user: String, password: String) -> Unit,
     onDismiss: () -> Unit,
+    /** Picks an .m3u file on the device instead of typing a link. */
+    onPickFile: (() -> Unit)? = null,
 ) {
     // An Xtream panel link fills the login form; it keeps working when the panel changes the list.
     val panel = remember(initialUrl) { Links.xtream(initialUrl) }
@@ -82,6 +85,9 @@ fun AddPlaylistDialog(
                         url, { url = it }, label = { Text("Ссылка на плейлист .m3u") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth(),
                     )
+                    if (onPickFile != null && !url.startsWith("file:")) {
+                        app.couchy.ui.components.SecondaryButton("Выбрать файл на устройстве", Icons.Rounded.FolderOpen, onClick = { onDismiss(); onPickFile() })
+                    }
                     OutlinedTextField(
                         epg, { epg = it }, label = { Text("Телепрограмма XMLTV (необязательно)") }, singleLine = true,
                         supportingText = { Text("Если в плейлисте уже есть адрес программы, оставьте пустым") },

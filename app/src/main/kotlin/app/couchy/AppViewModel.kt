@@ -146,6 +146,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _pendingTorrent.value = link
             return
         }
+        val local = link.trim().let { it.startsWith("content:", true) || it.startsWith("file:", true) }
+        if (local && kind != LinkKind.TORRENT && (kind == LinkKind.PLAYLIST || Links.isPlayable(kind))) {
+            // A playlist file from the file manager or a messenger: keep a copy so the channels can refresh later.
+            viewModelScope.launch {
+                if (kind == LinkKind.PLAYLIST || library.isPlaylistFile(link)) {
+                    try {
+                        _pendingPlaylist.value = library.keepPlaylistFile(link)
+                    } catch (e: Exception) {
+                        _notice.value = Notice("Не получилось прочитать файл плейлиста. Попробуйте выбрать его через «Плейлисты → Добавить → Файл».")
+                    }
+                } else {
+                    startPlayback(link, title, fromStart)
+                }
+            }
+            return
+        }
         if (kind == LinkKind.PLAYLIST) {
             _pendingPlaylist.value = link
             return
@@ -162,16 +178,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _pendingPlaylist.value = link.trim()
                 return@launch
             }
-            val entry = library.open(link, title)
-            if (fromStart) library.clearProgress(entry.uri)
-            _playback.value = Playback(
-                uri = entry.uri,
-                title = entry.title,
-                startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
-                audioLanguage = entry.audioLanguage,
-                subtitleLanguage = entry.subtitleLanguage,
-            )
+            startPlayback(link, title, fromStart)
         }
+    }
+
+    private suspend fun startPlayback(link: String, title: String?, fromStart: Boolean) {
+        val entry = library.open(link, title)
+        if (fromStart) library.clearProgress(entry.uri)
+        _playback.value = Playback(
+            uri = entry.uri,
+            title = entry.title,
+            startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
+            audioLanguage = entry.audioLanguage,
+            subtitleLanguage = entry.subtitleLanguage,
+        )
     }
 
     /** The first few kilobytes of a link, read to tell an IPTV list from a stream; null when unreachable. */

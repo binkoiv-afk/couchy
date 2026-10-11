@@ -56,7 +56,7 @@ fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -
                     SecondaryButton("Файл", Icons.Rounded.FolderOpen, onClick = onPickFile)
                 }
                 Text(
-                    "Поддерживаются mp4, mkv, webm, потоки HLS (.m3u8) и DASH (.mpd).",
+                    "Поддерживаются mp4, mkv, webm, потоки HLS (.m3u8) и DASH (.mpd), торренты и плейлисты IPTV (.m3u).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -324,6 +324,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
             onM3u = { name, url, epg -> tvVm.addM3u(name, url, epg) },
             onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
             onDismiss = { addPlaylist = null },
+            onPickFile = { runCatching { pickFile.launch(arrayOf("*/*")) } },
         )
     }
 
@@ -573,7 +574,12 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
             onOpen = { showOpen = false; vm.open(it) },
             onPickFile = {
                 try {
-                    pickFile.launch(arrayOf("video/*", "application/x-bittorrent", "application/octet-stream"))
+                    pickFile.launch(
+                        arrayOf(
+                            "video/*", "application/x-bittorrent", "application/octet-stream",
+                            "audio/x-mpegurl", "audio/mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain",
+                        ),
+                    )
                 } catch (e: ActivityNotFoundException) {
                     showOpen = false
                     vm.showNotice("На этом устройстве нет выбора файлов. Откройте видео по ссылке.")

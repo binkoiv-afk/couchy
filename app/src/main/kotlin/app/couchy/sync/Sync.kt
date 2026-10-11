@@ -161,7 +161,8 @@ class Sync(
 
     private suspend fun localState(prefs: Prefs): SyncState = SyncState(
         items = library.snapshot().filter { !CastRequest.isLocalOnly(it.uri) }.map { it.toSync() }.associateBy { it.key },
-        playlists = tv.allPlaylists().map {
+        // A playlist file lives on this device only; other devices could not read it.
+        playlists = tv.allPlaylists().filter { !it.url.startsWith("file:") }.map {
             SyncPlaylist(it.name, it.kind, it.url, it.username, it.password, it.epgOverride)
         }.associateBy { it.key },
         bypassHosts = prefs.bypassHosts,
@@ -185,7 +186,7 @@ class Sync(
         delete.forEach { library.delete(it) }
 
         val playlists = tv.allPlaylists()
-        playlists.filter { p -> SyncPlaylist(p.name, p.kind, p.url, p.username, p.password).key !in merged.playlists }
+        playlists.filter { p -> !p.url.startsWith("file:") && SyncPlaylist(p.name, p.kind, p.url, p.username, p.password).key !in merged.playlists }
             .forEach { tv.delete(it.id) }
         (merged.playlists.keys - local.playlists.keys).forEach { key ->
             val p = merged.playlists.getValue(key)

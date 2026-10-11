@@ -13,6 +13,12 @@ object Http {
     private const val AGENT = "Couchy/${BuildConfig.VERSION_NAME} (Android)"
 
     fun <T> open(url: String, block: (InputStream) -> T): T {
+        // A playlist file kept in Couchy's storage.
+        if (url.startsWith("file:", ignoreCase = true)) {
+            val file = java.io.File(java.net.URI(url))
+            if (!file.exists()) throw IOException("Файл плейлиста пропал, добавьте его заново")
+            return BufferedInputStream(file.inputStream(), 64 * 1024).use { block(maybeGunzip(it)) }
+        }
         var current = url
         repeat(6) {
             val connection = (URL(current).openConnection() as HttpURLConnection).apply {

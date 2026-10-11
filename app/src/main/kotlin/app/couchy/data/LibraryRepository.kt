@@ -55,6 +55,43 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
 
     suspend fun clearProgress(uri: String) = dao.clearProgress(uri)
 
+    /**
+     * Whether a file on the device or one shared by another app is an IPTV list. Its uri rarely
+     * ends in .m3u, so the first kilobytes decide.
+     */
+    suspend fun isPlaylistFile(link: String): Boolean = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(link.trim())
+        if (uri.scheme != "content" && uri.scheme != "file") return@withContext false
+        val head = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(8192)
+                var read = 0
+                while (read < buffer.size) {
+                    val n = input.read(buffer, read, buffer.size - read)
+                    if (n < 0) break
+                    read += n
+                }
+                String(buffer, 0, read, Charsets.UTF_8)
+            }
+        }.getOrNull() ?: return@withContext false
+        Links.sniff(head) == app.couchy.core.LinkKind.PLAYLIST
+    }
+
+    /**
+     * Copies a playlist file into Couchy's own storage: the permission to read another app's
+     * file ends with the visit, but the channels have to refresh later too. Returns a file:// link.
+     */
+    suspend fun keepPlaylistFile(link: String): String = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(link.trim())
+        val name = (displayName(uri, raw = true) ?: uri.lastPathSegment ?: "playlist")
+            .substringAfterLast('/').replace(Regex("[^\\p{L}\\p{N} ._-]"), "_").ifBlank { "playlist" }
+        val dir = java.io.File(context.filesDir, "playlists").apply { mkdirs() }
+        val target = java.io.File(dir, if (name.contains('.')) name else "$name.m3u")
+        val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Файл не открывается")
+        input.use { i -> target.outputStream().use { o -> i.copyTo(o) } }
+        Uri.fromFile(target).toString()
+    }
+
     suspend fun delete(uri: String) = dao.delete(uri)
     suspend fun setKids(uri: String, kids: Boolean) = dao.setKids(uri, kids)
 

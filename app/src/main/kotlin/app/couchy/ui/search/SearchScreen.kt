@@ -157,6 +157,15 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
                 else -> state.titles
             }
             if (shown.isEmpty() && !state.moreLoading) item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ничего не нашлось. Попробуйте название на русском или на английском.") }
+            state.corrected?.let { fixed ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "corrected") {
+                    Text(
+                        "По «${state.query}» ничего, показываю «$fixed»",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             val best = shown.firstOrNull()
             if (best != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Label("Лучшее совпадение") }

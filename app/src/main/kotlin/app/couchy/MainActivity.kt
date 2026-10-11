@@ -394,15 +394,18 @@ private fun MainScreen(
         if (uri != null) { showOpen = false; vm.open(uri.toString()) }
     }
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {
+        // Every way the recogniser heard it: the next ones are tried when the first finds nothing.
+        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.takeIf { it.isNotEmpty() }?.let { heard ->
             destination = Destination.SEARCH
-            searchVm.submit(it)
+            searchVm.submitVoice(heard)
         }
     }
     val voiceIntent = remember {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PROMPT, "Что посмотреть?")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
     }
     val hasVoice = remember { voiceIntent.resolveActivity(context.packageManager) != null }
 

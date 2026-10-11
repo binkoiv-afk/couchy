@@ -2,6 +2,7 @@ package app.couchy.sources
 
 import app.couchy.data.Marks
 import app.couchy.episodes.NewEpisodes
+import app.couchy.core.sources.QueryFix
 import app.couchy.data.SavedTitles
 import app.couchy.BuildConfig
 import android.app.Application
@@ -61,6 +62,8 @@ data class SearchState(
     val siteBlocked: Boolean = false,
     /** Some results are shown and a slower source is still being asked. */
     val moreLoading: Boolean = false,
+    /** Nothing was found for the query as said or typed, so these are for a corrected one. */
+    val corrected: String? = null,
 )
 
 /** What Home shows to pick from: HDrezka's catalogue. Empty when the site cannot be reached. */
@@ -318,6 +321,15 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         submit()
     }
 
+    /** Other ways the speech recogniser heard the last request, tried when the first finds nothing. */
+    private var heardAlso: List<String> = emptyList()
+
+    fun submitVoice(heard: List<String>) {
+        val first = heard.firstOrNull { it.isNotBlank() } ?: return
+        heardAlso = heard.drop(1)
+        submit(first)
+    }
+
     fun submit(text: String = _search.value.query) {
         _search.update { it.copy(query = text) }
         searchJob?.cancel()
@@ -403,7 +415,22 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 val hits = catalog.rawTorrents(query)
                 _search.update { it.copy(loading = false, searched = true, torrents = TorrentHits.group(hits), titles = emptyList(), siteBlocked = false) }
             } else {
+                _search.update { it.copy(corrected = null) }
                 searchTitles(query, quiet = cached != null)
+                // Nothing for the words as they came: try what they probably meant.
+                if (_search.value.titles.isEmpty() && !_search.value.siteBlocked) {
+                    val tries = (heardAlso + QueryFix.variants(query)).map { it.trim() }
+                        .filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }.distinct().take(5)
+                    for (t in tries) {
+                        _search.update { it.copy(loading = true, error = null) }
+                        searchTitles(t)
+                        if (_search.value.titles.isNotEmpty()) {
+                            _search.update { it.copy(corrected = t) }
+                            break
+                        }
+                    }
+                    heardAlso = emptyList()
+                }
                 val found = _search.value.titles
                 if (found.isNotEmpty()) {
                     cache[query.lowercase()] = found

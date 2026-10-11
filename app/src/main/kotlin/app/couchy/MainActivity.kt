@@ -475,6 +475,9 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onPerson = { p -> searchVm.openListing(ListQuery.Person(p.name, p.url)) },
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                     onTitle = searchVm::openTitle,
+                    onTrailer = { id ->
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id"))) }
+                    },
                 ),
             )
             if (sourceBusy) {
@@ -571,6 +574,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                         },
                         onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
                         onRezkaHost = { vm.setRezkaHost(it) },
+                        onTmdbKey = { vm.setTmdbKey(it) },
                         onBypass = { mode, kind -> vm.setBypass(mode, kind) },
                         onBypassConfig = { vm.setBypassConfig(it) },
                         onForgetBypassHosts = { vm.forgetBypassHosts() },

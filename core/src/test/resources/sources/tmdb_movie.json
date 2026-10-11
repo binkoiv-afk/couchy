@@ -1,0 +1,7 @@
+{"id":693134,"title":"Дюна: Часть вторая","original_title":"Dune: Part Two","overview":"Пол Атрейдес объединяется с фрименами.","tagline":"Долгой жизни бойцам","release_date":"2024-02-27","runtime":166,"imdb_id":"tt15239678","vote_average":8.1,"vote_count":6000,"poster_path":"/p.jpg","backdrop_path":"/b.jpg",
+"genres":[{"id":878,"name":"фантастика"},{"id":12,"name":"приключения"},{"id":10770,"name":"телевизионный фильм"}],
+"production_countries":[{"iso_3166_1":"US","name":"United States of America"},{"iso_3166_1":"CA","name":"Canada"}],
+"credits":{"cast":[{"id":1190668,"name":"Тимоти Шаламе","profile_path":"/t.jpg"},{"id":505710,"name":"Зендея","profile_path":null}],"crew":[{"id":137427,"name":"Дени Вильнёв","job":"Director","profile_path":"/d.jpg"},{"id":1,"name":"X","job":"Writer"}]},
+"recommendations":{"results":[{"id":438631,"title":"Дюна","original_title":"Dune","release_date":"2021-09-15","poster_path":"/d1.jpg","media_type":"movie","vote_average":7.8,"vote_count":12000,"popularity":50}]},
+"release_dates":{"results":[{"iso_3166_1":"RU","release_dates":[{"certification":"12"}]},{"iso_3166_1":"US","release_dates":[{"certification":"PG-13"}]}]},
+"videos":{"results":[{"site":"YouTube","type":"Trailer","key":"abc"}]}}

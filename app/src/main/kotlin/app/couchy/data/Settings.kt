@@ -27,6 +27,8 @@ data class Prefs(
     val torrAddress: String = "",
     /** HDrezka mirror; empty means the default address. */
     val rezkaHost: String = "",
+    /** The person's own TMDB key: film data in Russian. Empty: Cinemeta, in English. */
+    val tmdbKey: String = "",
     val searchHistory: List<String> = emptyList(),
     val bypassMode: BypassMode = BypassMode.AUTO,
     val bypassKind: BypassKind = BypassKind.WARP,
@@ -54,6 +56,7 @@ class Settings(private val context: Context) {
     private val torrEngine = stringPreferencesKey("torr_engine")
     private val torrAddress = stringPreferencesKey("torr_address")
     private val rezkaHost = stringPreferencesKey("rezka_host")
+    private val tmdbKey = stringPreferencesKey("tmdb_key")
     private val searchHistory = stringPreferencesKey("search_history")
     private val bypassMode = stringPreferencesKey("bypass_mode")
     private val bypassKind = stringPreferencesKey("bypass_kind")
@@ -74,6 +77,7 @@ class Settings(private val context: Context) {
             torrEngine = enumOr(p[torrEngine], TorrEngineMode.BUILT_IN),
             torrAddress = p[torrAddress].orEmpty(),
             rezkaHost = p[rezkaHost].orEmpty(),
+            tmdbKey = p[tmdbKey].orEmpty(),
             searchHistory = p[searchHistory]?.split('\n')?.filter { it.isNotBlank() }.orEmpty(),
             bypassMode = enumOr(p[bypassMode], BypassMode.AUTO),
             bypassKind = enumOr(p[bypassKind], BypassKind.WARP),
@@ -97,6 +101,7 @@ class Settings(private val context: Context) {
     }
 
     suspend fun setRezkaHost(value: String) = context.store.edit { it[rezkaHost] = value.trim() }
+    suspend fun setTmdbKey(value: String) = context.store.edit { it[tmdbKey] = value.trim() }
     suspend fun setSearchHistory(value: List<String>) = context.store.edit { it[searchHistory] = value.joinToString("\n") }
 
     suspend fun setBypass(mode: BypassMode, kind: BypassKind) = context.store.edit {

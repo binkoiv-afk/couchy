@@ -137,10 +137,12 @@ fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Mod
         media("continue", "Продолжить", state.continueWatching)
         if (!kids) {
             feed.similarTo?.let { name -> posters("similar", "Похоже на «$name»", feed.similar) }
-            posters("fresh", "Новинки", feed.fresh.filter { f -> featured.none { it.key == f.key } }.ifEmpty { feed.fresh }, CatalogFilter(sort = CatalogSort.LAST))
-            posters("films", "Сейчас смотрят", feed.films, CatalogFilter(sort = CatalogSort.WATCHING))
-            posters("series", "Сериалы", feed.series, CatalogFilter(CatalogType.SERIES, CatalogSort.WATCHING))
-            posters("cartoons", "Мультфильмы", feed.cartoons, CatalogFilter(CatalogType.CARTOONS, CatalogSort.WATCHING))
+            posters("trending", "В тренде на этой неделе", feed.trending.filter { f -> featured.none { it.key == f.key } })
+            posters("fresh", "Новинки", feed.fresh, CatalogFilter(sort = CatalogSort.LAST))
+            posters("films", "Популярные фильмы", feed.films, CatalogFilter(sort = CatalogSort.POPULAR))
+            posters("series", "Популярные сериалы", feed.series, CatalogFilter(CatalogType.SERIES, CatalogSort.POPULAR))
+            posters("cartoons", "Мультфильмы", feed.cartoons, CatalogFilter(CatalogType.CARTOONS, CatalogSort.POPULAR))
+            posters("rezka", "Новое на HDrezka", feed.rezka)
         }
         media("favorites", "Избранное", state.favorites)
         media("recent", "Недавно открытые", state.recent.filter { r -> state.continueWatching.none { it.uri == r.uri } })
@@ -182,7 +184,7 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
             val t = items[page]
             Box(Modifier.fillMaxSize()) {
                 Artwork(t.name, Modifier.fillMaxSize()) {
-                    AsyncImage(t.poster, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(if (form.wide) t.backdrop ?: t.poster else t.poster ?: t.backdrop, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 }
                 Box(
                     Modifier.fillMaxSize().background(
@@ -196,7 +198,7 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        if (t.kind == TitleKind.SERIES) "НОВЫЙ СЕРИАЛ НА HDREZKA" else "НОВИНКА НА HDREZKA",
+                        if (t.kind == TitleKind.SERIES) "ПОПУЛЯРНЫЙ СЕРИАЛ" else "СЕЙЧАС СМОТРЯТ",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFFFB070),
                     )
@@ -306,7 +308,7 @@ private fun Genres(side: Dp, actions: HomeActions) {
         contentPadding = PaddingValues(start = side, end = side, top = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(RezkaCatalog.genres.take(14), key = { it.first }) { (slug, name) ->
+        items(app.couchy.core.sources.Genres.all.take(14), key = { it.slug }) { g -> val slug = g.slug; val name = g.name
             val shape = RoundedCornerShape(999.dp)
             Text(
                 name,

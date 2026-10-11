@@ -163,13 +163,13 @@ private fun Filters(f: CatalogFilter, onFilter: (CatalogFilter) -> Unit) {
         }
     }
     when (picking) {
-        "genre" -> Choose("Жанр", listOf(null to "Любой") + RezkaCatalog.genres, f.genre, { picking = null }) {
+        "genre" -> Choose("Жанр", listOf<Pair<String?, String>>(null to "Любой") + app.couchy.core.sources.Genres.all.map { it.slug to it.name }, f.genre, { picking = null }) {
             onFilter(f.copy(genre = it, genreLabel = null))
         }
         "year" -> Choose("Год", listOf(null to "Любой") + years.map { "$it" to "$it" }, f.year?.toString(), { picking = null }) {
             onFilter(f.copy(year = it?.toInt()))
         }
-        "country" -> Choose("Страна", listOf(null to "Любая") + RezkaCatalog.countries.map { it to it }, f.country, { picking = null }) {
+        "country" -> Choose("Страна", listOf(null to "Любая") + app.couchy.core.sources.Countries.codes.keys.map { it to it }, f.country, { picking = null }) {
             onFilter(f.copy(country = it))
         }
     }

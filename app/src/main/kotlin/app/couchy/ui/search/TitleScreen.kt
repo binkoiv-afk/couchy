@@ -1,6 +1,7 @@
 package app.couchy.ui.search
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import app.couchy.ui.components.Artwork
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +89,8 @@ class TitleActions(
     val onCatalog: (CatalogFilter) -> Unit = {},
     /** Another title: a part of the franchise or a similar one. */
     val onTitle: (Title) -> Unit = {},
+    /** A trailer on YouTube, by its id. */
+    val onTrailer: (String) -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -102,7 +105,9 @@ fun TitleContent(state: TitleUi, actions: TitleActions, modifier: Modifier = Mod
             else Modifier.fillMaxWidth().height(470.dp),
         ) {
             Artwork(state.title.name, Modifier.fillMaxSize()) {
-                state.title.poster?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                // A wide screen gets the wide still; a phone the poster, which fills its tall top better.
+                val picture = if (form.wide) state.title.backdrop ?: state.title.poster else state.title.poster ?: state.title.backdrop
+                picture?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             }
             Box(
                 Modifier.fillMaxSize().background(
@@ -204,13 +209,16 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
     var selected by rememberSaveable(t.name, t.year) { mutableStateOf<String?>(null) }
     val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        val details = state.rezka.page?.details ?: TitleDetails()
+        val details = mergedDetails(state)
         item("head") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
                 WatchButton(state, actions)
-                state.description?.let { About(it, details.slogan) }
+                state.info?.trailer?.let { id ->
+                    SecondaryButton("Трейлер", Icons.Rounded.PlayArrow, onClick = { actions.onTrailer(id) }, modifier = Modifier.fillMaxWidth())
+                }
+                description(state)?.let { About(it, details.slogan) }
                 Facts(state.title, details, actions)
             }
         }
@@ -245,13 +253,25 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("Актёры и съёмочная группа")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
-                    items(people, key = { it.first.url }) { (p, role) -> PersonTile(p, role) { actions.onPerson(p) } }
+                    items(people, key = { it.first.url }) { (p, role) -> PersonTile(p, role, details.photos[p.url]) { actions.onPerson(p) } }
                 }
             }
         }
         if (details.parts.isNotEmpty()) item("parts") { Shelf("Все части", details.parts, actions.onTitle) }
         if (details.similar.isNotEmpty()) item("similar") { Shelf("Похожее", details.similar, actions.onTitle) }
     }
+}
+
+/** TMDB's Russian data goes first; with Cinemeta (English) the site's Russian names do. */
+private fun mergedDetails(state: TitleUi): TitleDetails {
+    val site = state.rezka.page?.details ?: TitleDetails()
+    val info = state.info ?: return site
+    return if (info.russian) info.details.or(site) else site.or(info.details)
+}
+
+private fun description(state: TitleUi): String? {
+    val info = state.info
+    return if (info?.russian == true) info.description ?: state.description else state.description ?: info?.description
 }
 
 /** The description, cut to a few lines until tapped. */
@@ -282,7 +302,13 @@ private fun Facts(title: Title, d: TitleDetails, actions: TitleActions) {
     val type = if (title.kind == TitleKind.SERIES) CatalogType.SERIES else CatalogType.FILMS
     Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (d.genres.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            d.genres.forEach { g -> Tag(g.name) { RezkaCatalog.fromGenreLink(g)?.let(actions.onCatalog) } }
+            d.genres.forEach { g ->
+                Tag(g.name) {
+                    val filter = if (g.url.startsWith("genre:")) CatalogFilter(type, CatalogSort.POPULAR, genre = g.url.removePrefix("genre:"))
+                    else RezkaCatalog.fromGenreLink(g)
+                    filter?.let(actions.onCatalog)
+                }
+            }
         }
         if (d.directors.isNotEmpty()) FactRow("Режиссёр") {
             d.directors.forEach { p -> Tag(p.name) { actions.onPerson(p) } }
@@ -325,7 +351,7 @@ private fun Tag(text: String, onClick: () -> Unit) {
 
 /** A person as a round monogram with the name under it. */
 @Composable
-private fun PersonTile(person: Link, role: String?, onClick: () -> Unit) {
+private fun PersonTile(person: Link, role: String?, photo: String?, onClick: () -> Unit) {
     val initials = person.name.split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.uppercase()
     val hue = (person.name.hashCode() and 0xFFFF) % 360
     val color = Color.hsv(hue.toFloat(), 0.45f, 0.55f)
@@ -337,7 +363,10 @@ private fun PersonTile(person: Link, role: String?, onClick: () -> Unit) {
         Box(
             Modifier.size(64.dp).background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.55f))), CircleShape),
             contentAlignment = Alignment.Center,
-        ) { Text(initials, color = Color.White, style = MaterialTheme.typography.titleMedium) }
+        ) {
+            Text(initials, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            photo?.let { AsyncImage(it, person.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(CircleShape)) }
+        }
         Text(
             person.name,
             style = MaterialTheme.typography.labelMedium,
@@ -474,7 +503,7 @@ private fun Heading(state: TitleUi, details: TitleDetails) {
         details.age,
     ).joinToString(" · ")
     Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val chips = listOfNotNull(t.rating, state.rezka.page?.rating?.takeIf { it != t.rating })
+    val chips = listOfNotNull(t.rating, state.rezka.page?.rating, state.info?.rating).distinct()
     if (chips.isNotEmpty()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { chips.forEach { RatingChip(it) } }
     }
@@ -487,7 +516,11 @@ private fun Heading(state: TitleUi, details: TitleDetails) {
 @Composable
 private fun RatingChip(text: String) {
     val imdb = text.startsWith("IMDb", ignoreCase = true)
-    val color = if (imdb) Color(0xFFF5C518) else Color(0xFF3DD68C)
+    val color = when {
+        imdb -> Color(0xFFF5C518)
+        text.startsWith("TMDB") -> Color(0xFF01B4E4)
+        else -> Color(0xFF3DD68C)
+    }
     Text(
         text,
         style = MaterialTheme.typography.labelMedium,

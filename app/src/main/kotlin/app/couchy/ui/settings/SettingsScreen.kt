@@ -78,6 +78,7 @@ class SettingsActions(
     /** Checks a TorrServe address and reports the answer as a line of text. */
     val onCheckTorr: (String, (String) -> Unit) -> Unit = { _, _ -> },
     val onRezkaHost: (String) -> Unit = {},
+    val onTmdbKey: (String) -> Unit = {},
     val onBypass: (BypassMode, BypassKind) -> Unit = { _, _ -> },
     val onBypassConfig: (String) -> Unit = {},
     /** Checks the bypass end to end and reports the answer as a line of text. */
@@ -103,7 +104,7 @@ data class BypassUi(val status: String = "Не запущен", val available: B
 /** The settings, each group on its own page, like on a phone's system settings. */
 enum class SettingsPage(val title: String, val icon: ImageVector, val hint: String) {
     APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
-    SOURCES("Онлайн-источники", Icons.Rounded.Language, "Если HDrezka не открывается, укажите рабочее зеркало, например https://hdrezka.me"),
+    SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочее зеркало HDrezka, например https://hdrezka.me, если основной адрес не открывается."),
     TORRENTS(
         "Торренты", Icons.Rounded.CloudDownload,
         "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
@@ -146,7 +147,7 @@ fun SettingsContent(
     var page by rememberSaveable { mutableStateOf(initialPage) }
     fun summary(p: SettingsPage): String = when (p) {
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
-        SettingsPage.SOURCES -> "HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
+        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
         SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
         SettingsPage.SYNC -> sync.status
@@ -176,6 +177,21 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
+                    var key by rememberSaveable(prefs.tmdbKey) { mutableStateOf(prefs.tmdbKey) }
+                    Text(
+                        "Описания, актёры, каталог и рекомендации. Без ключа данные идут из Cinemeta (IMDb) на английском. " +
+                            "С бесплатным ключом TMDB всё на русском: themoviedb.org → Настройки → API → ключ API или токен.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    OutlinedTextField(
+                        key, { key = it },
+                        label = { Text("Ключ TMDB") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (key.trim() != prefs.tmdbKey) SecondaryButton("Сохранить", null, onClick = { actions.onTmdbKey(key) })
                 }
             }
             SettingsPage.TORRENTS -> TorrSettings(prefs, actions)

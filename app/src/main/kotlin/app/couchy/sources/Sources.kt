@@ -146,3 +146,108 @@ class SiteClient(private val web: Web) {
         }.mapNotNull { it.await() }
     }
 }
+
+/**
+ * Film data independent of any site that plays films: TMDB in Russian with the person's key,
+ * Cinemeta without one.
+ */
+class MetaClient(private val web: Web, private val key: () -> String) {
+    val tmdb: Boolean get() = key().isNotBlank()
+
+    private suspend fun tmdbGet(path: String, params: Map<String, String> = emptyMap()): String {
+        val (url, headers) = app.couchy.core.sources.Tmdb.request(key(), path, params)
+        return web.get(url, headers)
+    }
+
+    /** Everything about one title; ids are found by IMDb id or by name and year when missing. */
+    suspend fun info(title: Title): app.couchy.core.sources.MetaInfo? {
+        if (tmdb) {
+            val (id, kind) = title.tmdbId?.let { it to title.kind }
+                ?: title.imdbId?.let { imdb ->
+                    app.couchy.core.sources.Tmdb.parseFind(tmdbGet("/find/$imdb", mapOf("external_source" to "imdb_id")))
+                }
+                ?: findTmdb(title)
+                ?: return cinemeta(title)
+            return runCatching {
+                app.couchy.core.sources.Tmdb.parseDetails(
+                    tmdbGet(app.couchy.core.sources.Tmdb.detailsPath(id, kind), mapOf("append_to_response" to app.couchy.core.sources.Tmdb.APPEND)),
+                    kind,
+                )
+            }.getOrElse { cinemeta(title) }
+        }
+        return cinemeta(title)
+    }
+
+    private suspend fun cinemeta(title: Title): app.couchy.core.sources.MetaInfo? {
+        val imdb = title.imdbId ?: return null
+        val kinds = listOf(title.kind, if (title.kind == TitleKind.MOVIE) TitleKind.SERIES else TitleKind.MOVIE)
+        for (k in kinds) {
+            runCatching { app.couchy.core.sources.Cinemeta.parseMeta(web.get(app.couchy.core.sources.Cinemeta.metaUrl(imdb, k))) }
+                .getOrNull()?.let { return it }
+        }
+        return null
+    }
+
+    private suspend fun findTmdb(title: Title): Pair<Int, TitleKind>? {
+        val names = listOfNotNull(title.original, title.name).distinct()
+        for (name in names) {
+            val found = runCatching { search(name) }.getOrDefault(emptyList())
+            found.firstOrNull { f ->
+                f.kind == title.kind && TitleMerge.yearsClose(title.year, f.year) &&
+                    (listOf(f.name) + f.altNames).map(TitleMerge::normalize).any { it == TitleMerge.normalize(name) }
+            }?.tmdbId?.let { return it to title.kind }
+        }
+        return null
+    }
+
+    /** TMDB's search, in Russian; nothing without a key. */
+    suspend fun search(query: String): List<Title> =
+        if (!tmdb) emptyList()
+        else app.couchy.core.sources.Tmdb.parseList(tmdbGet("/search/multi", mapOf("query" to query, "include_adult" to "false")))
+
+    suspend fun catalog(f: app.couchy.core.sources.CatalogFilter, page: Int): List<Title> = catalogPage(f, page).first
+
+    /** One page as shown, and how many titles the page had before narrowing (zero: the end). */
+    suspend fun catalogPage(f: app.couchy.core.sources.CatalogFilter, page: Int): Pair<List<Title>, Int> {
+        if (tmdb) {
+            val (path, params) = app.couchy.core.sources.Tmdb.discover(f, page)
+            val kind = if (path.endsWith("tv")) TitleKind.SERIES else TitleKind.MOVIE
+            val list = app.couchy.core.sources.Tmdb.parseList(tmdbGet(path, params), kind)
+            return list to list.size
+        }
+        val kind = if (f.type == app.couchy.core.sources.CatalogType.FILMS || f.type == app.couchy.core.sources.CatalogType.CARTOONS) TitleKind.MOVIE else TitleKind.SERIES
+        val json = web.get(app.couchy.core.sources.Cinemeta.catalogUrl(f, page))
+        val all = app.couchy.core.sources.Cinemeta.parseCatalog(json, kind)
+        return app.couchy.core.sources.Cinemeta.parseCatalog(json, kind, f) to all.size
+    }
+
+    /** A person's films: from TMDB by id or name; without a key, Cinemeta's search by the name. */
+    suspend fun person(link: app.couchy.core.sources.Link): List<Title> {
+        val id = app.couchy.core.sources.MetaLinks.tmdbPersonId(link.url)
+            ?: if (tmdb) app.couchy.core.sources.Tmdb.parsePersonSearch(tmdbGet("/search/person", mapOf("query" to link.name))) else null
+        if (id != null && tmdb) return app.couchy.core.sources.Tmdb.parseCredits(tmdbGet("/person/$id/combined_credits"))
+        return listOf(TitleKind.MOVIE, TitleKind.SERIES).flatMap { k ->
+            runCatching { app.couchy.core.sources.Cinemeta.parseCatalog(web.get(app.couchy.core.sources.Cinemeta.searchUrl(link.name, k)), k) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Home's shelves: what is popular now, films, series and cartoons. */
+    suspend fun feed(): Feed = kotlinx.coroutines.coroutineScope {
+        fun shelf(f: app.couchy.core.sources.CatalogFilter) = async { runCatching { catalog(f, 1) }.getOrDefault(emptyList()) }
+        val trending = async {
+            runCatching { if (tmdb) app.couchy.core.sources.Tmdb.parseList(tmdbGet("/trending/all/week")) else emptyList() }.getOrDefault(emptyList())
+        }
+        val films = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.FILMS, app.couchy.core.sources.CatalogSort.POPULAR))
+        val series = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.SERIES, app.couchy.core.sources.CatalogSort.POPULAR))
+        val cartoons = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.CARTOONS, app.couchy.core.sources.CatalogSort.POPULAR))
+        val fresh = shelf(app.couchy.core.sources.CatalogFilter(app.couchy.core.sources.CatalogType.FILMS, app.couchy.core.sources.CatalogSort.LAST))
+        Feed(
+            fresh = fresh.await(),
+            films = films.await(),
+            series = series.await(),
+            cartoons = cartoons.await(),
+            trending = trending.await(),
+            loaded = true,
+        )
+    }
+}

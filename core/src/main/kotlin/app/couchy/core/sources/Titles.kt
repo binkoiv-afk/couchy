@@ -18,9 +18,12 @@ data class Title(
     /** "2024, США, Фантастика" or the lead actors. */
     val info: String? = null,
     val rating: String? = null,
+    /** A wide still for banners. */
+    val backdrop: String? = null,
+    val tmdbId: Int? = null,
 ) {
     /** A stable key for lists and navigation. */
-    val key: String get() = imdbId ?: rezkaUrl ?: "${name.lowercase()}|$year"
+    val key: String get() = imdbId ?: rezkaUrl ?: tmdbId?.let { "tmdb:$kind:$it" } ?: "${name.lowercase()}|$year"
 }
 
 object Imdb {
@@ -69,6 +72,25 @@ object TitleMerge {
      * of the site's original names equals IMDb's and the years are at most one apart. The
      * site's order comes first (it understands Russian queries best), then IMDb's leftovers.
      */
+    /**
+     * TMDB's results in its order, each joined with the same title on the site (same name in
+     * any language, close years); the site's titles TMDB does not have follow.
+     */
+    fun joinTmdb(tmdb: List<Title>, site: List<Title>): List<Title> {
+        if (tmdb.isEmpty()) return site
+        val left = site.toMutableList()
+        fun names(t: Title) = (listOf(t.name) + t.altNames + listOfNotNull(t.original)).map(::normalize).filter { it.isNotEmpty() }.toSet()
+        val joined = tmdb.map { t ->
+            val mine = names(t)
+            val match = left.firstOrNull { r -> r.kind == t.kind && yearsClose(t.year, r.year) && names(r).any { it in mine } }
+            if (match == null) t else {
+                left.remove(match)
+                t.copy(rezkaUrl = match.rezkaUrl, altNames = (t.altNames + match.altNames).distinct(), rating = match.rating ?: t.rating)
+            }
+        }
+        return joined + left
+    }
+
     fun merge(site: List<Title>, imdb: List<Title>): List<Title> {
         val left = imdb.toMutableList()
         val joined = site.map { s ->

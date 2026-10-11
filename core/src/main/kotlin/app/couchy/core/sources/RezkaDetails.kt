@@ -21,8 +21,25 @@ data class TitleDetails(
     val similar: List<Title> = emptyList(),
     /** Other parts of the franchise, in the site's order. */
     val parts: List<Title> = emptyList(),
+    /** Photos of people by their link address. */
+    val photos: Map<String, String> = emptyMap(),
 ) {
     val isEmpty: Boolean get() = this == TitleDetails()
+
+    /** Each part from here, or from [other] where this has none. */
+    fun or(other: TitleDetails) = TitleDetails(
+        slogan = slogan ?: other.slogan,
+        released = released ?: other.released,
+        countries = countries.ifEmpty { other.countries },
+        genres = genres.ifEmpty { other.genres },
+        directors = directors.ifEmpty { other.directors },
+        actors = actors.ifEmpty { other.actors },
+        age = age ?: other.age,
+        duration = duration ?: other.duration,
+        similar = similar.ifEmpty { other.similar },
+        parts = parts.ifEmpty { other.parts },
+        photos = other.photos + photos,
+    )
 }
 
 object RezkaDetails {
@@ -139,7 +156,7 @@ object RezkaCatalog {
         "Япония", "Корея Южная", "Китай", "Индия", "Турция", "Австралия", "Украина", "Беларусь", "Казахстан",
     )
 
-    fun genreName(slug: String?): String? = genres.firstOrNull { it.first == slug }?.second
+    fun genreName(slug: String?): String? = Genres.bySlug(slug)?.name ?: genres.firstOrNull { it.first == slug }?.second
 
     /** A genre link from a title page, "https://rezka.ag/films/fiction/", as a catalogue filter. */
     fun fromGenreLink(link: Link): CatalogFilter? {
@@ -188,7 +205,8 @@ object TitleJson {
                 JSONObject()
                     .put("name", t.name).put("original", t.original).put("alt", JSONArray(t.altNames))
                     .put("year", t.year ?: 0).put("kind", t.kind.name).put("poster", t.poster)
-                    .put("imdb", t.imdbId).put("rezka", t.rezkaUrl).put("info", t.info).put("rating", t.rating),
+                    .put("imdb", t.imdbId).put("rezka", t.rezkaUrl).put("info", t.info).put("rating", t.rating)
+                    .put("backdrop", t.backdrop).put("tmdb", t.tmdbId ?: 0),
             )
         }
     }
@@ -207,6 +225,8 @@ object TitleJson {
             rezkaUrl = s("rezka"),
             info = s("info"),
             rating = s("rating"),
+            backdrop = s("backdrop"),
+            tmdbId = o.optInt("tmdb").takeIf { it > 0 },
         )
     }
 }

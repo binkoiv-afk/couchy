@@ -119,7 +119,7 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
                 item(span = { GridItemSpan(maxLineSpan) }) { Label("Каталог") }
                 item(span = { GridItemSpan(maxLineSpan) }) { Kinds(actions) }
                 item(span = { GridItemSpan(maxLineSpan) }) { Label("Жанры") }
-                items(RezkaCatalog.genres.take(16), key = { "genre:" + it.first }) { (slug, name) ->
+                items(app.couchy.core.sources.Genres.all.take(18), key = { "genre:" + it.slug }) { g -> val slug = g.slug; val name = g.name
                     GenreTile(name, slug) { actions.onCatalog(CatalogFilter(genre = slug)) }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -148,7 +148,7 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
             if (state.moreLoading) item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    Text("Ещё ищу на HDrezka…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Ещё ищу…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             val shown = when (state.mode) {

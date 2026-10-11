@@ -68,10 +68,15 @@ data class Feed(
     /** Picked by the site as similar to what was watched last. */
     val similar: List<Title> = emptyList(),
     val similarTo: String? = null,
+    /** What everybody watches this week (TMDB). */
+    val trending: List<Title> = emptyList(),
+    /** HDrezka's new arrivals, when the site answers. */
+    val rezka: List<Title> = emptyList(),
     val loaded: Boolean = false,
 ) {
-    /** Films for the big banner at the top of Home. */
-    val featured: List<Title> get() = (fresh.filter { it.kind == TitleKind.MOVIE } + films).distinctBy { it.key }.take(6)
+    /** Titles for the big banner at the top of Home: wide stills first. */
+    val featured: List<Title> get() = (trending + films + fresh + rezka).filter { it.backdrop != null || it.poster != null }
+        .sortedBy { if (it.backdrop != null) 0 else 1 }.distinctBy { it.key }.take(6)
 }
 
 /** A list of titles opened from a title page or the catalogue. */
@@ -117,6 +122,8 @@ data class RezkaUi(
 data class TitleUi(
     val title: Title,
     val description: String? = null,
+    /** From TMDB or Cinemeta: description, cast with photos, recommendations. */
+    val info: app.couchy.core.sources.MetaInfo? = null,
     val rezka: RezkaUi = RezkaUi(),
     val torrents: List<TorrentGroup> = emptyList(),
     val torrentsLoading: Boolean = true,
@@ -150,6 +157,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private var host = Rezka.DEFAULT_HOST
     private val catalog = Catalog(web, RezkaClient(web) { host })
     private val siteClient = SiteClient(web)
+    private var tmdbKey = ""
+    private val meta = MetaClient(web) { tmdbKey }
 
     private val _siteWindow = MutableStateFlow<SiteWindow?>(null)
     val siteWindow: StateFlow<SiteWindow?> = _siteWindow.asStateFlow()
@@ -203,6 +212,12 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             couchy.settings.prefs.collect { p ->
                 host = p.rezkaHost.ifBlank { Rezka.DEFAULT_HOST }
+                if (p.tmdbKey != tmdbKey) {
+                    val changed = _feed.value.loaded
+                    tmdbKey = p.tmdbKey
+                    // A new key changes the language of everything: Home is loaded again.
+                    if (changed) loadFeed(force = true)
+                }
                 _search.update { it.copy(history = p.searchHistory) }
             }
         }
@@ -218,11 +233,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         feedAt = System.currentTimeMillis()
         viewModelScope.launch {
             kotlinx.coroutines.coroutineScope {
-                val fresh = async { runCatching { catalog.rezka.list("/new/") }.getOrDefault(emptyList()) }
-                val films = async { runCatching { catalog.rezka.list("/films/?filter=watching") }.getOrDefault(emptyList()) }
-                val series = async { runCatching { catalog.rezka.list("/series/?filter=watching") }.getOrDefault(emptyList()) }
-                val cartoons = async { runCatching { catalog.rezka.list("/cartoons/?filter=watching") }.getOrDefault(emptyList()) }
-                _feed.value = Feed(fresh.await(), films.await(), series.await(), cartoons.await(), loaded = true)
+                val rezka = async { runCatching { catalog.rezka.list("/new/") }.getOrDefault(emptyList()) }
+                val main = runCatching { meta.feed() }.getOrDefault(Feed(loaded = true))
+                _feed.value = main.copy(similar = _feed.value.similar, similarTo = _feed.value.similarTo)
+                _feed.update { it.copy(rezka = rezka.await()) }
             }
             loadSimilar()
         }
@@ -234,10 +248,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             .filter { Rezka.isRef(it.uri) && it.lastWatchedAt > 0 }
             .maxByOrNull { it.lastWatchedAt } ?: return
         val ref = Rezka.parseRef(last.uri) ?: return
-        val page = runCatching { catalog.rezka.page(ref.pageUrl) }.getOrNull() ?: return
-        val picks = (page.details.similar + page.details.parts).distinctBy { it.key }
+        val name = last.title.substringBefore(" · ")
+        val page = runCatching { catalog.rezka.page(ref.pageUrl) }.getOrNull()
+        val title = Title(page?.name ?: name, page?.original, kind = if (page?.series == true || ref.season > 0) TitleKind.SERIES else TitleKind.MOVIE,
+            year = Regex("-(\\d{4})\\.html").find(ref.pageUrl)?.groupValues?.get(1)?.toIntOrNull())
+        val fromMeta = if (meta.tmdb) runCatching { meta.info(title)?.details?.similar }.getOrNull().orEmpty() else emptyList()
+        val picks = fromMeta.ifEmpty { page?.details?.let { (it.similar + it.parts) }.orEmpty() }.distinctBy { it.key }
         if (picks.isEmpty()) return
-        _feed.update { it.copy(similar = picks, similarTo = page.name ?: last.title.substringBefore(" · ")) }
+        _feed.update { it.copy(similar = picks, similarTo = page?.name ?: name) }
     }
 
     fun setQuery(text: String) {
@@ -268,12 +286,15 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun searchTitles(query: String, quiet: Boolean = false) {
         var imdb: Result<List<Title>>? = null
         var site: Result<List<Title>>? = null
+        // TMDB answers only with a key; without one it counts as answered at once.
+        var tmdb: Result<List<Title>>? = if (meta.tmdb) null else Result.success(emptyList())
         fun publish() {
             // Results from the history are on screen already: they are swapped only for complete ones.
-            if (quiet && (imdb == null || site == null)) return
+            if (quiet && (imdb == null || site == null || tmdb == null)) return
             val challenge = (site?.exceptionOrNull() as? ChallengeException)?.url
-            val titles = TitleMerge.merge(site?.getOrNull().orEmpty(), imdb?.getOrNull().orEmpty())
-            val pending = imdb == null || site == null
+            val joined = TitleMerge.joinTmdb(tmdb?.getOrNull().orEmpty(), site?.getOrNull().orEmpty())
+            val titles = TitleMerge.merge(joined, imdb?.getOrNull().orEmpty())
+            val pending = imdb == null || site == null || tmdb == null
             val failed = imdb?.isFailure == true && site?.isFailure == true && challenge == null
             _search.update {
                 it.copy(
@@ -289,6 +310,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             if (quiet && titles.isEmpty()) cache[query.lowercase()]?.let { old -> _search.update { it.copy(titles = old, error = null) } }
         }
         kotlinx.coroutines.coroutineScope {
+            if (tmdb == null) launch {
+                tmdb = runCatching { meta.search(query) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                publish()
+            }
             launch {
                 imdb = runCatching { catalog.imdb(query) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
                 publish()
@@ -366,6 +391,27 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             launch { loadTorrents(title) }
             launch { loadRezka(title) }
             launch { loadSites(title) }
+            launch { loadInfo(title) }
+        }
+    }
+
+    private suspend fun loadInfo(start: Title) {
+        var title = start
+        if (title.imdbId == null && title.tmdbId == null && !meta.tmdb) catalog.findImdb(title)?.let { title = title.copy(imdbId = it) }
+        val info = runCatching { meta.info(title) }.getOrNull() ?: return
+        patch {
+            it.copy(
+                info = info,
+                title = it.title.copy(
+                    imdbId = it.title.imdbId ?: info.imdbId,
+                    tmdbId = it.title.tmdbId ?: info.tmdbId,
+                    original = it.title.original ?: info.original,
+                    poster = it.title.poster ?: info.poster,
+                    backdrop = it.title.backdrop ?: info.backdrop,
+                    year = it.title.year ?: info.year,
+                    rating = it.title.rating ?: info.rating,
+                ),
+            )
         }
     }
 
@@ -408,16 +454,18 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             while (added.size < 12 && !end && tries < 4) {
                 page += 1
                 tries += 1
-                val raw = when (val q = start.query) {
-                    is ListQuery.Person -> catalog.rezka.listing(RezkaDetails.path(q.url))
-                    is ListQuery.Catalog -> catalog.rezka.listing(RezkaCatalog.path(q.filter, page))
+                val (raw, size) = when (val q = start.query) {
+                    is ListQuery.Person ->
+                        (if (q.url.startsWith("http")) catalog.rezka.listing(RezkaDetails.path(q.url))
+                        else meta.person(app.couchy.core.sources.Link(q.name, q.url))).let { it to it.size }
+                    is ListQuery.Catalog -> meta.catalogPage(q.filter, page)
                 }
                 val known = (start.titles + added).map { it.key }.toSet()
                 val fresh = raw.filter { it.key !in known }
-                end = fresh.isEmpty() || start.query is ListQuery.Person
-                val wanted = (start.query as? ListQuery.Catalog)?.filter
-                added = added + if (wanted == null) fresh else fresh.filter { RezkaCatalog.keep(wanted, it) }
-                if (wanted?.country == null) break
+                end = size == 0 || start.query is ListQuery.Person
+                added = added + fresh
+                // Cinemeta narrows some filters after loading, so a page can come out short: then the next one is read too.
+                if (meta.tmdb || start.query is ListQuery.Person || added.size >= 12) break
             }
             _listing.update { cur -> if (cur?.query == start.query) cur.copy(titles = cur.titles + added, page = page, end = end, loading = false) else cur }
         } catch (e: ChallengeException) {

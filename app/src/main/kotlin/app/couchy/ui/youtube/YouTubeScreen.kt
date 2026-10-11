@@ -26,7 +26,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NotificationsActive
@@ -80,6 +84,8 @@ class YouTubeActions(
     val onMore: () -> Unit,
     val onRetry: () -> Unit,
     val onClearHistory: () -> Unit,
+    val onLater: (YtVideo) -> Unit,
+    val onLoved: (YtVideo) -> Unit,
 )
 
 /**
@@ -92,12 +98,12 @@ fun YouTubeContent(state: YouTubeUi, actions: YouTubeActions, modifier: Modifier
     if (channel != null) {
         BackHandler(onBack = actions.onCloseChannel)
         val subscribed = state.subscriptions.any { it.url == channel.channel.url }
-        VideoGrid(channel.list, actions, modifier, onMore = {}) {
+        VideoGrid(channel.list, state, actions, modifier, onMore = {}) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "channel") { ChannelHeader(channel.channel, subscribed, actions) }
         }
         return
     }
-    VideoGrid(state.list, actions, modifier, onMore = actions.onMore) {
+    VideoGrid(state.list, state, actions, modifier, onMore = actions.onMore) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { Header(state, actions) }
         if (state.shelf == YtShelf.Subscriptions && state.subscriptions.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "subs") { ChannelRow(state.subscriptions, actions) }
@@ -111,6 +117,7 @@ fun YouTubeContent(state: YouTubeUi, actions: YouTubeActions, modifier: Modifier
 @Composable
 private fun VideoGrid(
     list: YtListUi,
+    state: YouTubeUi,
     actions: YouTubeActions,
     modifier: Modifier,
     onMore: () -> Unit,
@@ -143,7 +150,7 @@ private fun VideoGrid(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         head()
-        items(list.videos, key = { it.id }) { v -> VideoCard(v, actions) }
+        items(list.videos, key = { it.id }) { v -> VideoCard(v, v.id in state.later, v.id in state.loved, actions) }
         item(span = { GridItemSpan(maxLineSpan) }, key = "tail") {
             Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
                 when {
@@ -153,7 +160,7 @@ private fun VideoGrid(
                         SecondaryButton("Ещё раз", Icons.Rounded.Refresh, onClick = actions.onRetry)
                     }
                     list.videos.isEmpty() -> Text(
-                        "Здесь пока пусто.",
+                        if (state.shelf is YtShelf.Saved && state.channel == null) "Пока пусто. Нажмите закладку или сердечко под видео, и оно появится здесь." else "Здесь пока пусто.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -198,6 +205,14 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Chip("Подписки", state.shelf == YtShelf.Subscriptions, onClick = { actions.onShelf(YtShelf.Subscriptions) }, icon = Icons.Rounded.Subscriptions)
+            }
+            item {
+                val later = YtShelf.Saved(app.couchy.youtube.YouTubeViewModel.LATER, "Смотреть позже")
+                Chip(later.name, state.shelf == later, onClick = { actions.onShelf(later) }, icon = Icons.Rounded.Bookmark)
+            }
+            item {
+                val loved = YtShelf.Saved(app.couchy.youtube.YouTubeViewModel.LOVED, "Любимое")
+                Chip(loved.name, state.shelf == loved, onClick = { actions.onShelf(loved) }, icon = Icons.Rounded.Favorite)
             }
             val kiosks = state.kiosks.ifEmpty { listOf(YtShelf.Kiosk(null, "Популярное")) }
             items(kiosks) { k ->
@@ -273,7 +288,7 @@ private fun ChannelHeader(c: YtChannel, subscribed: Boolean, actions: YouTubeAct
 }
 
 @Composable
-private fun VideoCard(v: YtVideo, actions: YouTubeActions) {
+private fun VideoCard(v: YtVideo, later: Boolean, loved: Boolean, actions: YouTubeActions) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier.couchyClickable(shape, focusScale = 1.03f, onLongClick = v.channelUrl?.let { url -> { actions.onChannel(url, v.channel) } }) { actions.onVideo(v) },
@@ -299,7 +314,34 @@ private fun VideoCard(v: YtVideo, actions: YouTubeActions) {
                 )
             }
         }
-        Text(v.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(v.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Meta(v)
+            }
+            Mark(
+                if (later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                if (later) "Убрать из «Смотреть позже»" else "Смотреть позже",
+                later,
+            ) { actions.onLater(v) }
+            Mark(
+                if (loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                if (loved) "Убрать из любимого" else "В любимое",
+                loved,
+            ) { actions.onLoved(v) }
+        }
+    }
+}
+
+@Composable
+private fun Mark(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
+    Box(Modifier.size(40.dp).couchyClickable(CircleShape, onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, label, Modifier.size(22.dp), tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun Meta(v: YtVideo) {
         Text(
             listOfNotNull(
                 v.channel.takeIf { it.isNotBlank() },
@@ -311,7 +353,6 @@ private fun VideoCard(v: YtVideo, actions: YouTubeActions) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
 }
 
 fun duration(sec: Long): String {

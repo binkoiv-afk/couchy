@@ -45,6 +45,7 @@ import kotlinx.coroutines.launch
 import app.couchy.core.sources.SiteRef
 import app.couchy.core.sources.Sites
 import app.couchy.sources.SiteWindow
+import app.couchy.ui.components.PrimaryButton
 import app.couchy.ui.components.SecondaryButton
 import java.io.ByteArrayInputStream
 
@@ -91,15 +92,19 @@ fun SiteWindowDialog(
     // A film page plays without being seen: Couchy presses ▶ in the site's player itself and only
     // shows the site when that does not start the video.
     var hidden by remember { mutableStateOf(window.key != null) }
-    LaunchedEffect(web, hidden) {
+    // The site is shown only when the person asks for it, never on its own.
+    var failed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableStateOf(0) }
+    LaunchedEffect(web, hidden, attempt) {
         val view = web ?: return@LaunchedEffect
         if (!hidden) return@LaunchedEffect
+        failed = false
         delay(2_500)
-        repeat(6) {
+        repeat(10) {
             pressPlay(view)
             delay(2_500)
         }
-        hidden = false
+        failed = true
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false)) {
         BackHandler { web?.takeIf { it.canGoBack() }?.goBack() ?: onDismiss() }
@@ -162,14 +167,23 @@ fun SiteWindowDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                 ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Text("Запускаю видео…", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                    if (!failed) CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Text(
-                        "Couchy сам включает плеер сайта и забирает видео в свой плеер.",
+                        if (failed) "Видео не запустилось" else "Запускаю видео…",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        if (failed) "Плеер этого сайта не отдал видео. Выберите другой источник или откройте сайт и нажмите ▶ сами."
+                        else "Couchy сам включает плеер сайта и забирает видео в свой плеер.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    SecondaryButton("Показать сайт", null, onClick = { hidden = false })
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (failed) PrimaryButton("Другой источник", null, onClick = onDismiss)
+                        if (failed) SecondaryButton("Ещё раз", null, onClick = { web?.reload(); attempt += 1 })
+                        SecondaryButton("Показать сайт", null, onClick = { hidden = false })
+                    }
                 }
             }
             }

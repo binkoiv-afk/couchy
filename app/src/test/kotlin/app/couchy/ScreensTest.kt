@@ -250,7 +250,7 @@ class ScreensTest {
         ),
         history = listOf("ледокол", "лучшие голы"),
     )
-    private val ytActions = app.couchy.ui.youtube.YouTubeActions({}, {}, {}, {}, { _, _ -> }, {}, {}, {}, {}, {})
+    private val ytActions = app.couchy.ui.youtube.YouTubeActions({}, {}, {}, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, {})
 
     @Test fun phoneYoutube() = snap("phone_youtube", phone, FormFactor.PHONE) {
         Shell(Destination.YOUTUBE, {}, {}) { app.couchy.ui.youtube.YouTubeContent(ytState, ytActions) }

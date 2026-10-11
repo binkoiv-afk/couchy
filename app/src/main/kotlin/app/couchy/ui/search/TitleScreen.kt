@@ -442,6 +442,7 @@ private fun firstReady(state: TitleUi): Source = when {
 @Composable
 private fun Services(state: TitleUi, selected: String?, onSelect: (String) -> Unit, actions: TitleActions) {
     val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
+    var moreSites by remember(state.title.key) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("ИСТОЧНИКИ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
@@ -461,8 +462,11 @@ private fun Services(state: TitleUi, selected: String?, onSelect: (String) -> Un
             }
             if (state.sitesLoading) item("sites-loading") { Chip("Ищу на сайтах…", false, onClick = {}) }
             // Cinemas without a readable search, and those that did not find the title by name, open their own search.
+            // They show the site itself, so they stay folded until asked for.
             val found = state.sites.map { it.site }.toSet()
-            items(Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }, key = { "find:" + it.id }) { site ->
+            val manual = Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }
+            if (manual.isNotEmpty() && !moreSites) item("more-sites") { Chip("Искать на сайте вручную…", false, onClick = { moreSites = true }) }
+            if (moreSites) items(manual, key = { "find:" + it.id }) { site ->
                 Chip("${site.name} ↗", false, onClick = { actions.onSearchSite(site) })
             }
         }

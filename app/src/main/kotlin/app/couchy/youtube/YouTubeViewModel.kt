@@ -27,6 +27,8 @@ sealed interface YtShelf {
     data object Subscriptions : YtShelf
     data class Kiosk(val id: String?, val name: String) : YtShelf
     data class Search(val query: String) : YtShelf
+    /** The videos put aside on this device: "ytlater" or "ytloved". */
+    data class Saved(val list: String, val name: String) : YtShelf
 }
 
 data class YtListUi(
@@ -47,6 +49,8 @@ data class YouTubeUi(
     val subscriptions: List<YtChannel> = emptyList(),
     val channel: YtChannelUi? = null,
     val history: List<String> = emptyList(),
+    val later: Set<String> = emptySet(),
+    val loved: Set<String> = emptySet(),
 )
 
 class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
@@ -70,6 +74,14 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
             marks.all.collect {
                 val subs = marks.list(Marks.YOUTUBE).map { o -> YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null }) }
                 if (subs != _state.value.subscriptions) _state.update { s -> s.copy(subscriptions = subs) }
+                val later = savedIds(LATER)
+                val loved = savedIds(LOVED)
+                _state.update { s -> s.copy(later = later, loved = loved) }
+                // An open list follows what is added or removed.
+                (_state.value.shelf as? YtShelf.Saved)?.let { shelf ->
+                    val videos = savedVideos(shelf.list)
+                    if (videos.map { it.id } != _state.value.list.videos.map { it.id }) _state.update { s -> s.copy(list = YtListUi(videos, end = true)) }
+                }
             }
         }
     }
@@ -115,6 +127,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                         next = page.next
                         _state.update { it.copy(list = YtListUi(page.videos, end = page.next == null)) }
                     }
+                    is YtShelf.Saved -> _state.update { it.copy(list = YtListUi(savedVideos(shelf.list), end = true)) }
                     is YtShelf.Search -> {
                         val page = YouTubeClient.search(shelf.query)
                         next = page.next
@@ -141,7 +154,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                 val more = when (shelf) {
                     is YtShelf.Kiosk -> YouTubeClient.kiosk(shelf.id, page)
                     is YtShelf.Search -> YouTubeClient.search(shelf.query, page)
-                    YtShelf.Subscriptions -> return@launch
+                    YtShelf.Subscriptions, is YtShelf.Saved -> return@launch
                 }
                 next = more.next
                 _state.update { s ->
@@ -177,6 +190,35 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleSubscription(channel: YtChannel) {
         val subs = _state.value.subscriptions
         saveSubs(if (subs.any { it.url == channel.url }) subs.filter { it.url != channel.url } else listOf(channel) + subs)
+    }
+
+    fun toggleLater(v: YtVideo) = toggleSaved(LATER, v)
+    fun toggleLoved(v: YtVideo) = toggleSaved(LOVED, v)
+
+    private fun toggleSaved(list: String, v: YtVideo) {
+        val key = "$list|${v.id}"
+        if (marks.has(key)) marks.remove(key)
+        else marks.put(
+            key,
+            JSONObject().put("id", v.id).put("title", v.title).put("channel", v.channel).put("channelUrl", v.channelUrl ?: "")
+                .put("duration", v.durationSec).put("views", v.views).put("published", v.publishedMs),
+        )
+    }
+
+    private fun savedIds(list: String): Set<String> = marks.all.value.keys.filter { it.startsWith("$list|") }.map { it.substringAfter('|') }.toSet()
+
+    private fun savedVideos(list: String): List<YtVideo> = marks.list(list).mapNotNull { o ->
+        runCatching {
+            YtVideo(
+                id = o.getString("id"),
+                title = o.optString("title"),
+                channel = o.optString("channel"),
+                channelUrl = o.optString("channelUrl").ifBlank { null },
+                durationSec = o.optLong("duration"),
+                views = o.optLong("views", -1),
+                publishedMs = o.optLong("published"),
+            )
+        }.getOrNull()
     }
 
     fun clearHistory() {
@@ -268,5 +310,10 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         val list = (listOf(q) + _state.value.history.filter { !it.equals(q, ignoreCase = true) }).take(12)
         store.edit().putString("history", JSONArray(list).toString()).apply()
         _state.update { it.copy(history = list) }
+    }
+
+    companion object {
+        const val LATER = "ytlater"
+        const val LOVED = "ytloved"
     }
 }

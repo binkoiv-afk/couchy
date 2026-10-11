@@ -591,6 +591,8 @@ private fun MainScreen(
                         onMore = ytVm::loadMore,
                         onRetry = ytVm::retry,
                         onClearHistory = ytVm::clearHistory,
+                        onLater = ytVm::toggleLater,
+                        onLoved = ytVm::toggleLoved,
                     ),
                 )
                 if (ytBusy) {

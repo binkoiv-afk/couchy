@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
 
     /** Bumped when the app comes back after a long time away, to start fresh on Home. */
     private val freshStart = MutableStateFlow(0)
+
+    /** A series whose new-episode notification was tapped. */
+    private val openTitle = MutableStateFlow<app.couchy.core.sources.Title?>(null)
     private var stoppedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,7 +117,7 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh)
+                    MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh, openTitle)
                 }
             }
         }
@@ -154,6 +157,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
+        app.couchy.episodes.NewEpisodes.titleOf(intent)?.let { openTitle.value = it; return }
         val link = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -176,6 +180,7 @@ private fun MainScreen(
     searchVm: SearchViewModel,
     ytVm: app.couchy.youtube.YouTubeViewModel,
     freshStart: Int,
+    openTitle: MutableStateFlow<app.couchy.core.sources.Title?>,
 ) {
     val form = LocalFormFactor.current
     val playback by vm.playback.collectAsStateWithLifecycle()
@@ -209,6 +214,14 @@ private fun MainScreen(
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
     val youtube by ytVm.state.collectAsStateWithLifecycle()
     val saved by searchVm.saved.collectAsStateWithLifecycle()
+    val following by searchVm.following.collectAsStateWithLifecycle()
+    val notifiedTitle by openTitle.collectAsStateWithLifecycle()
+    LaunchedEffect(notifiedTitle) {
+        notifiedTitle?.let { t ->
+            searchVm.openTitle(t)
+            openTitle.value = null
+        }
+    }
     val ytAutoPlay by ytVm.autoPlay.collectAsStateWithLifecycle()
     val ytBusy by ytVm.busy.collectAsStateWithLifecycle()
     val ytError by ytVm.error.collectAsStateWithLifecycle()
@@ -503,6 +516,7 @@ private fun MainScreen(
                 page.copy(
                     later = saved.later.any { it.key == page.title.key },
                     loved = saved.loved.any { it.key == page.title.key },
+                    following = page.title.imdbId != null && page.title.imdbId in following,
                 ),
                 TitleActions(
                     onBack = searchVm::back,
@@ -521,6 +535,7 @@ private fun MainScreen(
                     onTrailer = { id -> ytVm.play(app.couchy.core.youtube.YouTubeLinks.watch(id)) },
                     onLater = { searchVm.toggleLater(page.title) },
                     onLoved = { searchVm.toggleLoved(page.title) },
+                    onFollow = { searchVm.toggleFollow(page.title) },
                 ),
             )
             if (sourceBusy || ytBusy) {

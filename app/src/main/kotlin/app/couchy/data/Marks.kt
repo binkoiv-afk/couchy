@@ -52,6 +52,8 @@ class Marks(context: Context) {
     companion object {
         const val LATER = "later"
         const val LOVED = "loved"
+        /** Series whose new episodes the person hears about. */
+        const val FOLLOW = "follow"
         const val YOUTUBE = "yt"
     }
 }

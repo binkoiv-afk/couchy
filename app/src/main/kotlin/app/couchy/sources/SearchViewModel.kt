@@ -139,6 +139,7 @@ data class TitleUi(
     /** In "Смотреть позже" and "Любимое". */
     val later: Boolean = false,
     val loved: Boolean = false,
+    val following: Boolean = false,
 )
 
 /**
@@ -173,8 +174,31 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED)) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SavedTitles())
 
-    fun toggleLater(t: Title) { marks.toggleTitle(Marks.LATER, t); couchy.sync.syncSoon() }
-    fun toggleLoved(t: Title) { marks.toggleTitle(Marks.LOVED, t); couchy.sync.syncSoon() }
+    fun toggleLater(t: Title) = keep(Marks.LATER, t)
+    fun toggleLoved(t: Title) = keep(Marks.LOVED, t)
+
+    /** A series put in a list is followed too, so its new episodes are announced. */
+    private fun keep(list: String, t: Title) {
+        val adding = !marks.hasTitle(list, t)
+        marks.toggleTitle(list, t)
+        if (adding && t.kind == TitleKind.SERIES && t.imdbId != null && !marks.hasTitle(Marks.FOLLOW, t)) {
+            marks.toggleTitle(Marks.FOLLOW, t)
+            app.couchy.episodes.NewEpisodes.checkSoon(couchy)
+        }
+        couchy.sync.syncSoon()
+    }
+
+    /** Series the person hears about when a new episode is out. */
+    val following: StateFlow<Set<String>> = marks.all
+        .map { app.couchy.episodes.NewEpisodes.followed(marks).mapNotNull { it.imdbId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    fun toggleFollow(t: Title) {
+        val on = marks.hasTitle(Marks.FOLLOW, t)
+        marks.toggleTitle(Marks.FOLLOW, t)
+        couchy.sync.syncSoon()
+        if (!on) app.couchy.episodes.NewEpisodes.checkSoon(couchy)
+    }
 
     private val _siteWindow = MutableStateFlow<SiteWindow?>(null)
     val siteWindow: StateFlow<SiteWindow?> = _siteWindow.asStateFlow()

@@ -26,5 +26,6 @@ class CouchyApp : Application() {
         QualityChoice.init(this)
         // Every connection asks the bypass which way to go, so it is in place before anything loads.
         bypass.install()
+        app.couchy.episodes.NewEpisodes.schedule(this)
     }
 }

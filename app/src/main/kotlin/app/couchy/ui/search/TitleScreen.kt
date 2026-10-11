@@ -1,6 +1,8 @@
 package app.couchy.ui.search
 
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.NotificationsActive
 
 import androidx.compose.material.icons.rounded.FavoriteBorder
 
@@ -105,6 +107,8 @@ class TitleActions(
     val onTrailer: (String) -> Unit = {},
     val onLater: () -> Unit = {},
     val onLoved: () -> Unit = {},
+    /** Hearing about new episodes of a series. */
+    val onFollow: () -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -672,6 +676,23 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
             onClick = actions.onLoved,
             icon = if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
         )
+        if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+            ) { }
+            app.couchy.ui.components.Chip(
+                if (state.following) "Сообщу о новых сериях" else "Сообщать о новых сериях",
+                state.following,
+                onClick = {
+                    if (!state.following && !app.couchy.episodes.NewEpisodes.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {
+                        ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    actions.onFollow()
+                },
+                icon = if (state.following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
+            )
+        }
         app.couchy.ui.components.Chip(
             "Качество: ${app.couchy.QualityChoice.name(quality)}",
             false,

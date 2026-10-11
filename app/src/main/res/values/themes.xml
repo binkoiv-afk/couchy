@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark window before Compose draws, so the TV never flashes white on launch. -->
+    <style name="Theme.Couchy" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/couchy_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/couchy_bg</item>
+    </style>
+    <color name="couchy_bg">#FF0D0E12</color>
+</resources>

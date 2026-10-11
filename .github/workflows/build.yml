@@ -1,0 +1,95 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Mirrored at workflow level so step conditions can test whether the secret exists.
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # The signing key is created here, once, encrypted with the owner's own KEYSTORE_PASSWORD
+      # secret, and committed; nobody else ever sees the password.
+      - name: Create signing key on first run
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.KEYSTORE_PASSWORD != '' && hashFiles('app/signing/couchy.jks') == ''
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p app/signing
+          keytool -genkeypair -keystore app/signing/couchy.jks -storetype PKCS12 -alias couchy \
+            -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" -dname "CN=Couchy"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/signing/couchy.jks
+          git commit -m "Add release signing key"
+          git push
+      - name: Test and build
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :app:assembleRelease 2>&1 | tee build.log
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      # Pictures of the main screens, rendered on the JVM; attached to the service pre-release.
+      - name: Screenshots
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :app:recordPaparazziDebug 2>&1 | tee screens.log
+      - name: Publish screenshots
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe >/dev/null 2>&1 || \
+            gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          mkdir -p screens
+          for f in app/src/test/snapshots/images/*.png; do
+            name=$(basename "$f" | sed 's/^app.couchy_ScreensTest_//')
+            cp "$f" "screens/$name"
+          done
+          gh release upload probe screens/*.png --clobber
+      # Job logs are not reachable from every environment, so a failed build leaves its log on the service pre-release.
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view probe >/dev/null 2>&1 || \
+            gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
+          touch build.log screens.log
+          cat build.log screens.log > build-log.txt
+          gh release upload probe build-log.txt --clobber
+      - name: Name the APK
+        run: cp app/build/outputs/apk/release/app-release.apk couchy.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchy-apk
+          path: couchy.apk
+      # Every build of main becomes the latest release, so
+      # https://github.com/binkoiv-afk/couchy/releases/latest/download/couchy.apk always has the newest APK.
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Сборка ${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
+          files: couchy.apk
+          make_latest: true

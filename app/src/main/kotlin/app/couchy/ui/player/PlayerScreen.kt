@@ -132,6 +132,7 @@ fun PlayerScreen(
     var sleepAt by remember { mutableStateOf<Long?>(null) }
     var sleepAfterEpisode by remember { mutableStateOf(false) }
     var nextCancelled by remember(playback.uri) { mutableStateOf(false) }
+    val skipped = remember(playback.key) { mutableSetOf<app.couchy.Skip>() }
 
     fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
     LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
@@ -238,6 +239,15 @@ fun PlayerScreen(
             delay(500)
             sinceSave += 500
             if (sinceSave >= 5_000 && player.isPlaying) { save(); sinceSave = 0 }
+            // Sponsor reads and the like: jump to their end once, the first time playback reaches them.
+            if (player.isPlaying) {
+                val at = player.currentPosition
+                playback.skips.firstOrNull { at in it.startMs until it.endMs - 500 && it !in skipped }?.let { s ->
+                    skipped += s
+                    player.seekTo(s.endMs)
+                    flash(s.label)
+                }
+            }
             // The sleep timer turns the sound down over the last ten seconds, then stops.
             sleepAt?.let { at ->
                 val left = at - System.currentTimeMillis()
@@ -580,7 +590,16 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
         }
     }.build()
     // Resuming steps back a few seconds, so the last line before the stop is heard again.
-    player.setMediaItem(item, if (playback.startMs > 30_000) playback.startMs - 4_000 else playback.startMs)
+    val start = if (playback.startMs > 30_000) playback.startMs - 4_000 else playback.startMs
+    val audio = playback.audioUri
+    if (audio != null) {
+        // YouTube keeps picture and sound apart above 360p; they play as one.
+        val picture = sources.createMediaSource(item)
+        val sound = sources.createMediaSource(MediaItem.fromUri(Uri.parse(audio)))
+        player.setMediaSource(androidx.media3.exoplayer.source.MergingMediaSource(true, picture, sound), start)
+    } else {
+        player.setMediaItem(item, start)
+    }
     player.prepare()
     player.playWhenReady = true
     return player

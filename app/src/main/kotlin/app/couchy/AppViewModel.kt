@@ -44,7 +44,13 @@ data class Playback(
     val nextRef: String? = null,
     /** The same video in other qualities, best first: label and URL. */
     val variants: List<Pair<String, String>> = emptyList(),
+    /** Sound that comes as its own file (YouTube): played together with [uri]. */
+    val audioUri: String? = null,
+    /** Parts to jump over (YouTube sponsor reads, intros): start, end and what it was. */
+    val skips: List<Skip> = emptyList(),
 )
+
+data class Skip(val startMs: Long, val endMs: Long, val label: String)
 
 /** The quality picked last for online sources; the next film or episode starts in it too. */
 object QualityChoice {
@@ -144,7 +150,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
-        if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link)) {
+        if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link) || app.couchy.core.youtube.YouTubeLinks.isVideo(link)) {
             _pendingSource.value = link
             return
         }

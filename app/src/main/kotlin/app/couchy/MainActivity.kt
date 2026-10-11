@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
     private val tvVm: TvViewModel by viewModels()
     private val torrentVm: TorrentViewModel by viewModels()
     private val searchVm: SearchViewModel by viewModels()
+    private val ytVm: app.couchy.youtube.YouTubeViewModel by viewModels()
 
     /** Bumped when the app comes back after a long time away, to start fresh on Home. */
     private val freshStart = MutableStateFlow(0)
@@ -112,7 +113,7 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, tvVm, torrentVm, searchVm, fresh)
+                    MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh)
                 }
             }
         }
@@ -167,7 +168,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentViewModel, searchVm: SearchViewModel, freshStart: Int) {
+private fun MainScreen(
+    vm: AppViewModel,
+    tvVm: TvViewModel,
+    torrentVm: TorrentViewModel,
+    searchVm: SearchViewModel,
+    ytVm: app.couchy.youtube.YouTubeViewModel,
+    freshStart: Int,
+) {
     val form = LocalFormFactor.current
     val playback by vm.playback.collectAsStateWithLifecycle()
     val home by vm.home.collectAsStateWithLifecycle()
@@ -198,6 +206,12 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val sourceAutoPlay by searchVm.autoPlay.collectAsStateWithLifecycle()
     val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
+    val youtube by ytVm.state.collectAsStateWithLifecycle()
+    val ytAutoPlay by ytVm.autoPlay.collectAsStateWithLifecycle()
+    val ytBusy by ytVm.busy.collectAsStateWithLifecycle()
+    val ytError by ytVm.error.collectAsStateWithLifecycle()
+    LaunchedEffect(destination) { if (destination == Destination.YOUTUBE) ytVm.start() }
+    LaunchedEffect(ytAutoPlay) { ytAutoPlay?.let { vm.playDirect(it); ytVm.autoPlayHandled() } }
     val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
     val bypassEngine = (LocalContext.current.applicationContext as CouchyApp).bypass
     val cast = (LocalContext.current.applicationContext as CouchyApp).cast
@@ -246,7 +260,11 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     }
     LaunchedEffect(pendingSource) {
         pendingSource?.let { ref ->
-            if (SiteRef.isRef(ref)) searchVm.openSiteRef(ref) else searchVm.playRef(ref)
+            when {
+                app.couchy.core.youtube.YouTubeLinks.isVideo(ref) -> ytVm.play(ref)
+                SiteRef.isRef(ref) -> searchVm.openSiteRef(ref)
+                else -> searchVm.playRef(ref)
+            }
             vm.sourceHandled()
         }
     }
@@ -356,6 +374,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         ChallengeDialog(url, searchVm.userAgent, onPassed = searchVm::challengePassed, onDismiss = searchVm::challengeDismissed)
     }
     sourceError?.let { text -> NoticeDialog(text, searchVm::dismissError) }
+    ytError?.let { text -> NoticeDialog(text, ytVm::dismissError) }
     siteWindow?.let { w ->
         SiteWindowDialog(
             w,
@@ -496,12 +515,11 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onPerson = { p -> searchVm.openListing(ListQuery.Person(p.name, p.url)) },
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                     onTitle = searchVm::openTitle,
-                    onTrailer = { id ->
-                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id"))) }
-                    },
+                    // Trailers play in Couchy too, without YouTube's ads.
+                    onTrailer = { id -> ytVm.play(app.couchy.core.youtube.YouTubeLinks.watch(id)) },
                 ),
             )
-            if (sourceBusy) {
+            if (sourceBusy || ytBusy) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
@@ -551,6 +569,28 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 feed = feed,
             )
             Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
+            Destination.YOUTUBE -> Box(Modifier.fillMaxSize()) {
+                app.couchy.ui.youtube.YouTubeContent(
+                    youtube,
+                    app.couchy.ui.youtube.YouTubeActions(
+                        onQuery = ytVm::setQuery,
+                        onSearch = { ytVm.search(it) },
+                        onShelf = ytVm::show,
+                        onVideo = { ytVm.play(it.url) },
+                        onChannel = { url, name -> ytVm.openChannel(url, name) },
+                        onCloseChannel = ytVm::closeChannel,
+                        onSubscribe = ytVm::toggleSubscription,
+                        onMore = ytVm::loadMore,
+                        onRetry = ytVm::retry,
+                        onClearHistory = ytVm::clearHistory,
+                    ),
+                )
+                if (ytBusy) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
             Destination.SEARCH -> SearchContent(
                 focusKey = searchFocus,
                 state = search,

@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // NewPipe Extractor (YouTube without ads) is published only there.
+        maven("https://jitpack.io") { content { includeGroupByRegex("com\\.github\\..*") } }
     }
 }
 

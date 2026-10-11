@@ -233,6 +233,40 @@ class ScreensTest {
     }
     private val tvActions = TvActions({}, {}, {}, {}, { _, _ -> }, {}, {}, {})
 
+    private val ytVideos = listOf(
+        app.couchy.core.youtube.YtVideo("aaaaaaaaaa1", "Как устроен ледокол: экскурсия по машинному отделению", "Наука в деталях", durationSec = 1342, views = 1_240_000, ago = "3 дня назад", thumb = ""),
+        app.couchy.core.youtube.YtVideo("aaaaaaaaaa2", "Обзор новинок кино за октябрь", "КиноЛаб", durationSec = 905, views = 86_000, ago = "вчера", thumb = ""),
+        app.couchy.core.youtube.YtVideo("aaaaaaaaaa3", "Футбол: лучшие моменты тура", "Матч Хайлайтс", live = true, views = 12_400, thumb = ""),
+        app.couchy.core.youtube.YtVideo("aaaaaaaaaa4", "Готовим хинкали дома", "Кухня Тбилиси", durationSec = 611, views = 430_000, ago = "2 недели назад", thumb = ""),
+    )
+    private val ytState = app.couchy.youtube.YouTubeUi(
+        shelf = app.couchy.youtube.YtShelf.Subscriptions,
+        kiosks = listOf(app.couchy.youtube.YtShelf.Kiosk("Trending", "В тренде"), app.couchy.youtube.YtShelf.Kiosk("trending_music", "Музыка")),
+        list = app.couchy.youtube.YtListUi(ytVideos, end = true),
+        subscriptions = listOf(
+            app.couchy.core.youtube.YtChannel("https://www.youtube.com/channel/UC1", "Наука в деталях"),
+            app.couchy.core.youtube.YtChannel("https://www.youtube.com/channel/UC2", "КиноЛаб"),
+            app.couchy.core.youtube.YtChannel("https://www.youtube.com/channel/UC3", "Кухня Тбилиси"),
+        ),
+        history = listOf("ледокол", "лучшие голы"),
+    )
+    private val ytActions = app.couchy.ui.youtube.YouTubeActions({}, {}, {}, {}, { _, _ -> }, {}, {}, {}, {}, {})
+
+    @Test fun phoneYoutube() = snap("phone_youtube", phone, FormFactor.PHONE) {
+        Shell(Destination.YOUTUBE, {}, {}) { app.couchy.ui.youtube.YouTubeContent(ytState, ytActions) }
+    }
+    @Test fun tvYoutube() = snap("tv_youtube", tv, FormFactor.TV) {
+        Shell(Destination.YOUTUBE, {}, {}) { app.couchy.ui.youtube.YouTubeContent(ytState, ytActions) }
+    }
+    @Test fun phoneYoutubeChannel() = snap("phone_youtube_channel", phone, FormFactor.PHONE) {
+        Shell(Destination.YOUTUBE, {}, {}) {
+            app.couchy.ui.youtube.YouTubeContent(
+                ytState.copy(channel = app.couchy.youtube.YtChannelUi(app.couchy.core.youtube.YtChannel("https://www.youtube.com/channel/UC1", "Наука в деталях", subscribers = 1_830_000), app.couchy.youtube.YtListUi(ytVideos.take(2), end = true))),
+                ytActions,
+            )
+        }
+    }
+
     @Test fun tvTv() = snap("tv_tv", tv, FormFactor.TV) {
         Shell(Destination.TV, {}, {}) { TvContent(tvState, tvChannels[0].channel, tvSchedule, tvActions) }
     }

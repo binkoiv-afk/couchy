@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.LiveTv
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -45,6 +46,7 @@ enum class Destination(val label: String, val icon: ImageVector) {
     HOME("Главная", Icons.Rounded.Home),
     SEARCH("Поиск", Icons.Rounded.Search),
     TV("ТВ", Icons.Rounded.LiveTv),
+    YOUTUBE("YouTube", Icons.Rounded.SmartDisplay),
     LIBRARY("Моё", Icons.Rounded.VideoLibrary),
     SETTINGS("Настройки", Icons.Rounded.Settings),
 }
@@ -152,7 +154,7 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
             BarItem(Icons.Rounded.Lock, "Выйти", false, item) { onNavigate(Destination.SETTINGS) }
             return@Row
         }
-        listOf(Destination.HOME, Destination.SEARCH, Destination.TV, Destination.LIBRARY).forEach { d ->
+        listOf(Destination.HOME, Destination.SEARCH, Destination.TV, Destination.YOUTUBE, Destination.LIBRARY).forEach { d ->
             BarItem(d.icon, d.label, current == d || (d == Destination.LIBRARY && current == Destination.SETTINGS), item) { onNavigate(d) }
         }
     }

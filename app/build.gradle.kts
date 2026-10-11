@@ -54,6 +54,8 @@ android {
     }
 
     compileOptions {
+        // NewPipe Extractor uses java.time and java.nio, which old Androids get from desugaring.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -83,6 +85,8 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.play.services.auth)
     implementation(libs.yandex.authsdk)
+    implementation(libs.newpipe.extractor)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.webkit)

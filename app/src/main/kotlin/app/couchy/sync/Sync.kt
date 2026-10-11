@@ -104,6 +104,7 @@ class Sync(
     private val settings: Settings,
     private val library: LibraryRepository,
     private val tv: TvRepository,
+    private val marks: app.couchy.data.Marks,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
@@ -180,6 +181,7 @@ class Sync(
             SyncPlaylist(it.name, it.kind, it.url, it.username, it.password, it.epgOverride)
         }.associateBy { it.key },
         bypassHosts = prefs.bypassHosts,
+        marks = marks.all.value,
     )
 
     private suspend fun apply(local: SyncState, merged: SyncState) {
@@ -212,6 +214,7 @@ class Sync(
             }
         }
         if (merged.bypassHosts != local.bypassHosts) settings.setBypassHosts(merged.bypassHosts)
+        if (merged.marks != local.marks) marks.replaceAll(merged.marks)
     }
 
     private fun MediaEntity.toSync() = SyncItem(

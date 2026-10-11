@@ -1,5 +1,13 @@
 package app.couchy.ui.library
 
+import androidx.compose.runtime.setValue
+
+import androidx.compose.runtime.getValue
+
+import androidx.compose.material.icons.rounded.Favorite
+
+import androidx.compose.material.icons.rounded.Bookmark
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +45,7 @@ class LibraryActions(
     val onFilter: (LibraryFilter) -> Unit,
     val onSort: (SortOrder) -> Unit,
     val onSettings: (() -> Unit)? = null,
+    val onTitle: (app.couchy.core.sources.Title) -> Unit = {},
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
@@ -55,18 +64,57 @@ fun LibraryContent(state: LibraryState, actions: LibraryActions, modifier: Modif
                 app.couchy.ui.components.SecondaryButton("Настройки", Icons.Rounded.Settings, onClick = open)
             }
         }
+        // Null: everything opened; otherwise one of the film lists.
+        var list by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(LibraryFilter.entries) { f -> Chip(f.label, f == state.filter, onClick = { actions.onFilter(f) }) }
+            item {
+                Chip("Смотреть позже · ${state.saved.later.size}", list == "later", onClick = { list = if (list == "later") null else "later" }, icon = Icons.Rounded.Bookmark)
+            }
+            item {
+                Chip("Любимое · ${state.saved.loved.size}", list == "loved", onClick = { list = if (list == "loved") null else "loved" }, icon = Icons.Rounded.Favorite)
+            }
+            items(LibraryFilter.entries) { f -> Chip(f.label, list == null && f == state.filter, onClick = { list = null; actions.onFilter(f) }) }
             item {
                 // One chip that cycles through the orders: easy on a remote, no menus to dig through.
                 val next = SortOrder.entries[(state.sort.ordinal + 1) % SortOrder.entries.size]
                 Chip(state.sort.label, false, onClick = { actions.onSort(next) }, icon = Icons.AutoMirrored.Rounded.Sort)
             }
         }
-        if (state.items.isEmpty()) {
+        val titles = when (list) {
+            "later" -> state.saved.later
+            "loved" -> state.saved.loved
+            else -> null
+        }
+        if (titles != null) {
+            if (titles.isEmpty()) {
+                Box(Modifier.fillMaxSize().padding(side), contentAlignment = Alignment.Center) {
+                    Text(
+                        if (list == "later") "Откройте фильм и нажмите «Смотреть позже»: он появится здесь и на главной."
+                        else "Откройте фильм и нажмите «Любимое»: так собирается ваша подборка.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(
+                        when (form) {
+                            FormFactor.TV -> 160.dp
+                            FormFactor.TABLET -> 140.dp
+                            FormFactor.PHONE -> 104.dp
+                        },
+                    ),
+                    contentPadding = PaddingValues(start = side, end = side, top = 14.dp, bottom = 32.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 18.dp else 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    items(titles, key = { it.key }) { t -> app.couchy.ui.search.PosterCard(t, onClick = { actions.onTitle(t) }) }
+                }
+            }
+        } else if (state.items.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(side), contentAlignment = Alignment.Center) {
                 Text(
                     if (state.total == 0) "Здесь появится всё, что вы откроете в Couchy." else "Под этот фильтр ничего не подходит.",

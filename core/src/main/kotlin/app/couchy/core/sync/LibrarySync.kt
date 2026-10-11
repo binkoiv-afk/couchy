@@ -36,6 +36,11 @@ data class SyncState(
     val playlists: Map<String, SyncPlaylist> = emptyMap(),
     /** Sites found blocked, so every device opens them through the bypass. */
     val bypassHosts: Set<String> = emptySet(),
+    /**
+     * Small lists kept as sets: "later|<title>", "loved|<title>", "yt|<channel>" with their data
+     * as JSON text. Adding and removing travels like playlists do.
+     */
+    val marks: Map<String, String> = emptyMap(),
 ) {
     fun toJson(): String {
         val items = JSONArray()
@@ -54,7 +59,8 @@ data class SyncState(
             )
         }
         return JSONObject().put("version", 1).put("items", items).put("playlists", lists)
-            .put("bypassHosts", JSONArray(bypassHosts.sorted())).toString(1)
+            .put("bypassHosts", JSONArray(bypassHosts.sorted()))
+            .put("marks", JSONObject().apply { marks.toSortedMap().forEach { (k, v) -> put(k, v) } }).toString(1)
     }
 
     companion object {
@@ -76,6 +82,7 @@ data class SyncState(
                     SyncPlaylist(p.getString("name"), p.getString("kind"), p.getString("url"), p.str("username"), p.str("password"), p.str("epg"))
                 }.associateBy { it.key },
                 bypassHosts = (0 until hosts.length()).map { hosts.getString(it) }.toSet(),
+                marks = o.optJSONObject("marks")?.let { m -> m.keys().asSequence().associateWith { m.getString(it) } }.orEmpty(),
             )
         }
     }
@@ -91,6 +98,7 @@ object LibrarySync {
         items = mergeItems(base.items, local.items, remote.items),
         playlists = mergeSets(base.playlists, local.playlists, remote.playlists),
         bypassHosts = mergeSets(base.bypassHosts.associateWith { it }, local.bypassHosts.associateWith { it }, remote.bypassHosts.associateWith { it }).keys,
+        marks = mergeSets(base.marks, local.marks, remote.marks),
     )
 
     private fun mergeItems(base: Map<String, SyncItem>, local: Map<String, SyncItem>, remote: Map<String, SyncItem>): Map<String, SyncItem> =

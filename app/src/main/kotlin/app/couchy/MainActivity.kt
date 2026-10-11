@@ -81,6 +81,7 @@ import app.couchy.sync.SyncStatus
 import androidx.lifecycle.repeatOnLifecycle
 import app.couchy.bypass.BypassStatus
 import app.couchy.ui.settings.UpdateState
+import app.couchy.update.UpdateCenter
 import app.couchy.ui.settings.UpdateDialog
 import app.couchy.ui.shell.Destination
 import app.couchy.ui.shell.Shell
@@ -207,6 +208,7 @@ private fun MainScreen(
     val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
     val youtube by ytVm.state.collectAsStateWithLifecycle()
+    val saved by searchVm.saved.collectAsStateWithLifecycle()
     val ytAutoPlay by ytVm.autoPlay.collectAsStateWithLifecycle()
     val ytBusy by ytVm.busy.collectAsStateWithLifecycle()
     val ytError by ytVm.error.collectAsStateWithLifecycle()
@@ -316,28 +318,25 @@ private fun MainScreen(
             }
         }
     }
-    var update by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
-    var available by remember { mutableStateOf<AppUpdate?>(null) }
-    // A new build found on start is offered once, in a dialog that downloads and installs it.
-    var offer by remember { mutableStateOf<AppUpdate?>(null) }
+    val update by UpdateCenter.state.collectAsStateWithLifecycle()
+    val readyApk by UpdateCenter.ready.collectAsStateWithLifecycle()
+    // A new build found on start is offered once; after that the strip on Home keeps it in sight.
+    var offer by rememberSaveable { mutableStateOf(false) }
+    var offered by rememberSaveable { mutableStateOf(false) }
     var pendingApk by remember { mutableStateOf<java.io.File?>(null) }
     LaunchedEffect(Unit) {
-        runCatching { Updates.check() }.getOrNull()?.let {
-            available = it
-            update = UpdateState.Available(it.build)
-            offer = it
-        }
+        if (UpdateCenter.check(quiet = true) != null && !offered) { offered = true; offer = true }
     }
-    fun installUpdate(target: AppUpdate) {
-        scope.launch {
-            update = try {
-                val apk = Updates.download(context, target) { update = UpdateState.Downloading(it) }
-                // Without the permission the system screen for it opens; installing goes on when the person comes back.
-                if (!Updates.install(context, apk)) pendingApk = apk else offer = null
-                UpdateState.Available(target.build)
-            } catch (e: Exception) {
-                UpdateState.Failed("Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз.")
-            }
+    fun installUpdate() {
+        offer = false
+        UpdateCenter.download(context)
+    }
+    // The download finished, wherever the person is in the app: the installer opens.
+    LaunchedEffect(readyApk) {
+        readyApk?.let { apk ->
+            UpdateCenter.handed()
+            // Without the permission the system screen for it opens; installing goes on when the person comes back.
+            if (!Updates.install(context, apk)) pendingApk = apk
         }
     }
     LaunchedEffect(lifecycleOwner) {
@@ -345,13 +344,13 @@ private fun MainScreen(
             val apk = pendingApk
             if (apk != null && Updates.canInstall(context)) {
                 pendingApk = null
-                offer = null
                 Updates.install(context, apk)
             }
         }
     }
-    offer?.let { target ->
-        UpdateDialog(target, update, onUpdate = { installUpdate(target) }, onLater = { offer = null })
+    val updateTarget = UpdateCenter.available
+    if (offer && updateTarget != null) {
+        UpdateDialog(updateTarget, update, onUpdate = ::installUpdate, onLater = { offer = false })
     }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -501,7 +500,10 @@ private fun MainScreen(
         BackHandler { searchVm.back() }
         Box(Modifier.fillMaxSize()) {
             TitleContent(
-                page,
+                page.copy(
+                    later = saved.later.any { it.key == page.title.key },
+                    loved = saved.loved.any { it.key == page.title.key },
+                ),
                 TitleActions(
                     onBack = searchVm::back,
                     onTranslator = searchVm::selectTranslator,
@@ -517,6 +519,8 @@ private fun MainScreen(
                     onTitle = searchVm::openTitle,
                     // Trailers play in Couchy too, without YouTube's ads.
                     onTrailer = { id -> ytVm.play(app.couchy.core.youtube.YouTubeLinks.watch(id)) },
+                    onLater = { searchVm.toggleLater(page.title) },
+                    onLoved = { searchVm.toggleLoved(page.title) },
                 ),
             )
             if (sourceBusy || ytBusy) {
@@ -567,6 +571,10 @@ private fun MainScreen(
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                 ),
                 feed = feed,
+                saved = saved,
+                update = UpdateCenter.available?.takeIf { update !is UpdateState.UpToDate && update !is UpdateState.Idle }?.let { u ->
+                    { app.couchy.ui.settings.UpdateStrip(u.build, update, onUpdate = ::installUpdate) }
+                },
             )
             Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
             Destination.YOUTUBE -> Box(Modifier.fillMaxSize()) {
@@ -607,13 +615,14 @@ private fun MainScreen(
                 ),
             )
             Destination.LIBRARY -> LibraryContent(
-                library,
+                library.copy(saved = saved),
                 LibraryActions(
                     onPlay = { vm.play(it) },
                     onMore = { if (!kids) actionsFor = it },
                     onFilter = vm::setFilter,
                     onSort = { vm.setSort(it) },
                     onSettings = { if (kids) askPin = true else destination = Destination.SETTINGS },
+                    onTitle = searchVm::openTitle,
                 ),
             )
             Destination.SETTINGS -> prefs?.let { p ->
@@ -624,16 +633,7 @@ private fun MainScreen(
                     SettingsActions(
                         onTheme = { vm.setTheme(it) },
                         onUiMode = { vm.setUiMode(it) },
-                        onCheckUpdate = {
-                            update = UpdateState.Checking
-                            scope.launch {
-                                update = try {
-                                    Updates.check()?.also { available = it }?.let { UpdateState.Available(it.build) } ?: UpdateState.UpToDate
-                                } catch (e: Exception) {
-                                    UpdateState.Failed("Не удалось проверить обновления. Проверьте интернет.")
-                                }
-                            }
-                        },
+                        onCheckUpdate = { scope.launch { UpdateCenter.check() } },
                         onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
                         onRezkaHost = { vm.setRezkaHost(it) },
                         onTmdbKey = { vm.setTmdbKey(it) },
@@ -700,7 +700,7 @@ private fun MainScreen(
                                 )
                             }
                         },
-                        onInstallUpdate = { available?.let { installUpdate(it) } },
+                        onInstallUpdate = ::installUpdate,
                     ),
                     bypass = bypassUi,
                     sync = SyncUi(

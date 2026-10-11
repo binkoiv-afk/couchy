@@ -272,15 +272,18 @@ object YouTubeClient {
     }
 }
 
-/** The quality picked last anywhere in the player; the next YouTube video starts in it too, 1080p by default. */
+/** The video to start with: the quality wanted, or the best one not above it, or the best there is. */
 object QualityPick {
     fun choose(labels: List<String>): String? {
-        val label = app.couchy.QualityChoice.label
-        label?.let { l -> labels.firstOrNull { it == l }?.let { return it } }
-        val target = label?.let(::heightOf)?.takeIf { it > 0 } ?: 1080
-        // The best one not above the wanted height, or the smallest there is.
-        return labels.firstOrNull { heightOf(it) in 1..target } ?: labels.lastOrNull()
+        val label = app.couchy.QualityChoice.label ?: return labels.firstOrNull()
+        labels.firstOrNull { it == label }?.let { return it }
+        val target = heightOf(label).takeIf { it > 0 } ?: return labels.firstOrNull()
+        return labels.filter { heightOf(it) in 1..target }.maxByOrNull { heightOf(it) } ?: labels.lastOrNull()
     }
 
-    private fun heightOf(label: String) = if (label.startsWith("4K")) 2160 else label.substringBefore('p').toIntOrNull() ?: 0
+    fun heightOf(label: String): Int = when {
+        label.startsWith("4K", ignoreCase = true) || label.startsWith("2160") -> 2160
+        label.startsWith("2K", ignoreCase = true) -> 1440
+        else -> Regex("""(\d{3,4})p""").find(label)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    }
 }

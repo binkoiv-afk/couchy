@@ -47,28 +47,38 @@ object Updates {
         }
     }
 
-    /** Downloads the APK, or reuses one already downloaded for the same build. */
+    /**
+     * Downloads the APK, or reuses one already downloaded for the same build. A download cut off
+     * earlier goes on from where it stopped.
+     */
     suspend fun download(context: Context, update: AppUpdate, onProgress: (Float) -> Unit): File =
         withContext(Dispatchers.IO) {
             val dir = File(context.cacheDir, "updates").apply { mkdirs() }
             val target = File(dir, "couchy-${update.build}.apk")
             if (target.length() > 0) return@withContext target
-            dir.listFiles()?.forEach { it.delete() }
             val part = File(dir, target.name + ".part")
+            // Files of older builds are of no use any more.
+            dir.listFiles()?.filter { it != part }?.forEach { it.delete() }
+            val have = part.length()
             val connection = (URL(update.apkUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 connectTimeout = 15_000
                 readTimeout = 30_000
+                if (have > 0) setRequestProperty("Range", "bytes=$have-")
             }
             try {
-                if (connection.responseCode !in 200..299) throw java.io.IOException("Сервер ответил ${connection.responseCode}")
-                val total = connection.contentLengthLong.takeIf { it > 0 }
-                onProgress(0f)
+                val code = connection.responseCode
+                if (code !in 200..299) throw java.io.IOException("Сервер ответил $code")
+                // 206: the server sends the rest; 200: it starts over.
+                val resumed = code == 206 && have > 0
+                val start = if (resumed) have else 0L
+                val total = connection.contentLengthLong.takeIf { it > 0 }?.let { it + start }
+                onProgress(if (total != null) start.toFloat() / total else 0f)
                 connection.inputStream.use { input ->
-                    part.outputStream().use { output ->
+                    java.io.FileOutputStream(part, resumed).use { output ->
                         val buffer = ByteArray(64 * 1024)
-                        var done = 0L
-                        var shown = 0L
+                        var done = start
+                        var shown = start
                         while (true) {
                             val read = input.read(buffer)
                             if (read < 0) break
@@ -85,7 +95,6 @@ object Updates {
                 part.renameTo(target)
             } finally {
                 connection.disconnect()
-                part.delete()
             }
             target
         }

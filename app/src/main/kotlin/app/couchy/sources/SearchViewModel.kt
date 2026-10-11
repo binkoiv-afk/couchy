@@ -134,6 +134,9 @@ data class TitleUi(
     /** Progress per library key, for episode marks. */
     val progress: Map<String, Float> = emptyMap(),
     val watched: Set<String> = emptySet(),
+    /** In "Смотреть позже" and "Любимое". */
+    val later: Boolean = false,
+    val loved: Boolean = false,
 )
 
 /**
@@ -160,6 +163,16 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val siteClient = SiteClient(web)
     private var tmdbKey = ""
     private val meta = MetaClient(web) { tmdbKey }
+
+    private val marks = couchy.marks
+
+    /** "Смотреть позже" and "Любимое": the person's own lists of films and series. */
+    val saved: StateFlow<app.couchy.data.SavedTitles> = marks.all
+        .map { app.couchy.data.SavedTitles(marks.titles(app.couchy.data.Marks.LATER), marks.titles(app.couchy.data.Marks.LOVED)) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, app.couchy.data.SavedTitles())
+
+    fun toggleLater(t: Title) { marks.toggleTitle(app.couchy.data.Marks.LATER, t); couchy.sync.syncSoon() }
+    fun toggleLoved(t: Title) { marks.toggleTitle(app.couchy.data.Marks.LOVED, t); couchy.sync.syncSoon() }
 
     private val _siteWindow = MutableStateFlow<SiteWindow?>(null)
     val siteWindow: StateFlow<SiteWindow?> = _siteWindow.asStateFlow()
@@ -686,7 +699,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val stream = if (series) catalog.rezka.episode(id, translator.id, season, episode, url) else catalog.rezka.movie(id, translator, url)
         val ranked = stream.options.sortedByDescending { it.rank }
         // The quality picked last time, or the best there is.
-        val best = ranked.firstOrNull { it.quality == app.couchy.QualityChoice.label } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
+        val wanted = app.couchy.youtube.QualityPick.choose(ranked.map { it.quality })
+        val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
         val entry = library.open(key, title)

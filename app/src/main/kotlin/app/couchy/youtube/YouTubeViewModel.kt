@@ -50,6 +50,7 @@ data class YouTubeUi(
 class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     private val library = (app as CouchyApp).library
     private val store = app.getSharedPreferences("youtube", android.content.Context.MODE_PRIVATE)
+    private val marks = (app as CouchyApp).marks
 
     private val _state = MutableStateFlow(YouTubeUi(subscriptions = loadSubs(), history = loadHistory()))
     val state: StateFlow<YouTubeUi> = _state.asStateFlow()
@@ -60,6 +61,16 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    init {
+        // Follows can arrive from another device through sync.
+        viewModelScope.launch {
+            marks.all.collect {
+                val subs = marks.list(app.couchy.data.Marks.YOUTUBE).map { o -> YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null }) }
+                if (subs != _state.value.subscriptions) _state.update { s -> s.copy(subscriptions = subs) }
+            }
+        }
+    }
 
     private var next: Page? = null
     private var channelNext: Page? = null
@@ -217,19 +228,33 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Stored lists ----
 
-    private fun loadSubs(): List<YtChannel> = runCatching {
-        val array = JSONArray(store.getString("subs", "[]"))
-        (0 until array.length()).map { i ->
-            val o = array.getJSONObject(i)
+    private fun loadSubs(): List<YtChannel> {
+        // Follows made before they synced lived in the YouTube settings; they move over once.
+        store.getString("subs", null)?.let { old ->
+            runCatching {
+                val array = JSONArray(old)
+                (0 until array.length()).map { array.getJSONObject(it) }.forEach { o ->
+                    marks.put("${app.couchy.data.Marks.YOUTUBE}|${o.getString("url")}", JSONObject().put("url", o.getString("url")).put("name", o.optString("name")).put("avatar", o.optString("avatar")))
+                }
+            }
+            store.edit().remove("subs").apply()
+        }
+        return marks.list(app.couchy.data.Marks.YOUTUBE).map { o ->
             YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null })
         }
-    }.getOrDefault(emptyList())
+    }
 
     private fun saveSubs(list: List<YtChannel>) {
-        val array = JSONArray()
-        list.forEach { array.put(JSONObject().put("url", it.url).put("name", it.name).put("avatar", it.avatar ?: "")) }
-        store.edit().putString("subs", array.toString()).apply()
+        val prefix = app.couchy.data.Marks.YOUTUBE
+        val now = System.currentTimeMillis()
+        val keep = marks.all.value.filterKeys { !it.startsWith("$prefix|") }
+        // Newest follow first: the order is kept in the time stamps.
+        val subs = list.mapIndexed { i, c ->
+            "$prefix|${c.url}" to JSONObject().put("url", c.url).put("name", c.name).put("avatar", c.avatar ?: "").put("at", now - i).toString()
+        }.toMap()
+        marks.replaceAll(keep + subs)
         _state.update { it.copy(subscriptions = list) }
+        (getApplication<CouchyApp>()).sync.syncSoon()
     }
 
     private fun loadHistory(): List<String> = runCatching {

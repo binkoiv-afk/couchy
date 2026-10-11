@@ -88,7 +88,15 @@ class HomeActions(
  * are watching and what everybody watches now. Without the catalogue it is your library.
  */
 @Composable
-fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Modifier, feed: Feed = Feed()) {
+fun HomeContent(
+    state: HomeState,
+    actions: HomeActions,
+    modifier: Modifier = Modifier,
+    feed: Feed = Feed(),
+    saved: app.couchy.data.SavedTitles = app.couchy.data.SavedTitles(),
+    /** A new version: shown as a strip at the top of Home until it is installed. */
+    update: (@Composable () -> Unit)? = null,
+) {
     val form = LocalFormFactor.current
     val kids = LocalKidsMode.current
     val side = if (form.wide) 40.dp else 18.dp
@@ -133,8 +141,13 @@ fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Mod
                 }
             }
         }
+        if (update != null && !kids) item("update") { Box(Modifier.padding(horizontal = side, vertical = 8.dp)) { update() } }
         if (!kids && feed.loaded) item("genres") { Genres(side, actions) }
         media("continue", "Продолжить", state.continueWatching)
+        if (!kids) {
+            posters("later", "Смотреть позже", saved.later)
+            posters("loved", "Любимое", saved.loved)
+        }
         if (!kids) {
             feed.similarTo?.let { name -> posters("similar", "Похоже на «$name»", feed.similar) }
             posters("trending", "В тренде на этой неделе", feed.trending.filter { f -> featured.none { it.key == f.key } })

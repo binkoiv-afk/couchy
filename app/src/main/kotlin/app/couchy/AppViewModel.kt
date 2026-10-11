@@ -52,9 +52,30 @@ data class Playback(
 
 data class Skip(val startMs: Long, val endMs: Long, val label: String)
 
-/** The quality picked last for online sources; the next film or episode starts in it too. */
+/**
+ * The quality wanted for online sources and YouTube: picked before watching on the title page
+ * or in the player, kept between launches. Null means the best there is.
+ */
 object QualityChoice {
+    val options = listOf(null, "2160p", "1440p", "1080p", "720p", "480p", "360p")
+    private var prefs: android.content.SharedPreferences? = null
+
     @Volatile var label: String? = null
+        set(value) {
+            field = value
+            prefs?.edit()?.putString("quality", value)?.apply()
+        }
+
+    fun init(context: android.content.Context) {
+        prefs = context.getSharedPreferences("player", android.content.Context.MODE_PRIVATE)
+        label = prefs?.getString("quality", null)
+    }
+
+    fun name(label: String?) = when (label) {
+        null -> "Лучшее"
+        "2160p" -> "4K"
+        else -> label
+    }
 }
 
 data class TorrentPlay(val hash: String, val fileId: Int, val nextFileId: Int?)
@@ -84,6 +105,8 @@ data class LibraryState(
     val filter: LibraryFilter = LibraryFilter.ALL,
     val sort: SortOrder = SortOrder.RECENTLY_WATCHED,
     val total: Int = 0,
+    /** The person's film lists, shown as their own tabs. */
+    val saved: app.couchy.data.SavedTitles = app.couchy.data.SavedTitles(),
 )
 
 /** Why a link was not played, in the user's words. */

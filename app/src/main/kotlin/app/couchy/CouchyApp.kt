@@ -18,10 +18,12 @@ class CouchyApp : Application() {
     val torrEngine by lazy { TorrEngine(this) }
     val bypass by lazy { Bypass(this, settings) }
     val cast by lazy { app.couchy.cast.Cast(this) }
-    val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv) }
+    val marks by lazy { app.couchy.data.Marks(this) }
+    val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv, marks) }
 
     override fun onCreate() {
         super.onCreate()
+        QualityChoice.init(this)
         // Every connection asks the bypass which way to go, so it is in place before anything loads.
         bypass.install()
     }

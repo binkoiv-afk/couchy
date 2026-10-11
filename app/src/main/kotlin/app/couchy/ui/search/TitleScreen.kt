@@ -1,5 +1,17 @@
 package app.couchy.ui.search
 
+import androidx.compose.material.icons.rounded.HighQuality
+
+import androidx.compose.material.icons.rounded.FavoriteBorder
+
+import androidx.compose.material.icons.rounded.Favorite
+
+import androidx.compose.material.icons.rounded.BookmarkBorder
+
+import androidx.compose.material.icons.rounded.Bookmark
+
+import androidx.compose.foundation.border
+
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import app.couchy.ui.components.Artwork
@@ -91,6 +103,8 @@ class TitleActions(
     val onTitle: (Title) -> Unit = {},
     /** A trailer on YouTube, by its id. */
     val onTrailer: (String) -> Unit = {},
+    val onLater: () -> Unit = {},
+    val onLoved: () -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -215,6 +229,7 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
                 WatchButton(state, actions)
+                Keep(state, actions)
                 state.info?.trailer?.let { id ->
                     SecondaryButton("Трейлер", Icons.Rounded.PlayArrow, onClick = { actions.onTrailer(id) }, modifier = Modifier.fillMaxWidth())
                 }
@@ -512,7 +527,10 @@ private fun Heading(state: TitleUi, details: TitleDetails) {
     }
 }
 
-/** "КП 8.2" in green, "IMDb 7.1" in IMDb yellow. */
+/**
+ * "КП 8.2", "IMDb 7.1": a dark plate so it reads over any poster; the source keeps its colour,
+ * the score is white and bold.
+ */
 @Composable
 private fun RatingChip(text: String) {
     val imdb = text.startsWith("IMDb", ignoreCase = true)
@@ -521,12 +539,18 @@ private fun RatingChip(text: String) {
         text.startsWith("TMDB") -> Color(0xFF01B4E4)
         else -> Color(0xFF3DD68C)
     }
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = color,
-        modifier = Modifier.background(color.copy(alpha = 0.16f), RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 4.dp),
-    )
+    val source = text.substringBefore(' ', "")
+    val score = text.substringAfter(' ')
+    Row(
+        Modifier.background(Color(0xE6101218), RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (source.isNotEmpty()) Text(source, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.Bold)
+        Text(score, style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
@@ -619,5 +643,65 @@ private fun EpisodeTile(number: Int, progress: Float, watched: Boolean, onClick:
                 Box(Modifier.fillMaxWidth(progress).height(3.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
             }
         }
+    }
+}
+
+/** Saving for later, loving it, and the quality to start in, picked before pressing play. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun Keep(state: TitleUi, actions: TitleActions) {
+    var quality by remember { mutableStateOf(app.couchy.QualityChoice.label) }
+    var picking by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        app.couchy.ui.components.Chip(
+            if (state.later) "В «Смотреть позже»" else "Смотреть позже",
+            state.later,
+            onClick = actions.onLater,
+            icon = if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+        )
+        app.couchy.ui.components.Chip(
+            "Любимое",
+            state.loved,
+            onClick = actions.onLoved,
+            icon = if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+        )
+        app.couchy.ui.components.Chip(
+            "Качество: ${app.couchy.QualityChoice.name(quality)}",
+            false,
+            onClick = { picking = true },
+            icon = Icons.Rounded.HighQuality,
+        )
+    }
+    if (picking) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text("Качество видео") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Видео начнётся в этом качестве, а если такого нет, то в ближайшем ниже. Это касается онлайн-источников и YouTube.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        app.couchy.QualityChoice.options.forEach { option ->
+                            app.couchy.ui.components.Chip(app.couchy.QualityChoice.name(option), option == quality, onClick = {
+                                app.couchy.QualityChoice.label = option
+                                quality = option
+                                picking = false
+                            })
+                        }
+                    }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { picking = false }) { Text("Закрыть") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        )
     }
 }

@@ -286,7 +286,7 @@ private fun SearchPill(actions: HomeActions, modifier: Modifier, onImage: Boolea
     ) {
         Icon(Icons.Rounded.Search, null, tint = fg, modifier = Modifier.size(22.dp))
         Text(
-            "Фильм, сериал, мультфильм",
+            "Фильмы и сериалы",
             style = MaterialTheme.typography.bodyLarge,
             color = fg.copy(alpha = 0.65f),
             maxLines = 1,

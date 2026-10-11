@@ -49,6 +49,9 @@ import app.couchy.ui.search.SearchActions
 import app.couchy.ui.search.SearchContent
 import app.couchy.ui.search.TitleActions
 import app.couchy.ui.search.TitleContent
+import app.couchy.ui.search.ListingActions
+import app.couchy.ui.search.ListingContent
+import app.couchy.sources.ListQuery
 import android.speech.RecognizerIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -188,6 +191,8 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val feed by searchVm.feed.collectAsStateWithLifecycle()
     LaunchedEffect(destination) { if (destination == Destination.HOME) searchVm.loadFeed() }
     val titlePage by searchVm.title.collectAsStateWithLifecycle()
+    val route by searchVm.route.collectAsStateWithLifecycle()
+    val listing by searchVm.listing.collectAsStateWithLifecycle()
     val challenge by searchVm.challenge.collectAsStateWithLifecycle()
     val sourceAutoPlay by searchVm.autoPlay.collectAsStateWithLifecycle()
     val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
@@ -379,14 +384,30 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         return
     }
 
+    val openListing = listing
+    if (route is app.couchy.sources.Route.Listing && openListing != null) {
+        BackHandler { searchVm.back() }
+        ListingContent(
+            openListing,
+            ListingActions(
+                onBack = searchVm::back,
+                onTitle = searchVm::openTitle,
+                onMore = searchVm::loadMore,
+                onFilter = searchVm::refilter,
+            ),
+        )
+        notice?.let { n -> NoticeDialog(n.text, vm::dismissNotice) }
+        return
+    }
+
     val page = titlePage
-    if (page != null) {
-        BackHandler { searchVm.closeTitle() }
+    if (route is app.couchy.sources.Route.TitlePage && page != null) {
+        BackHandler { searchVm.back() }
         Box(Modifier.fillMaxSize()) {
             TitleContent(
                 page,
                 TitleActions(
-                    onBack = searchVm::closeTitle,
+                    onBack = searchVm::back,
                     onTranslator = searchVm::selectTranslator,
                     onSeason = { searchVm.selectSeason(it) },
                     onPlay = { s, e, fromStart -> scope.launch { searchVm.playRezka(s, e, fromStart)?.let(vm::playDirect) } },
@@ -395,6 +416,9 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onTorrent = { hit -> torrentVm.open(hit.magnet) },
                     onSite = searchVm::openSite,
                     onSearchSite = searchVm::searchOnSite,
+                    onPerson = { p -> searchVm.openListing(ListQuery.Person(p.name, p.url)) },
+                    onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
+                    onTitle = searchVm::openTitle,
                 ),
             )
             if (sourceBusy) {
@@ -441,6 +465,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onSearch = { destination = Destination.SEARCH; searchFocus += 1 },
                     onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
                     onTitle = searchVm::openTitle,
+                    onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                 ),
                 feed = feed,
             )
@@ -457,6 +482,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
                     onOpenLink = { showOpen = true },
                     onClearHistory = { searchVm.clearHistory() },
+                    onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                 ),
             )
             Destination.LIBRARY -> LibraryContent(

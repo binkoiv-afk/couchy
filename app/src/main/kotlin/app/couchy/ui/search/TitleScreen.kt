@@ -50,7 +50,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.couchy.core.sources.CatalogFilter
+import app.couchy.core.sources.CatalogSort
+import app.couchy.core.sources.CatalogType
+import app.couchy.core.sources.Link
+import app.couchy.core.sources.RezkaCatalog
 import app.couchy.core.sources.Site
+import app.couchy.core.sources.Title
+import app.couchy.core.sources.TitleDetails
 import app.couchy.core.sources.SiteHit
 import app.couchy.core.sources.SiteSearch
 import app.couchy.core.sources.Sites
@@ -75,6 +82,12 @@ class TitleActions(
     val onTorrent: (TorrentHit) -> Unit,
     val onSite: (SiteHit) -> Unit = {},
     val onSearchSite: (Site) -> Unit = {},
+    /** An actor's or director's films. */
+    val onPerson: (Link) -> Unit = {},
+    /** The catalogue narrowed to a genre, country or year. */
+    val onCatalog: (CatalogFilter) -> Unit = {},
+    /** Another title: a part of the franchise or a similar one. */
+    val onTitle: (Title) -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -191,14 +204,14 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
     var selected by rememberSaveable(t.name, t.year) { mutableStateOf<String?>(null) }
     val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        val details = state.rezka.page?.details ?: TitleDetails()
         item("head") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Heading(state)
+                Heading(state, details)
                 Spacer(Modifier.height(4.dp))
                 WatchButton(state, actions)
-                state.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-                }
+                state.description?.let { About(it, details.slogan) }
+                Facts(state.title, details, actions)
             }
         }
         item("services") { Services(state, selected, onSelect = { selected = it }, actions) }
@@ -226,6 +239,124 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                     }
                 }
             }
+        }
+        val people = (details.directors.map { it to "режиссёр" } + details.actors.map { it to null }).distinctBy { it.first.url }
+        if (people.isNotEmpty()) item("cast") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Актёры и съёмочная группа")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
+                    items(people, key = { it.first.url }) { (p, role) -> PersonTile(p, role) { actions.onPerson(p) } }
+                }
+            }
+        }
+        if (details.parts.isNotEmpty()) item("parts") { Shelf("Все части", details.parts, actions.onTitle) }
+        if (details.similar.isNotEmpty()) item("similar") { Shelf("Похожее", details.similar, actions.onTitle) }
+    }
+}
+
+/** The description, cut to a few lines until tapped. */
+@Composable
+private fun About(text: String, slogan: String?) {
+    var open by rememberSaveable(text) { mutableStateOf(false) }
+    Column(
+        Modifier.padding(top = 6.dp).couchyClickable(RoundedCornerShape(10.dp), focusScale = 1.01f) { open = !open },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        slogan?.let { Text("«$it»", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground) }
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (open) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!open && text.length > 220) Text("Читать полностью", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+/** Genres, director, country and release date; each name opens what else it has. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Facts(title: Title, d: TitleDetails, actions: TitleActions) {
+    if (d.genres.isEmpty() && d.directors.isEmpty() && d.countries.isEmpty() && d.released == null) return
+    val type = if (title.kind == TitleKind.SERIES) CatalogType.SERIES else CatalogType.FILMS
+    Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (d.genres.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            d.genres.forEach { g -> Tag(g.name) { RezkaCatalog.fromGenreLink(g)?.let(actions.onCatalog) } }
+        }
+        if (d.directors.isNotEmpty()) FactRow("Режиссёр") {
+            d.directors.forEach { p -> Tag(p.name) { actions.onPerson(p) } }
+        }
+        if (d.countries.isNotEmpty()) FactRow("Страна") {
+            d.countries.forEach { c -> Tag(c.name) { actions.onCatalog(CatalogFilter(type, CatalogSort.POPULAR, country = c.name)) } }
+        }
+        d.released?.let { r ->
+            FactRow("Премьера") {
+                Text(r, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(vertical = 6.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FactRow(label: String, content: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(84.dp).padding(top = 7.dp))
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
+}
+
+/** A name that leads somewhere: a pill with a soft outline. */
+@Composable
+private fun Tag(text: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(999.dp)
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
+        modifier = Modifier
+            .couchyClickable(shape, onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    )
+}
+
+/** A person as a round monogram with the name under it. */
+@Composable
+private fun PersonTile(person: Link, role: String?, onClick: () -> Unit) {
+    val initials = person.name.split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.uppercase()
+    val hue = (person.name.hashCode() and 0xFFFF) % 360
+    val color = Color.hsv(hue.toFloat(), 0.45f, 0.55f)
+    Column(
+        Modifier.width(84.dp).couchyClickable(RoundedCornerShape(14.dp), onClick = onClick).padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(64.dp).background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.55f))), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Text(initials, color = Color.White, style = MaterialTheme.typography.titleMedium) }
+        Text(
+            person.name,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        role?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+    }
+}
+
+@Composable
+private fun Shelf(title: String, items: List<Title>, onTitle: (Title) -> Unit) {
+    val width = if (LocalFormFactor.current.wide) 140.dp else 112.dp
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle(title)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
+            items(items, key = { it.key }) { t -> PosterCard(t, onClick = { onTitle(t) }, modifier = Modifier.width(width)) }
         }
     }
 }
@@ -325,7 +456,7 @@ private fun SiteBody(state: TitleUi, hit: SiteHit, actions: TitleActions) {
 }
 
 @Composable
-private fun Heading(state: TitleUi) {
+private fun Heading(state: TitleUi, details: TitleDetails) {
     val t = state.title
     val wide = LocalFormFactor.current.wide
     Text(
@@ -339,13 +470,15 @@ private fun Heading(state: TitleUi) {
         t.original?.takeIf { it != t.name },
         t.year?.toString(),
         if (t.kind == TitleKind.SERIES) "сериал" else "фильм",
+        details.duration,
+        details.age,
     ).joinToString(" · ")
     Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val chips = listOfNotNull(t.rating, state.rezka.page?.rating?.takeIf { it != t.rating })
     if (chips.isNotEmpty()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { chips.forEach { RatingChip(it) } }
     }
-    t.info?.takeIf { it.isNotBlank() && !it.startsWith(t.year?.toString() ?: "-") }?.let {
+    t.info?.takeIf { details.isEmpty && it.isNotBlank() && !it.startsWith(t.year?.toString() ?: "-") }?.let {
         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
     }
 }

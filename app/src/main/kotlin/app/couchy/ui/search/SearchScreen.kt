@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +51,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.couchy.core.sources.CatalogFilter
+import app.couchy.core.sources.CatalogSort
+import app.couchy.core.sources.CatalogType
+import app.couchy.core.sources.RezkaCatalog
 import app.couchy.core.sources.Title
 import app.couchy.core.sources.TitleKind
 import app.couchy.core.sources.TorrentHit
@@ -73,6 +78,8 @@ class SearchActions(
     val onVoice: (() -> Unit)?,
     val onOpenLink: () -> Unit,
     val onClearHistory: () -> Unit,
+    /** The catalogue, narrowed to a kind or a genre. */
+    val onCatalog: (CatalogFilter) -> Unit = {},
 )
 
 /**
@@ -105,11 +112,24 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
             }
         } else if (!state.searched || state.query.isBlank()) {
             if (state.history.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { History(state.history, actions) }
-            else item(span = { GridItemSpan(maxLineSpan) }) {
-                Hint(
-                    if (state.mode == SearchMode.TORRENTS) "Ищу раздачи на rutracker, rutor, kinozal и других трекерах."
-                    else "Ищу сразу на HDrezka, в онлайн-кинотеатрах и на торрент-трекерах. Откройте фильм, и все способы посмотреть его будут на одной странице.",
-                )
+            if (state.mode == SearchMode.TORRENTS) {
+                item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ищу раздачи на rutracker, rutor, kinozal и других трекерах.") }
+            } else {
+                // Nothing typed yet: the catalogue to browse, by kind and by genre.
+                item(span = { GridItemSpan(maxLineSpan) }) { Label("Каталог") }
+                item(span = { GridItemSpan(maxLineSpan) }) { Kinds(actions) }
+                item(span = { GridItemSpan(maxLineSpan) }) { Label("Жанры") }
+                items(RezkaCatalog.genres.take(16), key = { "genre:" + it.first }) { (slug, name) ->
+                    GenreTile(name, slug) { actions.onCatalog(CatalogFilter(genre = slug)) }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                        SecondaryButton("Все фильтры", androidx.compose.material.icons.Icons.Rounded.Tune, onClick = { actions.onCatalog(CatalogFilter()) })
+                        SecondaryButton("Лучшие за год", null, onClick = {
+                            actions.onCatalog(CatalogFilter(sort = CatalogSort.BEST, year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1))
+                        })
+                    }
+                }
             }
         } else if (state.error != null) {
             item(span = { GridItemSpan(maxLineSpan) }) { Hint(state.error) }
@@ -185,6 +205,7 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun History(history: List<String>, actions: SearchActions) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -197,16 +218,54 @@ private fun History(history: List<String>, actions: SearchActions) {
                 modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp), onClick = actions.onClearHistory).padding(8.dp),
             )
         }
-        history.forEach { q ->
-            Row(
-                Modifier.fillMaxWidth().couchyClickable(RoundedCornerShape(10.dp), focusScale = 1.02f) { actions.onSubmit(q) }.padding(horizontal = 6.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+        // Tags: one tap shows that search's results again, kept from last time.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            history.forEach { q -> Chip(q, false, onClick = { actions.onSubmit(q) }, icon = Icons.Rounded.History) }
+        }
+    }
+}
+
+/** Films, series, cartoons and anime as four big buttons. */
+@Composable
+private fun Kinds(actions: SearchActions) {
+    val colors = listOf(Color(0xFFFF7A3D), Color(0xFF7B5CFF), Color(0xFF2BB673), Color(0xFFE6417A))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CatalogType.entries.forEachIndexed { i, type ->
+            val shape = RoundedCornerShape(16.dp)
+            Box(
+                Modifier
+                    .weight(1f)
+                    .aspectRatio(1.25f)
+                    .couchyClickable(shape) { actions.onCatalog(CatalogFilter(type, CatalogSort.WATCHING)) }
+                    .clip(shape)
+                    .background(Brush.linearGradient(listOf(colors[i], colors[i].copy(alpha = 0.55f)))),
+                contentAlignment = Alignment.BottomStart,
             ) {
-                Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                Text(q, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+                Text(type.label, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.padding(10.dp))
             }
         }
+    }
+}
+
+/** A genre as a dark tile with a stripe of its own color. */
+@Composable
+private fun GenreTile(name: String, slug: String, onClick: () -> Unit) {
+    val hue = ((slug.hashCode() and 0xFFFF) % 360).toFloat()
+    val accent = Color.hsv(hue, 0.6f, 0.85f)
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(1.7f)
+            .couchyClickable(shape, onClick = onClick)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(accent.copy(alpha = 0.38f), MaterialTheme.colorScheme.surfaceContainerHigh))),
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(10.dp))
     }
 }
 

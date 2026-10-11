@@ -20,6 +20,7 @@ data class RezkaPage(
     val translators: List<Translator>,
     val defaultTranslator: Int?,
     val episodes: List<EpisodeRef>,
+    val details: TitleDetails = TitleDetails(),
 )
 
 data class StreamOption(val quality: String, val url: String) {
@@ -124,6 +125,8 @@ object Rezka {
             translators = translators.ifEmpty { if (default != null) listOf(Translator(default, translatorName?.trim() ?: "Оригинальная озвучка")) else emptyList() },
             defaultTranslator = activeId ?: default ?: translators.firstOrNull()?.id,
             episodes = parseEpisodes(html.substringAfter("id=\"simple-episodes-tabs\"", "")),
+            details = runCatching { RezkaDetails.parse(html, Regex("""<meta property="og:url" content="([^"]+)""").find(html)?.groupValues?.get(1)) }
+                .getOrDefault(TitleDetails()),
         )
     }
 

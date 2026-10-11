@@ -48,6 +48,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.couchy.HomeState
+import app.couchy.core.sources.CatalogFilter
+import app.couchy.core.sources.CatalogSort
+import app.couchy.core.sources.CatalogType
+import app.couchy.core.sources.RezkaCatalog
 import app.couchy.core.sources.Title
 import app.couchy.core.sources.TitleKind
 import app.couchy.data.MediaEntity
@@ -75,6 +79,8 @@ class HomeActions(
     val onVoice: (() -> Unit)? = null,
     /** A film or series from the catalogue: its page with every way to watch it. */
     val onTitle: (Title) -> Unit = {},
+    /** The catalogue behind a shelf, or a genre. */
+    val onCatalog: (CatalogFilter) -> Unit = {},
 )
 
 /**
@@ -103,9 +109,9 @@ fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Mod
                 }
             }
         }
-        fun posters(key: String, title: String, items: List<Title>) {
+        fun posters(key: String, title: String, items: List<Title>, all: CatalogFilter? = null) {
             if (items.isEmpty()) return
-            item(key) { Shelf(title, side) { PosterRow(items, side, actions.onTitle) } }
+            item(key) { Shelf(title, side, all?.let { f -> { actions.onCatalog(f) } }) { PosterRow(items, side, actions.onTitle) } }
         }
         fun media(key: String, title: String, items: List<MediaEntity>) {
             if (items.isEmpty()) return
@@ -127,12 +133,14 @@ fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Mod
                 }
             }
         }
+        if (!kids && feed.loaded) item("genres") { Genres(side, actions) }
         media("continue", "Продолжить", state.continueWatching)
         if (!kids) {
-            posters("fresh", "Новинки", feed.fresh.filter { f -> featured.none { it.key == f.key } }.ifEmpty { feed.fresh })
-            posters("films", "Сейчас смотрят", feed.films)
-            posters("series", "Сериалы", feed.series)
-            posters("cartoons", "Мультфильмы", feed.cartoons)
+            feed.similarTo?.let { name -> posters("similar", "Похоже на «$name»", feed.similar) }
+            posters("fresh", "Новинки", feed.fresh.filter { f -> featured.none { it.key == f.key } }.ifEmpty { feed.fresh }, CatalogFilter(sort = CatalogSort.LAST))
+            posters("films", "Сейчас смотрят", feed.films, CatalogFilter(sort = CatalogSort.WATCHING))
+            posters("series", "Сериалы", feed.series, CatalogFilter(CatalogType.SERIES, CatalogSort.WATCHING))
+            posters("cartoons", "Мультфильмы", feed.cartoons, CatalogFilter(CatalogType.CARTOONS, CatalogSort.WATCHING))
         }
         media("favorites", "Избранное", state.favorites)
         media("recent", "Недавно открытые", state.recent.filter { r -> state.continueWatching.none { it.uri == r.uri } })
@@ -271,10 +279,47 @@ private fun SearchPill(actions: HomeActions, modifier: Modifier, onImage: Boolea
 }
 
 @Composable
-private fun Shelf(title: String, side: Dp, content: @Composable () -> Unit) {
+private fun Shelf(title: String, side: Dp, onAll: (() -> Unit)? = null, content: @Composable () -> Unit) {
     Column(Modifier.padding(top = 22.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = side).padding(bottom = 10.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = side).padding(bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            onAll?.let {
+                Text(
+                    "Все",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp), onClick = it).padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
         content()
+    }
+}
+
+/** Genres in a row under the banner: one tap to a whole catalogue of them. */
+@Composable
+private fun Genres(side: Dp, actions: HomeActions) {
+    LazyRow(
+        contentPadding = PaddingValues(start = side, end = side, top = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(RezkaCatalog.genres.take(14), key = { it.first }) { (slug, name) ->
+            val shape = RoundedCornerShape(999.dp)
+            Text(
+                name,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                modifier = Modifier
+                    .couchyClickable(shape) { actions.onCatalog(CatalogFilter(genre = slug)) }
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), shape)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 

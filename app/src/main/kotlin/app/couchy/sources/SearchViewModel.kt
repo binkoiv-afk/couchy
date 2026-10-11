@@ -6,7 +6,11 @@ import androidx.lifecycle.viewModelScope
 import app.couchy.CouchyApp
 import app.couchy.Playback
 import app.couchy.core.Progress
+import app.couchy.core.sources.CatalogFilter
 import app.couchy.core.sources.EpisodeRef
+import app.couchy.core.sources.RezkaCatalog
+import app.couchy.core.sources.RezkaDetails
+import app.couchy.core.sources.TitleJson
 import app.couchy.core.sources.Rezka
 import app.couchy.core.sources.RezkaPage
 import app.couchy.core.sources.Site
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -60,10 +65,39 @@ data class Feed(
     val films: List<Title> = emptyList(),
     val series: List<Title> = emptyList(),
     val cartoons: List<Title> = emptyList(),
+    /** Picked by the site as similar to what was watched last. */
+    val similar: List<Title> = emptyList(),
+    val similarTo: String? = null,
     val loaded: Boolean = false,
 ) {
     /** Films for the big banner at the top of Home. */
     val featured: List<Title> get() = (fresh.filter { it.kind == TitleKind.MOVIE } + films).distinctBy { it.key }.take(6)
+}
+
+/** A list of titles opened from a title page or the catalogue. */
+sealed interface ListQuery {
+    data class Person(val name: String, val url: String) : ListQuery
+    data class Catalog(val filter: CatalogFilter) : ListQuery
+}
+
+data class ListingUi(
+    val query: ListQuery,
+    val titles: List<Title> = emptyList(),
+    val loading: Boolean = true,
+    val page: Int = 0,
+    val end: Boolean = false,
+    val error: String? = null,
+) {
+    val heading: String get() = when (query) {
+        is ListQuery.Person -> query.name
+        is ListQuery.Catalog -> RezkaCatalog.describe(query.filter)
+    }
+}
+
+/** What is open over the tabs, newest last: title pages and lists, so Back walks back through them. */
+sealed interface Route {
+    data class TitlePage(val title: Title) : Route
+    data class Listing(val query: ListQuery) : Route
 }
 
 enum class SourceStatus { LOADING, READY, NOT_FOUND, BLOCKED, ERROR }
@@ -145,6 +179,26 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: Job? = null
     private var titleJob: Job? = null
 
+    private val _routes = MutableStateFlow<List<Route>>(emptyList())
+    val route: StateFlow<Route?> = _routes.map { it.lastOrNull() }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _listing = MutableStateFlow<ListingUi?>(null)
+    val listing: StateFlow<ListingUi?> = _listing.asStateFlow()
+    private var listingJob: Job? = null
+
+    /** Pages left behind, so Back shows them as they were. */
+    private val savedTitles = HashMap<String, TitleUi>()
+    private val savedListings = HashMap<ListQuery, ListingUi>()
+
+    /** Past searches' results, so a search from the history opens at once. */
+    private val cacheFile = java.io.File(app.filesDir, "search-cache.json")
+    private val cache: MutableMap<String, List<Title>> by lazy {
+        runCatching {
+            val o = org.json.JSONObject(cacheFile.readText())
+            o.keys().asSequence().associateWith { k -> TitleJson.decode(o.getJSONArray(k)) }.toMutableMap()
+        }.getOrDefault(mutableMapOf())
+    }
+
     init {
         viewModelScope.launch {
             couchy.settings.prefs.collect { p ->
@@ -170,7 +224,20 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 val cartoons = async { runCatching { catalog.rezka.list("/cartoons/?filter=watching") }.getOrDefault(emptyList()) }
                 _feed.value = Feed(fresh.await(), films.await(), series.await(), cartoons.await(), loaded = true)
             }
+            loadSimilar()
         }
+    }
+
+    /** "Похоже на …": the site's picks for the last title watched from it. */
+    private suspend fun loadSimilar() {
+        val last = runCatching { library.snapshot() }.getOrDefault(emptyList())
+            .filter { Rezka.isRef(it.uri) && it.lastWatchedAt > 0 }
+            .maxByOrNull { it.lastWatchedAt } ?: return
+        val ref = Rezka.parseRef(last.uri) ?: return
+        val page = runCatching { catalog.rezka.page(ref.pageUrl) }.getOrNull() ?: return
+        val picks = (page.details.similar + page.details.parts).distinctBy { it.key }
+        if (picks.isEmpty()) return
+        _feed.update { it.copy(similar = picks, similarTo = page.name ?: last.title.substringBefore(" · ")) }
     }
 
     fun setQuery(text: String) {
@@ -198,10 +265,12 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      * IMDb answers in a moment, HDrezka can take long (a slow mirror, or the bypass starting up).
      * Whatever comes first is shown at once and the rest is merged in when it arrives.
      */
-    private suspend fun searchTitles(query: String) {
+    private suspend fun searchTitles(query: String, quiet: Boolean = false) {
         var imdb: Result<List<Title>>? = null
         var site: Result<List<Title>>? = null
         fun publish() {
+            // Results from the history are on screen already: they are swapped only for complete ones.
+            if (quiet && (imdb == null || site == null)) return
             val challenge = (site?.exceptionOrNull() as? ChallengeException)?.url
             val titles = TitleMerge.merge(site?.getOrNull().orEmpty(), imdb?.getOrNull().orEmpty())
             val pending = imdb == null || site == null
@@ -217,6 +286,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                     error = if (failed) "Не получилось найти. Проверьте интернет." else null,
                 )
             }
+            if (quiet && titles.isEmpty()) cache[query.lowercase()]?.let { old -> _search.update { it.copy(titles = old, error = null) } }
         }
         kotlinx.coroutines.coroutineScope {
             launch {
@@ -231,22 +301,46 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun clearHistory() = viewModelScope.launch { couchy.settings.setSearchHistory(emptyList()) }
+    fun clearHistory() = viewModelScope.launch {
+        couchy.settings.setSearchHistory(emptyList())
+        cache.clear()
+        saveCache()
+    }
+
+    private suspend fun rememberQuery(query: String) {
+        val history = (listOf(query) + _search.value.history.filter { !it.equals(query, ignoreCase = true) }).take(12)
+        couchy.settings.setSearchHistory(history)
+        saveCache()
+    }
+
+    private suspend fun saveCache() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val keep = (_search.value.history.map { it.lowercase() } + _search.value.query.trim().lowercase()).toSet()
+        val o = org.json.JSONObject()
+        cache.filterKeys { it in keep }.forEach { (k, v) -> o.put(k, TitleJson.encode(v.take(40))) }
+        runCatching { cacheFile.writeText(o.toString()) }
+    }
 
     private suspend fun run(text: String, remember: Boolean = false) {
         val query = text.trim()
-        _search.update { it.copy(loading = true, moreLoading = false, error = null, titles = emptyList()) }
+        val cached = cache[query.lowercase()]?.takeIf { _search.value.mode.titles }
+        if (cached != null) {
+            _search.update { it.copy(loading = false, moreLoading = false, searched = true, error = null, titles = cached, torrents = emptyList(), siteBlocked = false) }
+        } else {
+            _search.update { it.copy(loading = true, moreLoading = false, error = null, titles = emptyList()) }
+        }
         try {
             if (_search.value.mode == SearchMode.TORRENTS) {
                 val hits = catalog.rawTorrents(query)
                 _search.update { it.copy(loading = false, searched = true, torrents = TorrentHits.group(hits), titles = emptyList(), siteBlocked = false) }
             } else {
-                searchTitles(query)
+                searchTitles(query, quiet = cached != null)
+                val found = _search.value.titles
+                if (found.isNotEmpty()) {
+                    cache[query.lowercase()] = found
+                    if (remember) saveCache()
+                }
             }
-            if (remember) {
-                val history = (listOf(query) + _search.value.history.filter { !it.equals(query, ignoreCase = true) }).take(12)
-                couchy.settings.setSearchHistory(history)
-            }
+            if (remember) rememberQuery(query)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -257,6 +351,15 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Title page ----
 
     fun openTitle(title: Title) {
+        // Opening a result means the search found it: the query goes to the history.
+        val q = _search.value.query.trim()
+        if (q.isNotEmpty() && _search.value.titles.any { it.key == title.key }) viewModelScope.launch { rememberQuery(q) }
+        leaveTop()
+        _routes.update { it + Route.TitlePage(title) }
+        loadTitle(title)
+    }
+
+    private fun loadTitle(title: Title) {
         _title.value = TitleUi(title)
         titleJob?.cancel()
         titleJob = viewModelScope.launch {
@@ -266,9 +369,105 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** An actor's or director's films, or the catalogue narrowed some way. */
+    fun openListing(query: ListQuery) {
+        leaveTop()
+        _routes.update { it + Route.Listing(query) }
+        startListing(query)
+    }
+
+    /** The catalogue with other filters, in place of the one on screen. */
+    fun refilter(filter: CatalogFilter) {
+        val routes = _routes.value
+        if (routes.lastOrNull() !is Route.Listing) return openListing(ListQuery.Catalog(filter))
+        _routes.value = routes.dropLast(1) + Route.Listing(ListQuery.Catalog(filter))
+        startListing(ListQuery.Catalog(filter))
+    }
+
+    private fun startListing(query: ListQuery) {
+        _listing.value = ListingUi(query)
+        listingJob?.cancel()
+        listingJob = viewModelScope.launch { loadListingPage() }
+    }
+
+    fun loadMore() {
+        val l = _listing.value ?: return
+        if (l.loading || l.end) return
+        listingJob = viewModelScope.launch { loadListingPage() }
+    }
+
+    private suspend fun loadListingPage() {
+        val start = _listing.value ?: return
+        _listing.update { it?.copy(loading = true, error = null) }
+        try {
+            var page = start.page
+            var added = emptyList<Title>()
+            var end = false
+            // A country's list holds every kind of title: a few pages may be needed for enough of the wanted kind.
+            var tries = 0
+            while (added.size < 12 && !end && tries < 4) {
+                page += 1
+                tries += 1
+                val raw = when (val q = start.query) {
+                    is ListQuery.Person -> catalog.rezka.listing(RezkaDetails.path(q.url))
+                    is ListQuery.Catalog -> catalog.rezka.listing(RezkaCatalog.path(q.filter, page))
+                }
+                val known = (start.titles + added).map { it.key }.toSet()
+                val fresh = raw.filter { it.key !in known }
+                end = fresh.isEmpty() || start.query is ListQuery.Person
+                val wanted = (start.query as? ListQuery.Catalog)?.filter
+                added = added + if (wanted == null) fresh else fresh.filter { RezkaCatalog.keep(wanted, it) }
+                if (wanted?.country == null) break
+            }
+            _listing.update { cur -> if (cur?.query == start.query) cur.copy(titles = cur.titles + added, page = page, end = end, loading = false) else cur }
+        } catch (e: ChallengeException) {
+            _listing.update { it?.copy(loading = false, error = "HDrezka просит пройти проверку.") }
+            ask(e.url) { listingJob = viewModelScope.launch { loadListingPage() } }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _listing.update { it?.copy(loading = false, error = "HDrezka не ответила. Проверьте интернет.") }
+        }
+    }
+
+    /** Keeps the page on top as it is, to show it again on the way back. */
+    private fun leaveTop() {
+        when (val top = _routes.value.lastOrNull()) {
+            is Route.TitlePage -> _title.value?.let { savedTitles[top.title.key] = it }
+            is Route.Listing -> _listing.value?.let { savedListings[top.query] = it }
+            null -> {}
+        }
+    }
+
+    /** One step back: the page under the top one, as it was left. */
+    fun back() {
+        val routes = _routes.value.dropLast(1)
+        _routes.value = routes
+        titleJob?.cancel()
+        listingJob?.cancel()
+        when (val top = routes.lastOrNull()) {
+            is Route.TitlePage -> {
+                val saved = savedTitles[top.title.key]
+                if (saved == null || saved.rezka.status == SourceStatus.LOADING || saved.torrentsLoading || saved.sitesLoading) loadTitle(top.title)
+                else _title.value = saved
+            }
+            is Route.Listing -> {
+                val saved = savedListings[top.query]
+                if (saved == null || saved.loading) startListing(top.query) else _listing.value = saved
+            }
+            null -> closeTitle()
+        }
+    }
+
+    /** Back to the tabs, whatever was open. */
     fun closeTitle() {
         titleJob?.cancel()
+        listingJob?.cancel()
+        _routes.value = emptyList()
         _title.value = null
+        _listing.value = null
+        savedTitles.clear()
+        savedListings.clear()
     }
 
     private suspend fun loadTorrents(start: Title) {

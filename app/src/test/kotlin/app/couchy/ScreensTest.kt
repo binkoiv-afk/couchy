@@ -128,6 +128,8 @@ class ScreensTest {
             fresh = found.take(3).map { it.copy(info = "${it.year ?: 2024}, США, фантастика") },
             films = found.drop(1),
             series = found.filter { it.kind == TitleKind.SERIES } + found.take(2),
+            similar = found.drop(3),
+            similarTo = "Интерстеллар",
             loaded = true,
         )
     }
@@ -317,7 +319,21 @@ class ScreensTest {
             url = "https://rezka.ag/series/fiction/74658-dyuna-prorochestvo-2024.html",
             page = RezkaPage(74658, true, "Дюна: Пророчество", "Dune: Prophecy", null, null, "IMDb 7.1",
                 listOf(Translator(56, "Дубляж"), Translator(111, "HDrezka Studio"), Translator(238, "LostFilm"), Translator(1, "Оригинал · Английский")), 56,
-                (1..6).map { EpisodeRef(1, it, "Серия $it") }),
+                (1..6).map { EpisodeRef(1, it, "Серия $it") },
+                app.couchy.core.sources.TitleDetails(
+                    slogan = "Власть рождается в тени",
+                    released = "18 ноября 2024 года",
+                    countries = listOf(app.couchy.core.sources.Link("США", "https://rezka.ag/country/USA/")),
+                    genres = listOf(app.couchy.core.sources.Link("Фантастика", "https://rezka.ag/series/fiction/"), app.couchy.core.sources.Link("Драмы", "https://rezka.ag/series/drama/")),
+                    directors = listOf(app.couchy.core.sources.Link("Анна Фёрстер", "https://rezka.ag/person/1-anna/")),
+                    actors = listOf("Эмили Уотсон", "Оливия Уильямс", "Трэвис Фиммел", "Джоди Мэй", "Марк Стронг", "Индира Варма").mapIndexed { i, n ->
+                        app.couchy.core.sources.Link(n, "https://rezka.ag/person/${i + 10}-x/")
+                    },
+                    age = "18+",
+                    duration = "60 мин.",
+                    similar = found.take(2) + found.drop(4),
+                    parts = found.take(2),
+                )),
             translator = 56,
             episodes = (1..6).map { EpisodeRef(1, it, "Серия $it") } + (1..2).map { EpisodeRef(2, it, "Серия $it") },
             season = 1,
@@ -338,6 +354,31 @@ class ScreensTest {
     @Test fun tvSearch() = snap("tv_search", tv, FormFactor.TV) { Shell(Destination.SEARCH, {}, {}) { SearchContent(searchState, searchActions) } }
     @Test fun phoneSearchHistory() = snap("phone_search_history", phone, FormFactor.PHONE) {
         Shell(Destination.SEARCH, {}, {}) { SearchContent(SearchState(history = listOf("дюна", "во все тяжкие", "оппенгеймер")), searchActions) }
+    }
+    private val tall = phone.copy(screenHeight = phone.screenHeight * 3)
+    @Test fun phoneTitleFull() = snap("phone_title_full", tall, FormFactor.PHONE) { TitleContent(titleUi, titleActions) }
+    private val listingActions = app.couchy.ui.search.ListingActions({}, {}, {}, {})
+    @Test fun phoneCatalog() = snap("phone_catalog", phone, FormFactor.PHONE) {
+        app.couchy.ui.search.ListingContent(
+            app.couchy.sources.ListingUi(
+                app.couchy.sources.ListQuery.Catalog(app.couchy.core.sources.CatalogFilter(genre = "fiction", year = 2024)),
+                titles = found + found.map { it.copy(name = it.name + " 2", imdbId = null) },
+                loading = false, page = 1,
+            ),
+            listingActions,
+        )
+    }
+    @Test fun phonePerson() = snap("phone_person", phone, FormFactor.PHONE) {
+        app.couchy.ui.search.ListingContent(
+            app.couchy.sources.ListingUi(app.couchy.sources.ListQuery.Person("Тимоти Шаламе", "https://rezka.ag/person/1-x/"), titles = found, loading = false, end = true),
+            listingActions,
+        )
+    }
+    @Test fun tvCatalog() = snap("tv_catalog", tv, FormFactor.TV) {
+        app.couchy.ui.search.ListingContent(
+            app.couchy.sources.ListingUi(app.couchy.sources.ListQuery.Catalog(app.couchy.core.sources.CatalogFilter()), titles = found, loading = true),
+            listingActions,
+        )
     }
     @Test fun tvTitle() = snap("tv_title", tv, FormFactor.TV) { TitleContent(titleUi, titleActions) }
     @Test fun phoneTitle() = snap("phone_title", phone, FormFactor.PHONE) { TitleContent(titleUi, titleActions) }

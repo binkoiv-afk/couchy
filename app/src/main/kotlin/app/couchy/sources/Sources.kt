@@ -41,6 +41,9 @@ class RezkaClient(private val web: Web, private val host: () -> String) {
     /** A catalogue page of the site (new arrivals, what people watch now), in the search result format. */
     suspend fun list(path: String): List<Title> = Rezka.parseSearch(web.get(base() + path))
 
+    /** A person's filmography or a catalogue page, by its address on the site. */
+    suspend fun listing(path: String): List<Title> = app.couchy.core.sources.RezkaDetails.parseListing(web.get(base() + path))
+
     suspend fun page(url: String): RezkaPage = Rezka.parsePage(web.get(Rezka.onHost(url, base())))
 
     suspend fun episodes(id: Int, translator: Int, referer: String): List<EpisodeRef> =

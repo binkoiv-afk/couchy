@@ -126,6 +126,42 @@ def sites():
             log.write(f"{name}: FAIL {e!r}\n")
 
 
-for name, fn in [("sites", sites)]:
+def players():
+    """Title pages of the sites that answered, and the players they embed."""
+    pages = {
+        "baskino": "https://baskino.me/films/41164-djuna-chast-vtoraja.html",
+        "kinokrad": "https://kinokrad.cc/473232-dune-the-prophecy-2024.html",
+        "gidonline": "https://gidonline.eu/20030-chelovek-pauk-novyj-den.html",
+    }
+    for name, url in pages.items():
+        try:
+            code, final, html = get(url)
+            save("page_" + name, html)
+            frames = re.findall(r'<iframe[^>]+(?:data-)?src="([^"]+)"', html) + re.findall(r'data-(?:src|iframe|player)="(https?://[^"]+)"', html)
+            log.write(f"{name}: {code} frames={frames[:6]}\n")
+            for i, f in enumerate(frames[:3]):
+                f = "https:" + f if f.startswith("//") else f
+                try:
+                    c2, u2, h2 = get(f, headers={"Referer": url})
+                    save(f"frame_{name}_{i}", h2)
+                    log.write(f"  frame {i}: {c2} {u2} len={len(h2)}\n")
+                except Exception as e:
+                    log.write(f"  frame {i}: FAIL {e!r}\n")
+        except Exception as e:
+            log.write(f"{name}: FAIL {e!r}\n")
+    for name, url in [
+        ("gid_search", "https://gidonline.eu/index.php?do=search&subaction=search&story=" + urllib.parse.quote("дюна")),
+        ("zona_api", "https://w140.zona.plus/api/v1/search?query=" + urllib.parse.quote("дюна")),
+        ("filmix_ajax", "https://filmix.gg/engine/ajax/sphinx_search.php?scf=fx&story=" + urllib.parse.quote("дюна") + "&search_start=0&do=search&subaction=search"),
+    ]:
+        try:
+            code, final, text = get(url, headers={"X-Requested-With": "XMLHttpRequest"})
+            save("s2_" + name, text)
+            log.write(f"{name}: {code} len={len(text)}\n")
+        except Exception as e:
+            log.write(f"{name}: FAIL {e!r}\n")
+
+
+for name, fn in [("players", players)]:
     step(name, fn)
 log.close()

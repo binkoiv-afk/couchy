@@ -13,7 +13,7 @@ object Intros {
     /** The series an episode belongs to: the HDrezka page or the torrent; null for anything else. */
     fun seriesOf(p: Playback): String? = when {
         p.live != null -> null
-        Rezka.isRef(p.key) -> Rezka.parseRef(p.key)?.page
+        Rezka.isRef(p.key) -> Rezka.parseRef(p.key)?.pageUrl
         p.torrent != null -> "torrent:" + p.torrent.hash
         else -> null
     }

@@ -162,6 +162,30 @@ def players():
             log.write(f"{name}: FAIL {e!r}\n")
 
 
-for name, fn in [("players", players)]:
+def engines():
+    for repo in ["bepass-org/warp-plus", "whyvl/wireproxy", "artem-russkikh/wireproxy-awg", "XTLS/Xray-core", "SagerNet/sing-box", "amnezia-vpn/amneziawg-go"]:
+        try:
+            code, url, text = get(f"https://api.github.com/repos/{repo}/releases?per_page=3", headers={"Accept": "application/vnd.github+json"})
+            for rel in json.loads(text):
+                names = [a["name"] for a in rel["assets"] if re.search(r"android|linux.*(arm|aarch)|arm64|armv7", a["name"], re.I)]
+                log.write(f"{repo} {rel['tag_name']} {rel['published_at']} {names}\n")
+        except Exception as e:
+            log.write(f"{repo}: FAIL {e!r}\n")
+    # Can a fresh WARP account be registered from a plain HTTP client?
+    try:
+        import base64, datetime
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+        key = X25519PrivateKey.generate()
+        pub = base64.b64encode(key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+        body = json.dumps({"key": pub, "install_id": "", "fcm_token": "", "tos": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"), "model": "PC", "type": "Android", "locale": "en_US"}).encode()
+        code, url, text = get("https://api.cloudflareclient.com/v0a2158/reg", data=body, headers={"Content-Type": "application/json", "CF-Client-Version": "a-6.30-2158", "User-Agent": "okhttp/3.12.1"})
+        cfg = json.loads(text).get("config", {})
+        log.write(f"warp reg: {code} peers={cfg.get('peers')} iface={cfg.get('interface')} client_id={cfg.get('client_id')}\n")
+    except Exception as e:
+        log.write(f"warp reg: FAIL {e!r}\n")
+
+
+for name, fn in [("engines", engines)]:
     step(name, fn)
 log.close()

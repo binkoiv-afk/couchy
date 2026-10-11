@@ -123,11 +123,19 @@ class ScreensTest {
     )
 
     private val homeActions = HomeActions({}, {}, {}, {})
+    private val feed by lazy {
+        app.couchy.sources.Feed(
+            fresh = found.take(3).map { it.copy(info = "${it.year ?: 2024}, США, фантастика") },
+            films = found.drop(1),
+            series = found.filter { it.kind == TitleKind.SERIES } + found.take(2),
+            loaded = true,
+        )
+    }
     private val libraryActions = LibraryActions({}, {}, {}, {})
 
     @Composable
     private fun home(state: HomeState = homeState()) =
-        Shell(Destination.HOME, {}, {}) { HomeContent(state, homeActions, searches = listOf("дюна", "во все тяжкие", "оппенгеймер")) }
+        Shell(Destination.HOME, {}, {}) { HomeContent(state, homeActions, feed = feed) }
 
     @Composable
     private fun library() = Shell(Destination.LIBRARY, {}, {}) {
@@ -136,7 +144,9 @@ class ScreensTest {
 
     @Test fun phoneHome() = snap("phone_home", phone, FormFactor.PHONE) { home() }
     @Test fun phoneHomeLight() = snap("phone_home_light", phone, FormFactor.PHONE, ThemeMode.LIGHT) { home() }
-    @Test fun phoneWelcome() = snap("phone_welcome", phone, FormFactor.PHONE) { home(HomeState(loaded = true)) }
+    @Test fun phoneWelcome() = snap("phone_welcome", phone, FormFactor.PHONE) {
+        Shell(Destination.HOME, {}, {}) { HomeContent(HomeState(loaded = true), homeActions, feed = app.couchy.sources.Feed(loaded = true)) }
+    }
     @Test fun phoneLibrary() = snap("phone_library", phone, FormFactor.PHONE) { library() }
     @Test fun phoneSettings() = snap("phone_settings", phone, FormFactor.PHONE) {
         Shell(Destination.SETTINGS, {}, {}) {
@@ -180,7 +190,9 @@ class ScreensTest {
     }
     @Test fun tvHome() = snap("tv_home", tv, FormFactor.TV) { home() }
     @Test fun tvHomeLight() = snap("tv_home_light", tv, FormFactor.TV, ThemeMode.LIGHT) { home() }
-    @Test fun tvWelcome() = snap("tv_welcome", tv, FormFactor.TV) { home(HomeState(loaded = true)) }
+    @Test fun tvWelcome() = snap("tv_welcome", tv, FormFactor.TV) {
+        Shell(Destination.HOME, {}, {}) { HomeContent(HomeState(loaded = true), homeActions, feed = app.couchy.sources.Feed(loaded = true)) }
+    }
     @Test fun tvLibrary() = snap("tv_library", tv, FormFactor.TV) { library() }
     @Test fun tabletHome() = snap("tablet_home", tablet, FormFactor.TABLET) { home() }
 

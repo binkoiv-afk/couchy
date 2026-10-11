@@ -38,6 +38,9 @@ class RezkaClient(private val web: Web, private val host: () -> String) {
         }
     }
 
+    /** A catalogue page of the site (new arrivals, what people watch now), in the search result format. */
+    suspend fun list(path: String): List<Title> = Rezka.parseSearch(web.get(base() + path))
+
     suspend fun page(url: String): RezkaPage = Rezka.parsePage(web.get(Rezka.onHost(url, base())))
 
     suspend fun episodes(id: Int, translator: Int, referer: String): List<EpisodeRef> =

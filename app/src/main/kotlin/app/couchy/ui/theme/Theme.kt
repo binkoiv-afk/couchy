@@ -13,7 +13,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import app.couchy.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.couchy.data.ThemeMode
@@ -51,17 +54,17 @@ private val Dark = darkColorScheme(
     onSecondary = Brand.OnOrange,
     secondaryContainer = Color(0xFF2A2E38),
     onSecondaryContainer = Color(0xFFF3F3F6),
-    background = Color(0xFF0D0E12),
-    onBackground = Color(0xFFF3F3F6),
-    surface = Color(0xFF0D0E12),
-    onSurface = Color(0xFFF3F3F6),
-    surfaceVariant = Color(0xFF1F222A),
-    onSurfaceVariant = Color(0xFFA4A8B4),
-    surfaceContainerLowest = Color(0xFF08090C),
-    surfaceContainerLow = Color(0xFF121419),
-    surfaceContainer = Color(0xFF16181E),
-    surfaceContainerHigh = Color(0xFF1F222A),
-    surfaceContainerHighest = Color(0xFF2A2E38),
+    background = Color(0xFF07080B),
+    onBackground = Color(0xFFF5F5F7),
+    surface = Color(0xFF07080B),
+    onSurface = Color(0xFFF5F5F7),
+    surfaceVariant = Color(0xFF1C1E25),
+    onSurfaceVariant = Color(0xFF9EA2AE),
+    surfaceContainerLowest = Color(0xFF040506),
+    surfaceContainerLow = Color(0xFF0E1015),
+    surfaceContainer = Color(0xFF121419),
+    surfaceContainerHigh = Color(0xFF1B1D24),
+    surfaceContainerHighest = Color(0xFF262932),
     outline = Color(0xFF4A4F5C),
     outlineVariant = Color(0xFF24272F),
     error = Brand.Red,
@@ -92,19 +95,35 @@ private val Light = lightColorScheme(
     error = Color(0xFFE04545),
 )
 
+/** Inter for reading, Inter Display for the big type: crisp at every size, on a phone and across a room. */
+private val Inter = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semi_bold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold),
+    Font(R.font.inter_display_extra_bold, FontWeight.ExtraBold),
+)
+private val InterDisplay = FontFamily(
+    Font(R.font.inter_display_bold, FontWeight.Bold),
+    Font(R.font.inter_display_extra_bold, FontWeight.ExtraBold),
+)
+
 private val CouchyTypography = Typography(
-    displaySmall = TextStyle(fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp),
-    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
-    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold),
-    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold),
-    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp),
-    labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold),
-    labelMedium = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
-    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+    displayLarge = TextStyle(fontFamily = InterDisplay, fontSize = 52.sp, lineHeight = 54.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.8).sp),
+    displayMedium = TextStyle(fontFamily = InterDisplay, fontSize = 44.sp, lineHeight = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.5).sp),
+    displaySmall = TextStyle(fontFamily = InterDisplay, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.2).sp),
+    headlineLarge = TextStyle(fontFamily = InterDisplay, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.9).sp),
+    headlineMedium = TextStyle(fontFamily = InterDisplay, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.7).sp),
+    headlineSmall = TextStyle(fontFamily = InterDisplay, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+    titleLarge = TextStyle(fontFamily = InterDisplay, fontSize = 20.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
+    titleMedium = TextStyle(fontFamily = Inter, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.1).sp),
+    titleSmall = TextStyle(fontFamily = Inter, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontFamily = Inter, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = Inter, fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontFamily = Inter, fontSize = 12.sp, lineHeight = 16.sp),
+    labelLarge = TextStyle(fontFamily = Inter, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold),
+    labelMedium = TextStyle(fontFamily = Inter, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+    labelSmall = TextStyle(fontFamily = Inter, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
 )
 
 private val CouchyShapes = Shapes(

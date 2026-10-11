@@ -1,6 +1,9 @@
 package app.couchy.ui.library
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,6 +36,7 @@ class LibraryActions(
     val onMore: (MediaEntity) -> Unit,
     val onFilter: (LibraryFilter) -> Unit,
     val onSort: (SortOrder) -> Unit,
+    val onSettings: (() -> Unit)? = null,
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
@@ -41,11 +45,16 @@ fun LibraryContent(state: LibraryState, actions: LibraryActions, modifier: Modif
     val form = LocalFormFactor.current
     val side = if (form.wide) 32.dp else 18.dp
     Column(modifier.fillMaxSize()) {
-        Text(
-            "Медиатека",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(start = side, end = side, top = 20.dp, bottom = 12.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(start = side, end = side, top = 20.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Моё", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
+            // Phones keep settings here; TV and tablets have them in the side menu.
+            if (!form.wide) actions.onSettings?.let { open ->
+                app.couchy.ui.components.SecondaryButton("Настройки", Icons.Rounded.Settings, onClick = open)
+            }
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = side, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

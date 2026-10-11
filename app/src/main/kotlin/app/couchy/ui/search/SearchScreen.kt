@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -129,8 +131,19 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
                     Text("Ещё ищу на HDrezka…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (state.titles.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ничего не нашлось. Попробуйте название на русском или на английском.") }
-            items(state.titles, key = { it.key }) { t -> PosterCard(t, onClick = { actions.onTitle(t) }) }
+            val shown = when (state.mode) {
+                SearchMode.MOVIES -> state.titles.filter { it.kind == TitleKind.MOVIE }
+                SearchMode.SERIES -> state.titles.filter { it.kind == TitleKind.SERIES }
+                else -> state.titles
+            }
+            if (shown.isEmpty() && !state.moreLoading) item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ничего не нашлось. Попробуйте название на русском или на английском.") }
+            val best = shown.firstOrNull()
+            if (best != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) { Label("Лучшее совпадение") }
+                item(span = { GridItemSpan(maxLineSpan) }, key = "best") { BestMatch(best, onClick = { actions.onTitle(best) }) }
+                if (shown.size > 1) item(span = { GridItemSpan(maxLineSpan) }) { Label("Ещё") }
+            }
+            items(shown.drop(1), key = { it.key }) { t -> PosterCard(t, onClick = { actions.onTitle(t) }) }
         }
     }
 }
@@ -144,6 +157,7 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
         if (focusKey > 0) runCatching { focus.requestFocus(); keyboard?.show() }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Поиск", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 state.query,
@@ -151,7 +165,13 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
                 placeholder = { Text("Фильм, сериал или мультфильм") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(999.dp),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); actions.onSubmit(state.query) }),
                 modifier = Modifier.weight(1f).focusRequester(focus),
@@ -159,8 +179,8 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
             actions.onVoice?.let { SecondaryButton(null, Icons.Rounded.Mic, onClick = it) }
             SecondaryButton(null, Icons.Rounded.AddLink, onClick = actions.onOpenLink)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SearchMode.entries.forEach { m -> Chip(m.label, m == state.mode, onClick = { actions.onMode(m) }) }
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(SearchMode.entries.size) { i -> val m = SearchMode.entries[i]; Chip(m.label, m == state.mode, onClick = { actions.onMode(m) }) }
         }
     }
 }
@@ -186,6 +206,38 @@ private fun History(history: List<String>, actions: SearchActions) {
                 Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 Text(q, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
             }
+        }
+    }
+}
+
+@Composable
+private fun Label(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** The first result, larger, with its poster and a button: most searches end here. */
+@Composable
+private fun BestMatch(title: Title, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .couchyClickable(shape, focusScale = 1.02f, onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceContainer, shape)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PosterCard(title, onClick = onClick, modifier = Modifier.width(92.dp), caption = false)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val meta = listOfNotNull(title.year?.toString(), if (title.kind == TitleKind.SERIES) "сериал" else "фильм", title.rating).joinToString(" · ")
+            Text(meta, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            title.original?.takeIf { it != title.name }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp))
+            app.couchy.ui.components.PrimaryButton("Смотреть", androidx.compose.material.icons.Icons.Rounded.PlayArrow, onClick = onClick)
         }
     }
 }

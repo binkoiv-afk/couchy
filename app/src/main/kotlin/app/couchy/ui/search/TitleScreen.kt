@@ -1,7 +1,13 @@
 package app.couchy.ui.search
 
 import androidx.compose.foundation.background
+import app.couchy.ui.components.Artwork
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -71,54 +77,127 @@ class TitleActions(
     val onSearchSite: (Site) -> Unit = {},
 )
 
-/** A film or series with every way to watch it: online sources first, then torrents by quality. */
+/** A film or series with every way to watch it: one main button, the other sources under it. */
 @Composable
 fun TitleContent(state: TitleUi, actions: TitleActions, modifier: Modifier = Modifier) {
-    val wide = LocalFormFactor.current.wide
-    val side = if (wide) 40.dp else 18.dp
-    Box(
-        modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-    ) {
-        if (wide) {
-            Row(Modifier.fillMaxSize().padding(horizontal = side, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                Column(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SecondaryButton("Назад", Icons.AutoMirrored.Rounded.ArrowBack, onClick = actions.onBack)
-                    PosterCard(state.title, onClick = {}, modifier = Modifier.fillMaxWidth(), caption = false)
-                }
-                Sections(state, actions, Modifier.weight(1f).widthIn(max = 1000.dp), PaddingValues(bottom = 32.dp))
+    val form = LocalFormFactor.current
+    val bg = MaterialTheme.colorScheme.background
+    Box(modifier.fillMaxSize().background(bg)) {
+        // The poster, large and soft at the edges, stands in for a still from the film.
+        Box(
+            if (form.wide) Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(0.62f)
+            else Modifier.fillMaxWidth().height(470.dp),
+        ) {
+            Artwork(state.title.name, Modifier.fillMaxSize()) {
+                state.title.poster?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             }
-        } else {
-            Sections(state, actions, Modifier.fillMaxSize(), PaddingValues(start = side, end = side, top = 12.dp, bottom = 32.dp), phoneHeader = true)
+            Box(
+                Modifier.fillMaxSize().background(
+                    if (form.wide) Brush.horizontalGradient(0f to bg, 0.45f to bg.copy(alpha = 0.6f), 1f to bg.copy(alpha = 0.15f))
+                    else Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.4f), 0.25f to Color.Transparent, 0.6f to bg.copy(alpha = 0.55f), 1f to bg),
+                ),
+            )
+            if (form.wide) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to bg)))
+        }
+        val side = if (form.wide) 48.dp else 18.dp
+        Sections(
+            state,
+            actions,
+            if (form.wide) Modifier.fillMaxHeight().widthIn(max = 760.dp) else Modifier.fillMaxSize(),
+            PaddingValues(start = side, end = side, top = if (form.wide) 96.dp else 300.dp, bottom = 48.dp),
+        )
+        Box(
+            Modifier
+                .statusBarsPadding()
+                .padding(start = side - 4.dp, top = 10.dp)
+                .size(44.dp)
+                .couchyClickable(CircleShape, onClick = actions.onBack)
+                .background(Color(0xFF16181F).copy(alpha = 0.7f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад", tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** What the big button does: the best way to watch, picked for the person. */
+private data class MainAction(val label: String, val note: String?, val icon: androidx.compose.ui.graphics.vector.ImageVector?, val run: (() -> Unit)?)
+
+private fun mainAction(state: TitleUi, actions: TitleActions): MainAction {
+    val r = state.rezka
+    val page = r.page
+    if (r.status == SourceStatus.READY && page != null) {
+        val voice = page.translators.firstOrNull { it.id == r.translator }?.name
+        val note = listOfNotNull("HDrezka", voice, "без рекламы").joinToString(" · ")
+        if (!page.series) {
+            val started = (state.progress["0:0"] ?: 0f) > 0f && "0:0" !in state.watched
+            return MainAction(if (started) "Продолжить" else "Смотреть", note, Icons.Rounded.PlayArrow) { actions.onPlay(0, 0, false) }
+        }
+        val episodes = r.episodes.sortedWith(compareBy({ it.season }, { it.episode }))
+        val next = episodes.firstOrNull { e -> (state.progress["${e.season}:${e.episode}"] ?: 0f) > 0f && "${e.season}:${e.episode}" !in state.watched }
+            ?: episodes.firstOrNull { e -> "${e.season}:${e.episode}" !in state.watched }
+            ?: episodes.firstOrNull()
+        if (next != null) {
+            val started = (state.progress["${next.season}:${next.episode}"] ?: 0f) > 0f
+            return MainAction("${if (started) "Продолжить" else "Смотреть"} · ${next.season} сезон, ${next.episode} серия", note, Icons.Rounded.PlayArrow) {
+                actions.onPlay(next.season, next.episode, false)
+            }
+        }
+    }
+    if (r.status == SourceStatus.BLOCKED) return MainAction("Открыть HDrezka", "Сайт просит подтвердить, что вы не бот", Icons.Rounded.VerifiedUser, actions.onChallenge)
+    if (r.status == SourceStatus.LOADING) return MainAction("Ищу, где посмотреть…", null, null, null)
+    state.sites.firstOrNull()?.let { hit ->
+        return MainAction("Смотреть на ${siteName(hit.site)}", "Плеер сайта, без рекламы", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
+    }
+    val group = state.torrents.firstOrNull { it.label.contains("1080") } ?: state.torrents.firstOrNull()
+    val hit = group?.hits?.maxByOrNull { it.seeds }
+    if (group != null && hit != null) {
+        return MainAction("Смотреть торрент · ${group.label}", "${hit.tracker} · ▲ ${hit.seeds}", Icons.Rounded.PlayArrow) { actions.onTorrent(hit) }
+    }
+    if (state.sitesLoading || state.torrentsLoading) return MainAction("Ищу, где посмотреть…", null, null, null)
+    return MainAction("Не нашлось, где посмотреть", "Попробуйте поиск на сайтах ниже", null, null)
+}
+
+@Composable
+private fun WatchButton(state: TitleUi, actions: TitleActions) {
+    val action = mainAction(state, actions)
+    val shape = RoundedCornerShape(16.dp)
+    val enabled = action.run != null
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .couchyClickable(shape, focusScale = 1.03f) { action.run?.invoke() }
+                .background(if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+                .padding(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val fg = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant
+            if (action.icon != null) Icon(action.icon, null, tint = fg, modifier = Modifier.size(24.dp))
+            else if (!enabled && action.label.endsWith("…")) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+            Text(action.label, style = MaterialTheme.typography.titleMedium, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        action.note?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
 }
 
 @Composable
-private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, padding: PaddingValues, phoneHeader: Boolean = false) {
+private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, padding: PaddingValues) {
     val t = state.title
     var selected by rememberSaveable(t.name, t.year) { mutableStateOf<String?>(null) }
     val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item("head") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (phoneHeader) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        SecondaryButton(null, Icons.AutoMirrored.Rounded.ArrowBack, onClick = actions.onBack)
-                        Spacer(Modifier.weight(1f))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        PosterCard(t, onClick = {}, modifier = Modifier.width(112.dp), caption = false)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) { Heading(state) }
-                    }
-                } else {
-                    Heading(state)
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Heading(state)
+                Spacer(Modifier.height(4.dp))
+                WatchButton(state, actions)
                 state.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
                 }
             }
         }
@@ -176,7 +255,10 @@ private fun sources(state: TitleUi): List<Source> = listOf(Source.Rezka) + state
 private fun firstReady(state: TitleUi): Source = when {
     state.rezka.status == SourceStatus.READY || state.rezka.status == SourceStatus.BLOCKED -> Source.Rezka
     state.sites.isNotEmpty() -> Source.OnSite(state.sites.first())
-    state.rezka.status == SourceStatus.LOADING || state.sitesLoading -> Source.Rezka
+    state.rezka.status == SourceStatus.LOADING -> Source.Rezka
+    // HDrezka failed: torrents rather than an error card, while the cinemas are still being asked.
+    state.torrents.isNotEmpty() -> Source.Torrents
+    state.sitesLoading -> Source.Rezka
     state.torrents.isNotEmpty() || state.torrentsLoading -> Source.Torrents
     else -> Source.Rezka
 }
@@ -186,7 +268,7 @@ private fun firstReady(state: TitleUi): Source = when {
 private fun Services(state: TitleUi, selected: String?, onSelect: (String) -> Unit, actions: TitleActions) {
     val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionTitle("Где смотреть")
+        Text("ИСТОЧНИКИ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
             items(sources(state), key = { it.id }) { src ->
                 val label = when (src) {
@@ -245,15 +327,40 @@ private fun SiteBody(state: TitleUi, hit: SiteHit, actions: TitleActions) {
 @Composable
 private fun Heading(state: TitleUi) {
     val t = state.title
-    Text(t.name, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    val wide = LocalFormFactor.current.wide
+    Text(
+        t.name,
+        style = if (wide) MaterialTheme.typography.displayMedium else MaterialTheme.typography.headlineLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+    )
     val line = listOfNotNull(
         t.original?.takeIf { it != t.name },
         t.year?.toString(),
         if (t.kind == TitleKind.SERIES) "сериал" else "фильм",
     ).joinToString(" · ")
     Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val extra = listOfNotNull(t.rating, t.info).joinToString(" · ")
-    if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+    val chips = listOfNotNull(t.rating, state.rezka.page?.rating?.takeIf { it != t.rating })
+    if (chips.isNotEmpty()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { chips.forEach { RatingChip(it) } }
+    }
+    t.info?.takeIf { it.isNotBlank() && !it.startsWith(t.year?.toString() ?: "-") }?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+    }
+}
+
+/** "КП 8.2" in green, "IMDb 7.1" in IMDb yellow. */
+@Composable
+private fun RatingChip(text: String) {
+    val imdb = text.startsWith("IMDb", ignoreCase = true)
+    val color = if (imdb) Color(0xFFF5C518) else Color(0xFF3DD68C)
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = color,
+        modifier = Modifier.background(color.copy(alpha = 0.16f), RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

@@ -1,6 +1,7 @@
 package app.couchy.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
-import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
@@ -44,7 +45,7 @@ enum class Destination(val label: String, val icon: ImageVector) {
     HOME("Главная", Icons.Rounded.Home),
     SEARCH("Поиск", Icons.Rounded.Search),
     TV("ТВ", Icons.Rounded.LiveTv),
-    LIBRARY("Медиатека", Icons.Rounded.GridView),
+    LIBRARY("Моё", Icons.Rounded.VideoLibrary),
     SETTINGS("Настройки", Icons.Rounded.Settings),
 }
 
@@ -64,18 +65,14 @@ fun Shell(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () ->
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             // Labels stay on TV too: icons alone left people guessing where search is.
             Rail(current, onNavigate, onOpen, compact = false)
-            Box(Modifier.fillMaxSize().statusBarsPadding()) { Themed(content) }
+            Box(Modifier.fillMaxSize().then(if (current == Destination.HOME) Modifier else Modifier.statusBarsPadding())) { Themed(content) }
         }
     } else {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Row(
-                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 18.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CouchyLogo(30.dp)
-            }
-            Box(Modifier.weight(1f).fillMaxWidth()) { Themed(content) }
-            BottomBar(current, onNavigate, onOpen)
+        // Phones: the screen runs edge to edge and the menu floats over it.
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            val inset = if (current == Destination.HOME) Modifier else Modifier.statusBarsPadding().padding(bottom = 84.dp).navigationBarsPadding()
+            Box(Modifier.fillMaxSize().then(inset)) { Themed(content) }
+            BottomBar(current, onNavigate, onOpen, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -135,14 +132,19 @@ private fun RailItem(icon: ImageVector, label: String, selected: Boolean, compac
 }
 
 @Composable
-private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () -> Unit) {
+private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () -> Unit, modifier: Modifier) {
+    val shape = RoundedCornerShape(24.dp)
     Row(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+        modifier
             .navigationBarsPadding()
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .height(64.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f), shape)
+            .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), shape)
+            .padding(horizontal = 6.dp),
         horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val item = Modifier.weight(1f)
         if (LocalKidsMode.current) {
@@ -150,11 +152,9 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
             BarItem(Icons.Rounded.Lock, "Выйти", false, item) { onNavigate(Destination.SETTINGS) }
             return@Row
         }
-        BarItem(Destination.HOME.icon, Destination.HOME.label, current == Destination.HOME, item) { onNavigate(Destination.HOME) }
-        BarItem(Destination.SEARCH.icon, Destination.SEARCH.label, current == Destination.SEARCH, item) { onNavigate(Destination.SEARCH) }
-        BarItem(Destination.TV.icon, Destination.TV.label, current == Destination.TV, item) { onNavigate(Destination.TV) }
-        BarItem(Destination.LIBRARY.icon, Destination.LIBRARY.label, current == Destination.LIBRARY, item) { onNavigate(Destination.LIBRARY) }
-        BarItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS, item) { onNavigate(Destination.SETTINGS) }
+        listOf(Destination.HOME, Destination.SEARCH, Destination.TV, Destination.LIBRARY).forEach { d ->
+            BarItem(d.icon, d.label, current == d || (d == Destination.LIBRARY && current == Destination.SETTINGS), item) { onNavigate(d) }
+        }
     }
 }
 
@@ -162,17 +162,11 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
 private fun BarItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val fg = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
-        modifier.padding(horizontal = 2.dp).couchyClickable(RoundedCornerShape(14.dp), focusScale = 1f, onClick = onClick).padding(vertical = 4.dp),
+        modifier.padding(horizontal = 2.dp).couchyClickable(RoundedCornerShape(16.dp), focusScale = 1f, onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Box(
-            Modifier
-                .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(999.dp))
-                .padding(horizontal = 14.dp, vertical = 4.dp),
-        ) {
-            Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.primary else fg, modifier = Modifier.size(24.dp))
-        }
+        Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.primary else fg, modifier = Modifier.size(24.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1)
     }
 }

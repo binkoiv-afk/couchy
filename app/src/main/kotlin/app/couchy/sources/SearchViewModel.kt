@@ -21,6 +21,7 @@ import app.couchy.core.sources.Translator
 import app.couchy.core.sources.Sites
 import app.couchy.data.MediaEntity
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,7 +32,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class SearchMode(val label: String) { ALL("Фильмы и сериалы"), TORRENTS("Торренты") }
+enum class SearchMode(val label: String) {
+    ALL("Всё"), MOVIES("Фильмы"), SERIES("Сериалы"), TORRENTS("Торренты");
+
+    /** Films, series and "all" are one search shown three ways; torrents are a different search. */
+    val titles: Boolean get() = this != TORRENTS
+}
 
 data class SearchState(
     val query: String = "",
@@ -47,6 +53,18 @@ data class SearchState(
     /** Some results are shown and a slower source is still being asked. */
     val moreLoading: Boolean = false,
 )
+
+/** What Home shows to pick from: HDrezka's catalogue. Empty when the site cannot be reached. */
+data class Feed(
+    val fresh: List<Title> = emptyList(),
+    val films: List<Title> = emptyList(),
+    val series: List<Title> = emptyList(),
+    val cartoons: List<Title> = emptyList(),
+    val loaded: Boolean = false,
+) {
+    /** Films for the big banner at the top of Home. */
+    val featured: List<Title> get() = (fresh.filter { it.kind == TitleKind.MOVIE } + films).distinctBy { it.key }.take(6)
+}
 
 enum class SourceStatus { LOADING, READY, NOT_FOUND, BLOCKED, ERROR }
 
@@ -136,6 +154,25 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _feed = MutableStateFlow(Feed())
+    val feed: StateFlow<Feed> = _feed.asStateFlow()
+    private var feedAt = 0L
+
+    /** Loads the catalogue for Home; again only after a while, so coming back to Home is instant. */
+    fun loadFeed(force: Boolean = false) {
+        if (!force && System.currentTimeMillis() - feedAt < 30 * 60_000L && _feed.value.loaded) return
+        feedAt = System.currentTimeMillis()
+        viewModelScope.launch {
+            kotlinx.coroutines.coroutineScope {
+                val fresh = async { runCatching { catalog.rezka.list("/new/") }.getOrDefault(emptyList()) }
+                val films = async { runCatching { catalog.rezka.list("/films/?filter=watching") }.getOrDefault(emptyList()) }
+                val series = async { runCatching { catalog.rezka.list("/series/?filter=watching") }.getOrDefault(emptyList()) }
+                val cartoons = async { runCatching { catalog.rezka.list("/cartoons/?filter=watching") }.getOrDefault(emptyList()) }
+                _feed.value = Feed(fresh.await(), films.await(), series.await(), cartoons.await(), loaded = true)
+            }
+        }
+    }
+
     fun setQuery(text: String) {
         _search.update { it.copy(query = text) }
         // Typing on a phone searches by itself after a pause; the remote's keyboard submits.
@@ -144,7 +181,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setMode(mode: SearchMode) {
+        val before = _search.value.mode
         _search.update { it.copy(mode = mode) }
+        // Between "all", films and series only the filter changes; the results are already here.
+        if (before.titles && mode.titles && _search.value.searched) return
         submit()
     }
 

@@ -13,54 +13,56 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddLink
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.LiveTv
-import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.couchy.HomeState
+import app.couchy.core.sources.Title
+import app.couchy.core.sources.TitleKind
 import app.couchy.data.MediaEntity
+import app.couchy.sources.Feed
+import app.couchy.ui.components.Artwork
+import app.couchy.ui.components.CouchMark
 import app.couchy.ui.components.FormFactor
 import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.MediaCard
+import app.couchy.ui.components.PrimaryButton
 import app.couchy.ui.components.couchyClickable
+import app.couchy.ui.search.PosterCard
 import app.couchy.ui.shell.LocalKidsMode
-
-/** Quick ways in from Home. */
-enum class Shortcut(val label: String, val icon: ImageVector, val from: Color, val to: Color) {
-    HISTORY("История", Icons.Rounded.History, Color(0xFFE8772E), Color(0xFFB4501A)),
-    FAVORITES("Избранное", Icons.Rounded.Favorite, Color(0xFFD9466F), Color(0xFF9E2A4D)),
-    TV("ТВ-каналы", Icons.Rounded.LiveTv, Color(0xFF3B6FD8), Color(0xFF2A4C9E)),
-    TORRENTS("Торренты", Icons.Rounded.CloudDownload, Color(0xFF7A4FD6), Color(0xFF55339E)),
-    LINK("По ссылке", Icons.Rounded.AddLink, Color(0xFF1E9C8C), Color(0xFF137064)),
-    SETTINGS("Настройки", Icons.Rounded.Settings, Color(0xFF5A6070), Color(0xFF3C414D)),
-}
-
-private val kidsShortcuts = listOf(Shortcut.HISTORY, Shortcut.FAVORITES, Shortcut.TV)
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 
 class HomeActions(
     val onPlay: (MediaEntity) -> Unit,
@@ -69,169 +71,225 @@ class HomeActions(
     val onOpen: () -> Unit,
     /** Opens the search screen with the keyboard up. */
     val onSearch: () -> Unit = {},
-    /** Repeats a recent search. */
-    val onQuery: (String) -> Unit = {},
     /** Voice search; null where the device has none. */
     val onVoice: (() -> Unit)? = null,
-    val onShortcut: (Shortcut) -> Unit = {},
+    /** A film or series from the catalogue: its page with every way to watch it. */
+    val onTitle: (Title) -> Unit = {},
 )
 
 /**
- * Home starts with the search, since finding something to watch is why people open Couchy.
- * Under it: quick tiles, then what is being watched, favourites and recently added.
+ * Home is a shop window: a big banner of what is new, the search right on it, then what you
+ * are watching and what everybody watches now. Without the catalogue it is your library.
  */
 @Composable
-fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Modifier, searches: List<String> = emptyList()) {
+fun HomeContent(state: HomeState, actions: HomeActions, modifier: Modifier = Modifier, feed: Feed = Feed()) {
     val form = LocalFormFactor.current
     val kids = LocalKidsMode.current
-    val side = if (form.wide) 32.dp else 18.dp
-    val cardWidth = when (form) {
-        FormFactor.TV -> 260.dp
-        FormFactor.TABLET -> 250.dp
-        FormFactor.PHONE -> 200.dp
-    }
-    val firstFocus = remember { FocusRequester() }
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp)) {
-        if (!kids) {
-            item("search") {
-                Column(Modifier.padding(horizontal = side, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("Что посмотрим?", style = if (form.isTv) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall)
-                    SearchBar(actions, Modifier.focusRequester(firstFocus))
-                }
-            }
-            if (searches.isNotEmpty()) item("searches") {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = side, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(searches.take(10)) { q -> RecentQuery(q) { actions.onQuery(q) } }
+    val side = if (form.wide) 40.dp else 18.dp
+    val searchFocus = remember { FocusRequester() }
+    val featured = if (kids) emptyList() else feed.featured
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = if (form.wide) 40.dp else 120.dp)) {
+        item("hero") {
+            if (featured.isNotEmpty()) {
+                Hero(featured, actions, side, searchFocus)
+            } else {
+                Column(Modifier.statusBarsPadding().padding(horizontal = side).padding(top = 14.dp, bottom = 6.dp)) {
+                    if (!kids) TopBar(actions, searchFocus, onImage = false)
+                    Text(
+                        if (kids) "Мультики и любимое" else "Что посмотрим?",
+                        style = if (form.wide) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineLarge,
+                        modifier = Modifier.padding(top = 22.dp),
+                    )
                 }
             }
         }
-        item("tiles") {
-            val tiles = if (kids) kidsShortcuts else Shortcut.entries
-            val perRow = if (form.wide) tiles.size else 3
-            Column(
-                Modifier.padding(horizontal = side).padding(top = 14.dp).widthIn(max = 1400.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                tiles.chunked(perRow).forEachIndexed { r, row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        row.forEachIndexed { i, s ->
-                            val focus = if (kids && r == 0 && i == 0) Modifier.focusRequester(firstFocus) else Modifier
-                            Tile(s, Modifier.weight(1f).then(focus)) { actions.onShortcut(s) }
-                        }
-                        repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
+        fun posters(key: String, title: String, items: List<Title>) {
+            if (items.isEmpty()) return
+            item(key) { Shelf(title, side) { PosterRow(items, side, actions.onTitle) } }
         }
-        fun row(key: String, title: String, items: List<MediaEntity>) {
+        fun media(key: String, title: String, items: List<MediaEntity>) {
             if (items.isEmpty()) return
             item(key) {
-                Column(Modifier.padding(top = 22.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = side).padding(bottom = 12.dp))
+                Shelf(title, side) {
+                    val width = when (form) {
+                        FormFactor.TV -> 300.dp
+                        FormFactor.TABLET -> 270.dp
+                        FormFactor.PHONE -> 230.dp
+                    }
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = side, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 20.dp else 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 18.dp else 12.dp),
                     ) {
-                        items(items, key = { it.uri }) { media ->
-                            MediaCard(media, cardWidth, onClick = { actions.onPlay(media) }, onLongClick = { actions.onMore(media) })
+                        items(items, key = { it.uri }) { m ->
+                            MediaCard(m, width, onClick = { actions.onPlay(m) }, onLongClick = { actions.onMore(m) })
                         }
                     }
                 }
             }
         }
-        row("continue", "Продолжить просмотр", state.continueWatching)
-        row("favorites", "Избранное", state.favorites)
-        row("recent", "Недавно добавленные", state.recent)
-        if (state.isEmpty && !kids) item("empty") {
+        media("continue", "Продолжить", state.continueWatching)
+        if (!kids) {
+            posters("fresh", "Новинки", feed.fresh.filter { f -> featured.none { it.key == f.key } }.ifEmpty { feed.fresh })
+            posters("films", "Сейчас смотрят", feed.films)
+            posters("series", "Сериалы", feed.series)
+            posters("cartoons", "Мультфильмы", feed.cartoons)
+        }
+        media("favorites", "Избранное", state.favorites)
+        media("recent", "Недавно открытые", state.recent.filter { r -> state.continueWatching.none { it.uri == r.uri } })
+        if (state.isEmpty && !kids && featured.isEmpty() && feed.loaded) item("empty") {
             Text(
-                "Здесь появится то, что вы смотрите. Найдите фильм или сериал в поиске: Couchy ищет сразу на HDrezka, " +
-                    "в онлайн-кинотеатрах и на торрент-трекерах, и показывает всё в одном месте.",
+                "Найдите фильм или сериал в поиске: Couchy ищет сразу на HDrezka, в онлайн-кинотеатрах и на торрент-трекерах.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = side).padding(top = 24.dp).widthIn(max = 640.dp),
+                modifier = Modifier.padding(horizontal = side).padding(top = 20.dp).widthIn(max = 640.dp),
             )
         }
     }
     // The remote starts on the search, so OK immediately opens it.
     LaunchedEffect(form, state.loaded) {
-        if (form.isTv && state.loaded) runCatching { firstFocus.requestFocus() }
+        if (form.isTv && state.loaded && !kids) runCatching { searchFocus.requestFocus() }
     }
 }
 
-/** Looks like a search field; opens the real one, so the keyboard does not pop up over Home. */
+/** The new films, one at a time, turning by themselves; search and logo sit over the picture. */
 @Composable
-private fun SearchBar(actions: HomeActions, modifier: Modifier = Modifier) {
+private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus: FocusRequester) {
     val form = LocalFormFactor.current
-    val shape = RoundedCornerShape(18.dp)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier
-                .weight(1f)
-                .height(if (form.isTv) 64.dp else 58.dp)
-                .couchyClickable(shape, focusScale = 1.02f, onClick = actions.onSearch)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
-                .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), shape)
-                .padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
-            Text(
-                "Фильм, сериал или мультфильм",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+    val pager = rememberPagerState { items.size }
+    var interacted by remember { mutableStateOf(false) }
+    LaunchedEffect(items, interacted) {
+        while (!interacted && items.size > 1) {
+            delay(7_000)
+            pager.animateScrollToPage((pager.currentPage + 1) % items.size)
         }
-        actions.onVoice?.let { voice ->
-            Box(
-                Modifier
-                    .size(if (form.isTv) 64.dp else 58.dp)
-                    .couchyClickable(shape, onClick = voice)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape),
-                contentAlignment = Alignment.Center,
+    }
+    val height = when (form) {
+        FormFactor.PHONE -> 560.dp
+        FormFactor.TABLET -> 480.dp
+        FormFactor.TV -> 430.dp
+    }
+    val bg = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxWidth().height(height)) {
+        HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+            val t = items[page]
+            Box(Modifier.fillMaxSize()) {
+                Artwork(t.name, Modifier.fillMaxSize()) {
+                    AsyncImage(t.poster, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                Box(
+                    Modifier.fillMaxSize().background(
+                        if (form.wide) Brush.horizontalGradient(0f to bg, 0.55f to bg.copy(alpha = 0.55f), 1f to Color.Transparent)
+                        else Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.22f to Color.Transparent, 0.55f to bg.copy(alpha = 0.35f), 1f to bg),
+                    ),
+                )
+                if (form.wide) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to bg)))
+                Column(
+                    Modifier.align(Alignment.BottomStart).padding(horizontal = side).padding(bottom = 34.dp).widthIn(max = 560.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        if (t.kind == TitleKind.SERIES) "НОВЫЙ СЕРИАЛ НА HDREZKA" else "НОВИНКА НА HDREZKA",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFB070),
+                    )
+                    Text(
+                        t.name,
+                        style = if (form == FormFactor.PHONE) MaterialTheme.typography.displaySmall else MaterialTheme.typography.displayMedium,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val meta = listOfNotNull(t.info ?: t.year?.toString(), t.rating).joinToString(" · ")
+                    if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(6.dp))
+                    PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = { interacted = true; actions.onTitle(t) })
+                }
+            }
+        }
+        // Over the picture: the logo and the search, always one tap away.
+        Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = side).padding(top = 12.dp)) {
+            TopBar(actions, searchFocus, onImage = true)
+        }
+        if (items.size > 1) {
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(horizontal = side).padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Icon(Icons.Rounded.Mic, "Голосовой поиск", tint = MaterialTheme.colorScheme.onSurface)
+                repeat(items.size) { i ->
+                    val on = i == pager.currentPage
+                    Box(
+                        Modifier.height(6.dp).width(if (on) 18.dp else 6.dp).clip(CircleShape)
+                            .background(if (on) Color.White else Color.White.copy(alpha = 0.35f)),
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RecentQuery(text: String, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(999.dp)
-    Row(
-        Modifier
-            .height(36.dp)
-            .couchyClickable(shape, onClick = onClick)
-            .background(MaterialTheme.colorScheme.surfaceContainer, shape)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+private fun TopBar(actions: HomeActions, searchFocus: FocusRequester, onImage: Boolean) {
+    val form = LocalFormFactor.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!form.wide) CouchMark(36.dp)
+        SearchPill(actions, Modifier.weight(1f).widthIn(max = 720.dp).focusRequester(searchFocus), onImage)
     }
 }
 
-/** A coloured tile; white on a saturated colour reads the same in the dark and the light theme. */
+/** Looks like a search field; opens the real one, so the keyboard does not pop up over Home. */
 @Composable
-private fun Tile(shortcut: Shortcut, modifier: Modifier, onClick: () -> Unit) {
+private fun SearchPill(actions: HomeActions, modifier: Modifier, onImage: Boolean) {
     val form = LocalFormFactor.current
-    val shape = RoundedCornerShape(18.dp)
-    Column(
+    val shape = RoundedCornerShape(999.dp)
+    val fill = if (onImage) Color(0xFF16181F).copy(alpha = 0.62f) else MaterialTheme.colorScheme.surfaceContainerHigh
+    val fg = if (onImage) Color.White else MaterialTheme.colorScheme.onSurface
+    Row(
         modifier
-            .height(if (form.isTv) 112.dp else 92.dp)
-            .couchyClickable(shape, focusScale = 1.05f, onClick = onClick)
-            .background(Brush.linearGradient(listOf(shortcut.from, shortcut.to)), shape)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .height(if (form.isTv) 56.dp else 48.dp)
+            .couchyClickable(shape, focusScale = 1.03f, onClick = actions.onSearch)
+            .background(fill, shape)
+            .border(1.dp, fg.copy(alpha = 0.14f), shape)
+            .padding(start = 16.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(shortcut.icon, null, tint = Color.White, modifier = Modifier.size(if (form.isTv) 30.dp else 26.dp))
-        Text(shortcut.label, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(Icons.Rounded.Search, null, tint = fg, modifier = Modifier.size(22.dp))
+        Text(
+            "Фильм, сериал, мультфильм",
+            style = MaterialTheme.typography.bodyLarge,
+            color = fg.copy(alpha = 0.65f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        actions.onVoice?.let { voice ->
+            Box(Modifier.size(38.dp).couchyClickable(CircleShape, onClick = voice), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Mic, "Голосовой поиск", tint = fg, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Shelf(title: String, side: Dp, content: @Composable () -> Unit) {
+    Column(Modifier.padding(top = 22.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = side).padding(bottom = 10.dp))
+        content()
+    }
+}
+
+@Composable
+private fun PosterRow(items: List<Title>, side: Dp, onTitle: (Title) -> Unit) {
+    val form = LocalFormFactor.current
+    val width = when (form) {
+        FormFactor.TV -> 170.dp
+        FormFactor.TABLET -> 150.dp
+        FormFactor.PHONE -> 118.dp
+    }
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = side, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 18.dp else 10.dp),
+    ) {
+        items(items, key = { it.key }) { t -> PosterCard(t, onClick = { onTitle(t) }, modifier = Modifier.width(width)) }
     }
 }

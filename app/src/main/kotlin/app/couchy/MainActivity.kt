@@ -36,7 +36,6 @@ import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.rememberFormFactor
 import app.couchy.ui.home.HomeActions
 import app.couchy.ui.home.HomeContent
-import app.couchy.ui.home.Shortcut
 import app.couchy.sources.SearchMode
 import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
@@ -186,6 +185,8 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val torrentAutoPlay by torrentVm.autoPlay.collectAsStateWithLifecycle()
     val pendingTorrent by vm.pendingTorrent.collectAsStateWithLifecycle()
     val search by searchVm.search.collectAsStateWithLifecycle()
+    val feed by searchVm.feed.collectAsStateWithLifecycle()
+    LaunchedEffect(destination) { if (destination == Destination.HOME) searchVm.loadFeed() }
     val titlePage by searchVm.title.collectAsStateWithLifecycle()
     val challenge by searchVm.challenge.collectAsStateWithLifecycle()
     val sourceAutoPlay by searchVm.autoPlay.collectAsStateWithLifecycle()
@@ -438,20 +439,10 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onFavorite = vm::toggleFavorite,
                     onOpen = { showOpen = true },
                     onSearch = { destination = Destination.SEARCH; searchFocus += 1 },
-                    onQuery = { q -> destination = Destination.SEARCH; searchVm.submit(q) },
                     onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
-                    onShortcut = { s ->
-                        when (s) {
-                            Shortcut.HISTORY -> { vm.setFilter(LibraryFilter.ALL); destination = Destination.LIBRARY }
-                            Shortcut.FAVORITES -> { vm.setFilter(LibraryFilter.FAVORITES); destination = Destination.LIBRARY }
-                            Shortcut.TV -> { destination = Destination.TV }
-                            Shortcut.TORRENTS -> { searchVm.setMode(SearchMode.TORRENTS); destination = Destination.SEARCH; searchFocus += 1 }
-                            Shortcut.LINK -> { showOpen = true }
-                            Shortcut.SETTINGS -> { if (kids) askPin = true else destination = Destination.SETTINGS }
-                        }
-                    },
+                    onTitle = searchVm::openTitle,
                 ),
-                searches = search.history,
+                feed = feed,
             )
             Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
             Destination.SEARCH -> SearchContent(
@@ -475,6 +466,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onMore = { if (!kids) actionsFor = it },
                     onFilter = vm::setFilter,
                     onSort = { vm.setSort(it) },
+                    onSettings = { if (kids) askPin = true else destination = Destination.SETTINGS },
                 ),
             )
             Destination.SETTINGS -> prefs?.let { p ->

@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-private val ButtonShape = RoundedCornerShape(12.dp)
+private val ButtonShape = RoundedCornerShape(14.dp)
 
 /** The orange main action, "Смотреть". */
 @Composable
@@ -27,13 +27,14 @@ fun PrimaryButton(text: String, icon: ImageVector?, onClick: () -> Unit, modifie
         modifier
             .height(48.dp)
             .couchyClickable(ButtonShape, onClick = onClick)
-            .background(MaterialTheme.colorScheme.primary, ButtonShape)
+            // White on dark, near-black on light: the one button that says "this is the way".
+            .background(MaterialTheme.colorScheme.onBackground, ButtonShape)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (icon != null) Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary, maxLines = 1)
+        if (icon != null) Icon(icon, null, tint = MaterialTheme.colorScheme.background, modifier = Modifier.size(20.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.background, maxLines = 1)
     }
 }
 

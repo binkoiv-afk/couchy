@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.couchy.CouchyApp
+import app.couchy.core.Kids
 import app.couchy.LiveChannel
 import app.couchy.Playback
 import app.couchy.core.iptv.CatchupUrl
@@ -55,7 +56,7 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Kids mode shows only children's groups. */
     private val visibleChannels = combine(repo.channels, (app as CouchyApp).settings.prefs) { channels, p ->
-        if (p.kidsMode) channels.filter { app.couchy.core.Kids.isKidsGroup(it.groupName) } else channels
+        if (p.kidsMode) channels.filter { Kids.isKidsGroup(it.groupName) } else channels
     }
 
     val state: StateFlow<TvState> = combine(repo.playlists, visibleChannels, upcoming, group, combine(refreshing, clock) { r, c -> r to c }) { playlists, channels, programs, selected, (busy, now) ->

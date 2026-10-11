@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.material.icons.rounded.Favorite
 
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Delete
 
@@ -93,6 +95,12 @@ fun LibraryContent(
             item {
                 Chip("Загрузки · ${downloads.size}", list == "saved", onClick = { list = if (list == "saved") null else "saved" }, icon = Icons.Rounded.Download)
             }
+            item {
+                Chip("Просмотрено · ${state.saved.seen.size}", list == "seen", onClick = { list = if (list == "seen") null else "seen" }, icon = Icons.Rounded.CheckCircle)
+            }
+            item {
+                Chip("Мои оценки · ${state.saved.rated.size}", list == "rated", onClick = { list = if (list == "rated") null else "rated" }, icon = Icons.Rounded.Star)
+            }
             items(LibraryFilter.entries) { f -> Chip(f.label, list == null && f == state.filter, onClick = { list = null; actions.onFilter(f) }) }
             item {
                 // One chip that cycles through the orders: easy on a remote, no menus to dig through.
@@ -110,13 +118,16 @@ fun LibraryContent(
         val titles = when (list) {
             "later" -> state.saved.later
             "loved" -> state.saved.loved
+            "seen" -> state.saved.seen
+            "rated" -> state.saved.rated.sortedByDescending { state.saved.scores[it.key] ?: 0 }
             else -> null
         }
         if (titles != null) {
             if (titles.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(side), contentAlignment = Alignment.Center) {
                     Text(
-                        if (list == "later") "Откройте фильм и нажмите «Смотреть позже»: он появится здесь и на главной."
+                        if (list == "seen" || list == "rated") "Отмечайте на странице фильма «Просмотрено» и ставьте оценку: по ним Couchy подбирает «Для вас»."
+                        else if (list == "later") "Откройте фильм и нажмите «Смотреть позже»: он появится здесь и на главной."
                         else "Откройте фильм и нажмите «Любимое»: так собирается ваша подборка.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

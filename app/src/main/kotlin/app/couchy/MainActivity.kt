@@ -564,6 +564,8 @@ private fun MainScreen(
                     later = saved.later.any { it.key == page.title.key },
                     loved = saved.loved.any { it.key == page.title.key },
                     following = page.title.imdbId != null && page.title.imdbId in following,
+                    seen = saved.seen.any { it.key == page.title.key },
+                    score = saved.scores[page.title.key],
                 ),
                 TitleActions(
                     onBack = searchVm::back,
@@ -584,6 +586,8 @@ private fun MainScreen(
                     onLater = { searchVm.toggleLater(page.title) },
                     onLoved = { searchVm.toggleLoved(page.title) },
                     onFollow = { searchVm.toggleFollow(page.title) },
+                    onSeen = { searchVm.toggleSeen(page.title) },
+                    onRate = { searchVm.rate(page.title, it) },
                 ),
             )
             if (sourceBusy || ytBusy) {

@@ -49,7 +49,20 @@ class Marks(context: Context) {
         if (has(key)) remove(key) else put(key, TitleJson.encode(listOf(t)).getJSONObject(0))
     }
 
+    /** The person's own score, 1 to 10; null takes it away. */
+    fun rate(t: Title, score: Int?) {
+        val key = "$RATED|${t.key}"
+        if (score == null) remove(key) else put(key, TitleJson.encode(listOf(t)).getJSONObject(0).put("score", score.coerceIn(1, 10)))
+    }
+
+    /** Scores by title key. */
+    fun scores(): Map<String, Int> = _all.value.filterKeys { it.startsWith("$RATED|") }
+        .mapNotNull { (k, v) -> runCatching { k.substringAfter('|') to JSONObject(v).getInt("score") }.getOrNull() }.toMap()
+
     companion object {
+        /** Watched, by the person's own word. */
+        const val SEEN = "seen"
+        const val RATED = "rated"
         const val LATER = "later"
         const val LOVED = "loved"
         /** Series whose new episodes the person hears about. */
@@ -59,4 +72,11 @@ class Marks(context: Context) {
 }
 
 /** The two title lists Home and "Моё" show. */
-data class SavedTitles(val later: List<Title> = emptyList(), val loved: List<Title> = emptyList())
+data class SavedTitles(
+    val later: List<Title> = emptyList(),
+    val loved: List<Title> = emptyList(),
+    val seen: List<Title> = emptyList(),
+    val rated: List<Title> = emptyList(),
+    /** The person's scores by title key. */
+    val scores: Map<String, Int> = emptyMap(),
+)

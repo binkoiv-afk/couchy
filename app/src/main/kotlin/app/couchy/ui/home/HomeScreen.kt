@@ -149,6 +149,7 @@ fun HomeContent(
             posters("loved", "Любимое", saved.loved)
         }
         if (!kids) {
+            posters("forYou", "Для вас" + (feed.forYouBecause?.let { " · потому что понравился «$it»" } ?: ""), feed.forYou)
             feed.similarTo?.let { name -> posters("similar", "Похоже на «$name»", feed.similar) }
             posters("trending", "В тренде на этой неделе", feed.trending.filter { f -> featured.none { it.key == f.key } })
             posters("fresh", "Новинки", feed.fresh, CatalogFilter(sort = CatalogSort.LAST))

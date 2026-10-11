@@ -79,6 +79,9 @@ data class Feed(
     val trending: List<Title> = emptyList(),
     /** HDrezka's new arrivals, when the site answers. */
     val rezka: List<Title> = emptyList(),
+    /** Picked for the person from what they loved and scored high. */
+    val forYou: List<Title> = emptyList(),
+    val forYouBecause: String? = null,
     /** In cinemas now (TMDB). */
     val cinema: List<Title> = emptyList(),
     val best: List<Title> = emptyList(),
@@ -151,6 +154,9 @@ data class TitleUi(
     val later: Boolean = false,
     val loved: Boolean = false,
     val following: Boolean = false,
+    val seen: Boolean = false,
+    /** The person's own score, 1 to 10. */
+    val score: Int? = null,
 )
 
 /**
@@ -182,7 +188,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "Смотреть позже" and "Любимое": the person's own lists of films and series. */
     val saved: StateFlow<SavedTitles> = marks.all
-        .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED)) }
+        .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED), marks.titles(Marks.SEEN), marks.titles(Marks.RATED), marks.scores()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SavedTitles())
 
     fun toggleLater(t: Title) = keep(Marks.LATER, t)
@@ -203,6 +209,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     val following: StateFlow<Set<String>> = marks.all
         .map { NewEpisodes.followed(marks).mapNotNull { it.imdbId }.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    /** "Просмотрено": a watched film leaves "Смотреть позже" and the picks made for the person. */
+    fun toggleSeen(t: Title) {
+        val adding = !marks.hasTitle(Marks.SEEN, t)
+        marks.toggleTitle(Marks.SEEN, t)
+        if (adding && marks.hasTitle(Marks.LATER, t)) marks.toggleTitle(Marks.LATER, t)
+        couchy.sync.syncSoon()
+    }
+
+    fun rate(t: Title, score: Int?) {
+        marks.rate(t, score)
+        if (score != null && !marks.hasTitle(Marks.SEEN, t)) marks.toggleTitle(Marks.SEEN, t)
+        couchy.sync.syncSoon()
+        viewModelScope.launch { loadForYou() }
+    }
 
     fun toggleFollow(t: Title) {
         val on = marks.hasTitle(Marks.FOLLOW, t)
@@ -294,7 +315,25 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 _feed.update { it.copy(rezka = rezka.await()) }
             }
             loadSimilar()
+            loadForYou()
         }
+    }
+
+    /**
+     * "Для вас": TMDB's recommendations for what the person loved or scored 7 and up, newest
+     * first, without what they have seen or kept already.
+     */
+    private suspend fun loadForYou() {
+        if (!meta.tmdb) return
+        val scores = marks.scores()
+        val liked = (marks.titles(Marks.RATED).filter { (scores[it.key] ?: 0) >= 7 } + marks.titles(Marks.LOVED)).distinctBy { it.key }.take(4)
+        if (liked.isEmpty()) return
+        val known = (marks.titles(Marks.SEEN) + marks.titles(Marks.RATED) + marks.titles(Marks.LOVED) + marks.titles(Marks.LATER)).map { it.key }.toSet()
+        val lists = liked.map { t -> runCatching { meta.info(t)?.details?.similar }.getOrNull().orEmpty() }
+        // Taking turns between the lists keeps one film from filling the row.
+        val mixed = (0 until (lists.maxOfOrNull { it.size } ?: 0)).flatMap { i -> lists.mapNotNull { it.getOrNull(i) } }
+            .filter { it.key !in known }.distinctBy { it.key }.take(24)
+        _feed.update { it.copy(forYou = mixed, forYouBecause = liked.first().name) }
     }
 
     /** "Похоже на …": the site's picks for the last title watched from it. */

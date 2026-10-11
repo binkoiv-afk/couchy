@@ -1,6 +1,10 @@
 package app.couchy.ui.search
 
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.NotificationsActive
 
@@ -109,6 +113,9 @@ class TitleActions(
     val onLoved: () -> Unit = {},
     /** Hearing about new episodes of a series. */
     val onFollow: () -> Unit = {},
+    val onSeen: () -> Unit = {},
+    /** The person's score, 1 to 10, or null to take it away. */
+    val onRate: (Int?) -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -660,6 +667,32 @@ private fun EpisodeTile(number: Int, progress: Float, watched: Boolean, onClick:
 private fun Keep(state: TitleUi, actions: TitleActions) {
     var quality by remember { mutableStateOf(app.couchy.QualityChoice.label) }
     var picking by remember { mutableStateOf(false) }
+    var rating by remember { mutableStateOf(false) }
+    if (rating) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { rating = false },
+            confirmButton = {},
+            title = { Text("Ваша оценка") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Оценки 7 и выше подбирают ряд «Для вас» на главной.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        (1..10).forEach { n ->
+                            app.couchy.ui.components.Chip("$n", n == state.score, onClick = { actions.onRate(n); rating = false })
+                        }
+                        if (state.score != null) app.couchy.ui.components.Chip("Убрать", false, onClick = { actions.onRate(null); rating = false })
+                    }
+                }
+            },
+        )
+    }
     androidx.compose.foundation.layout.FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -675,6 +708,18 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
             state.loved,
             onClick = actions.onLoved,
             icon = if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+        )
+        app.couchy.ui.components.Chip(
+            "Просмотрено",
+            state.seen,
+            onClick = actions.onSeen,
+            icon = if (state.seen) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+        )
+        app.couchy.ui.components.Chip(
+            state.score?.let { "Моя оценка: $it" } ?: "Оценить",
+            state.score != null,
+            onClick = { rating = true },
+            icon = if (state.score != null) Icons.Rounded.Star else Icons.Rounded.StarBorder,
         )
         if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
             val context = androidx.compose.ui.platform.LocalContext.current

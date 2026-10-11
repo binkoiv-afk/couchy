@@ -298,6 +298,10 @@ class ScreensTest {
         TitleContent(titleUi.copy(title = found[0], rezka = RezkaUi(SourceStatus.BLOCKED), sites = emptyList(), sitesLoading = true, torrentsLoading = true, torrents = emptyList()), titleActions)
     }
 
+    @Test fun phoneTitleSite() = snap("phone_title_site", phone, FormFactor.PHONE) {
+        TitleContent(titleUi.copy(rezka = RezkaUi(SourceStatus.NOT_FOUND)), titleActions)
+    }
+
     @Test fun tvPlayer() = snap("tv_player", tv, FormFactor.TV) { player(touch = false) }
     @Test fun phonePlayer() = snap(
         "phone_player",

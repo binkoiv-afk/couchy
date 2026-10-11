@@ -100,6 +100,8 @@ fun TitleContent(state: TitleUi, actions: TitleActions, modifier: Modifier = Mod
 @Composable
 private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, padding: PaddingValues, phoneHeader: Boolean = false) {
     val t = state.title
+    var selected by rememberSaveable(t.name, t.year) { mutableStateOf<String?>(null) }
+    val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item("head") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -120,36 +122,124 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 }
             }
         }
-        item("online") { Online(state, actions) }
-        item("torrents-head") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("Торренты")
-                if (state.torrentsLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                else Text("${state.torrents.sumOf { it.hits.size }} раздач", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        if (!state.torrentsLoading && state.torrents.isEmpty()) {
-            item("torrents-none") { Muted("Раздач не нашлось.") }
-        }
-        state.torrents.forEach { group ->
-            item("g-${group.label}") {
-                var open by rememberSaveable(group.label) { mutableStateOf(false) }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(group.label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                    val shown = if (open) group.hits else group.hits.take(4)
-                    shown.forEach { hit -> TorrentRow(hit, onClick = { actions.onTorrent(hit) }) }
-                    if (group.hits.size > 4) {
-                        Text(
-                            if (open) "Свернуть" else "Ещё ${group.hits.size - 4}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp)) { open = !open }.padding(8.dp),
-                        )
+        item("services") { Services(state, selected, onSelect = { selected = it }, actions) }
+        when (val src = current) {
+            Source.Rezka -> item("rezka") { Card("HDrezka") { RezkaBody(state, actions) } }
+            is Source.OnSite -> item("site-${src.hit.site}") { Card(siteName(src.hit.site)) { SiteBody(state, src.hit, actions) } }
+            Source.Torrents -> {
+                if (state.torrentsLoading) item("t-loading") { Card("Торренты") { Loading("Ищу раздачи…") } }
+                else if (state.torrents.isEmpty()) item("t-none") { Card("Торренты") { Muted("Раздач не нашлось.") } }
+                state.torrents.forEach { group ->
+                    item("g-${group.label}") {
+                        var open by rememberSaveable(group.label) { mutableStateOf(false) }
+                        Card("Торренты · ${group.label}", "${group.hits.size}") {
+                            val shown = if (open) group.hits else group.hits.take(4)
+                            shown.forEach { hit -> TorrentRow(hit, onClick = { actions.onTorrent(hit) }) }
+                            if (group.hits.size > 4) {
+                                Text(
+                                    if (open) "Свернуть" else "Ещё ${group.hits.size - 4}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp)) { open = !open }.padding(8.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** One place a title can be watched from; the page shows one at a time, all in the same card style. */
+private sealed interface Source {
+    val id: String
+
+    data object Rezka : Source {
+        override val id = "rezka"
+    }
+
+    data class OnSite(val hit: SiteHit) : Source {
+        override val id = "site:" + hit.site
+    }
+
+    data object Torrents : Source {
+        override val id = "torrents"
+    }
+}
+
+private fun siteName(id: String) = Sites.all.firstOrNull { it.id == id }?.name ?: id
+
+private fun sources(state: TitleUi): List<Source> = listOf(Source.Rezka) + state.sites.map { Source.OnSite(it) } + Source.Torrents
+
+/** Opens on the first source that has the title: HDrezka, then the cinemas, then torrents. */
+private fun firstReady(state: TitleUi): Source = when {
+    state.rezka.status == SourceStatus.READY || state.rezka.status == SourceStatus.BLOCKED -> Source.Rezka
+    state.sites.isNotEmpty() -> Source.OnSite(state.sites.first())
+    state.rezka.status == SourceStatus.LOADING || state.sitesLoading -> Source.Rezka
+    state.torrents.isNotEmpty() || state.torrentsLoading -> Source.Torrents
+    else -> Source.Rezka
+}
+
+/** The row of services: each with what it has, the chosen one highlighted. */
+@Composable
+private fun Services(state: TitleUi, selected: String?, onSelect: (String) -> Unit, actions: TitleActions) {
+    val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle("Где смотреть")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+            items(sources(state), key = { it.id }) { src ->
+                val label = when (src) {
+                    Source.Rezka -> "HDrezka" + when (state.rezka.status) {
+                        SourceStatus.LOADING -> " · …"
+                        SourceStatus.NOT_FOUND -> " · нет"
+                        SourceStatus.BLOCKED -> " · проверка"
+                        SourceStatus.ERROR -> " · ошибка"
+                        SourceStatus.READY -> state.rezka.page?.translators?.size?.takeIf { it > 1 }?.let { " · $it озвучек" } ?: ""
+                    }
+                    is Source.OnSite -> siteName(src.hit.site)
+                    Source.Torrents -> "Торренты · " + if (state.torrentsLoading) "…" else "${state.torrents.sumOf { it.hits.size }}"
+                }
+                Chip(label, src.id == current.id, onClick = { onSelect(src.id) })
+            }
+            if (state.sitesLoading) item("sites-loading") { Chip("Ищу на сайтах…", false, onClick = {}) }
+            // Cinemas without a readable search, and those that did not find the title by name, open their own search.
+            val found = state.sites.map { it.site }.toSet()
+            items(Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }, key = { "find:" + it.id }) { site ->
+                Chip("${site.name} ↗", false, onClick = { actions.onSearchSite(site) })
+            }
+        }
+    }
+}
+
+/** The card every service's results sit in. */
+@Composable
+private fun Card(title: String, meta: String? = null, content: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(18.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+            meta?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun Loading(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+        Muted(text)
+    }
+}
+
+@Composable
+private fun SiteBody(state: TitleUi, hit: SiteHit, actions: TitleActions) {
+    Muted(listOfNotNull(hit.name, hit.year?.toString()).joinToString(" · "))
+    Muted("Видео идёт из плеера сайта: озвучку и серию выбираете там, смотрите в Couchy без рекламы.")
+    PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = { actions.onSite(hit) })
 }
 
 @Composable
@@ -176,76 +266,22 @@ private fun Muted(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Online(state: TitleUi, actions: TitleActions) {
+private fun RezkaBody(state: TitleUi, actions: TitleActions) {
     val r: RezkaUi = state.rezka
-    Column(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(18.dp)).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Онлайн", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
-            Text(
-                "HDrezka",
-                color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.background(Color(0xFF3B6EA8), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
-            )
+    when (r.status) {
+        SourceStatus.LOADING -> Loading("Ищу на HDrezka…")
+        SourceStatus.NOT_FOUND -> Muted("На HDrezka этого нет. Посмотрите другие сервисы выше.")
+        SourceStatus.ERROR -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Muted(r.error ?: "HDrezka не ответила.")
+            SecondaryButton("Ещё раз", Icons.Rounded.Refresh, onClick = actions.onRetryRezka)
         }
-        when (r.status) {
-            SourceStatus.LOADING -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                Muted("Ищу на HDrezka…")
-            }
-            SourceStatus.NOT_FOUND -> Muted("На HDrezka этого нет.")
-            SourceStatus.ERROR -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Muted(r.error ?: "HDrezka не ответила.")
-                SecondaryButton("Ещё раз", Icons.Rounded.Refresh, onClick = actions.onRetryRezka)
-            }
-            SourceStatus.BLOCKED -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Muted("HDrezka просит подтвердить, что вы не бот. Это займёт пару секунд.")
-                PrimaryButton("Пройти проверку", Icons.Rounded.VerifiedUser, onClick = actions.onChallenge)
-            }
-            SourceStatus.READY -> Ready(state, r, actions)
+        SourceStatus.BLOCKED -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Muted("HDrezka просит подтвердить, что вы не бот. Это займёт пару секунд.")
+            PrimaryButton("Пройти проверку", Icons.Rounded.VerifiedUser, onClick = actions.onChallenge)
         }
-        OtherSites(state, actions)
+        SourceStatus.READY -> Ready(state, r, actions)
     }
-}
-
-/** The same title on other cinemas: found ones play in a tap, the rest open their own search. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OtherSites(state: TitleUi, actions: TitleActions) {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Другие сайты", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (state.sitesLoading) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-    }
-    val found = state.sites.map { it.site }.toSet()
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        state.sites.forEach { hit ->
-            val name = Sites.all.firstOrNull { it.id == hit.site }?.name ?: hit.site
-            SiteButton("▶  $name", primary = true) { actions.onSite(hit) }
-        }
-        // Sites that cannot be searched from here, and parsed ones that did not find the title by name.
-        Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }.forEach { site ->
-            SiteButton("${site.name} ↗", primary = false) { actions.onSearchSite(site) }
-        }
-    }
-}
-
-@Composable
-private fun SiteButton(text: String, primary: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (primary) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .couchyClickable(shape, onClick = onClick)
-            .background(if (primary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

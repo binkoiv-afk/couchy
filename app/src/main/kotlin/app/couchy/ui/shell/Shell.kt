@@ -23,9 +23,11 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -53,7 +55,7 @@ fun Shell(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () ->
     if (form.wide) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Rail(current, onNavigate, onOpen, compact = form == FormFactor.TV)
-            Box(Modifier.fillMaxSize().statusBarsPadding()) { content() }
+            Box(Modifier.fillMaxSize().statusBarsPadding()) { Themed(content) }
         }
     } else {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -63,11 +65,16 @@ fun Shell(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () ->
             ) {
                 CouchyLogo(30.dp)
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+            Box(Modifier.weight(1f).fillMaxWidth()) { Themed(content) }
             BottomBar(current, onNavigate, onOpen)
         }
     }
 }
+
+/** Text without an explicit color follows the theme instead of falling back to black. */
+@Composable
+private fun Themed(content: @Composable () -> Unit) =
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground, content = content)
 
 @Composable
 private fun Rail(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () -> Unit, compact: Boolean) {

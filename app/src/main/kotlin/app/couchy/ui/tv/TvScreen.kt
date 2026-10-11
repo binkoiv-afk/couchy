@@ -194,7 +194,7 @@ private fun ChannelRow(item: ChannelNow, nowMs: Long, actions: TvActions) {
         ChannelLogo(item.channel.name, item.channel.logo, 44.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(item.channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(item.channel.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (item.channel.favorite) Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                 if (item.channel.catchup != null) Icon(Icons.Rounded.History, "Архив", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -284,12 +284,7 @@ fun ScheduleList(channel: ChannelEntity, schedule: List<ProgramEntity>, nowMs: L
                     )
                     if (isNow) ProgressLine(p, nowMs, Modifier.padding(top = 5.dp))
                 }
-                if (archive) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Rounded.History, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Архив", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                if (archive) Icon(Icons.Rounded.History, "Архив", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

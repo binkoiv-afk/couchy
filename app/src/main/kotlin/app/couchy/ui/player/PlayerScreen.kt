@@ -91,6 +91,10 @@ fun PlayerScreen(
     live: LiveUi? = null,
     /** Switches to the neighbouring channel; null when there is nothing to zap through. */
     onZap: ((Int) -> Unit)? = null,
+    /** Torrent peers and speed for the buffering spinner. */
+    status: String? = null,
+    /** Called when the video plays to the end; by default the player closes. */
+    onFinished: () -> Unit = onExit,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri) { buildPlayer(context, playback) }
@@ -129,7 +133,7 @@ fun PlayerScreen(
                 } else if (state == Player.STATE_ENDED) {
                     val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
                     onProgress(duration, duration)
-                    onExit()
+                    onFinished()
                 }
             }
 
@@ -294,7 +298,7 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
-        PlayerOverlay(ui.copy(live = live), overlay, controls, touch)
+        PlayerOverlay(ui.copy(live = live, status = status), overlay, controls, touch)
     }
 
     when (sheet) {

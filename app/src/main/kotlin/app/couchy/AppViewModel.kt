@@ -11,6 +11,7 @@ import app.couchy.core.SortOrder
 import app.couchy.data.MediaEntity
 import app.couchy.data.Prefs
 import app.couchy.data.ThemeMode
+import app.couchy.data.TorrEngineMode
 import app.couchy.data.UiMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,7 +33,13 @@ data class Playback(
     val headers: Map<String, String> = emptyMap(),
     /** Set for TV channels and their archive: no position is saved, ▲ ▼ switch channels. */
     val live: LiveChannel? = null,
+    /** Where progress is saved: the link itself, or the torrent link plus file number. */
+    val key: String = uri,
+    /** Set for a file played from a torrent: the next episode starts by itself. */
+    val torrent: TorrentPlay? = null,
 )
+
+data class TorrentPlay(val hash: String, val fileId: Int, val nextFileId: Int?)
 
 data class LiveChannel(
     val channelId: Long,
@@ -108,9 +115,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playlistHandled() { _pendingPlaylist.value = null }
 
+    /** A magnet or .torrent opened from anywhere; the torrent screen takes it. */
+    private val _pendingTorrent = MutableStateFlow<String?>(null)
+    val pendingTorrent: StateFlow<String?> = _pendingTorrent.asStateFlow()
+
+    fun torrentHandled() { _pendingTorrent.value = null }
+
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
-        val kind = Links.classify(link)
+        val kind = if (library.isTorrentFile(link)) LinkKind.TORRENT else Links.classify(link)
+        if (kind == LinkKind.TORRENT) {
+            _pendingTorrent.value = link
+            return
+        }
         if (kind == LinkKind.PLAYLIST) {
             _pendingPlaylist.value = link
             return
@@ -162,9 +179,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setSort(value: SortOrder) = viewModelScope.launch { settings.setSort(value) }
     fun setTheme(value: ThemeMode) = viewModelScope.launch { settings.setTheme(value) }
     fun setUiMode(value: UiMode) = viewModelScope.launch { settings.setUiMode(value) }
+    fun setTorrEngine(mode: TorrEngineMode, address: String) = viewModelScope.launch { settings.setTorrEngine(mode, address) }
 
     private fun unsupportedText(kind: LinkKind) = when (kind) {
-        LinkKind.TORRENT -> "Торренты появятся в одной из следующих сборок: встроенный движок и TorrServe."
         LinkKind.YOUTUBE -> "YouTube появится отдельным разделом в следующих сборках."
         else -> "Эту ссылку пока не получается открыть."
     }

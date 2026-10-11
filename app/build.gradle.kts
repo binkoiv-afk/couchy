@@ -54,6 +54,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // The built-in torrent engine is a TorrServer binary that CI drops into jniLibs as
+    // libtorrserver.so. It is started as a process, so it must be unpacked on install and
+    // left as built.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/libtorrserver.so"
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true

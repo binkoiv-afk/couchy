@@ -32,6 +32,14 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
         entity
     }
 
+    /** A .torrent picked from storage or shared by another app, which has no telling extension in its uri. */
+    fun isTorrentFile(link: String): Boolean {
+        val uri = Uri.parse(link)
+        if (uri.scheme != "content") return false
+        val type = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        return type == "application/x-bittorrent" || displayName(uri, raw = true)?.endsWith(".torrent", ignoreCase = true) == true
+    }
+
     suspend fun saveProgress(uri: String, positionMs: Long, durationMs: Long) =
         dao.updateProgress(uri, positionMs, durationMs, System.currentTimeMillis())
 
@@ -52,11 +60,11 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
         }
     }
 
-    private fun displayName(uri: Uri): String? {
+    private fun displayName(uri: Uri, raw: Boolean = false): String? {
         if (uri.scheme != "content") return null
         return try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                if (c.moveToFirst()) c.getString(0)?.let { Links.titleFor(it) } else null
+                if (c.moveToFirst()) c.getString(0)?.let { if (raw) it else Links.titleFor(it) } else null
             }
         } catch (e: Exception) {
             null

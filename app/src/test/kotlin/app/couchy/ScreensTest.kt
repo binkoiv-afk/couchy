@@ -32,6 +32,12 @@ import app.couchy.tv.PlaylistEntity
 import app.couchy.tv.ProgramEntity
 import app.couchy.tv.TvState
 import app.couchy.ui.tv.TvActions
+import app.couchy.core.torrent.TorrFile
+import app.couchy.torrent.TorrentFileUi
+import app.couchy.torrent.TorrentPhase
+import app.couchy.torrent.TorrentState
+import app.couchy.ui.torrent.TorrentActions
+import app.couchy.ui.torrent.TorrentContent
 import app.couchy.ui.tv.TvContent
 import app.couchy.ui.settings.SettingsActions
 import app.couchy.ui.settings.SettingsContent
@@ -180,6 +186,38 @@ class ScreensTest {
         player(touch = false, live = LiveUi(c.channel.name, c.number, c.now?.title, c.now!!.start, c.now!!.stop, c.next?.title, c.next!!.start, now))
     }
 
+    private val torrentFiles = (1..8).map { n ->
+        val file = TorrFile(n, "Orbita.S01E0$n.1080p.WEB-DL.mkv", 1_900_000_000L + n * 37_000_000L)
+        TorrentFileUi(
+            file = file,
+            label = "S1 · Серия $n",
+            key = "t#$n",
+            progress = when (n) { 3 -> 0.42f; else -> 0f },
+            watched = n < 3,
+            lastWatchedAt = if (n <= 3) n.toLong() else 0,
+        )
+    }
+    private val torrentState = TorrentState(
+        link = "magnet:?xt=urn:btih:abc",
+        title = "Орбита / Orbita. Сезон 1 (2025) WEB-DL 1080p",
+        phase = TorrentPhase.READY,
+        size = torrentFiles.sumOf { it.file.length },
+        files = torrentFiles,
+        resume = torrentFiles[2],
+        peers = 48,
+        activePeers = 17,
+        seeders = 12,
+        speed = 6.3 * 1024 * 1024,
+    )
+    private val torrentActions = TorrentActions({}, {}, {}, {})
+
+    @Test fun tvTorrent() = snap("tv_torrent", tv, FormFactor.TV) { TorrentContent(torrentState, torrentActions) }
+    @Test fun phoneTorrent() = snap("phone_torrent", phone, FormFactor.PHONE) { TorrentContent(torrentState, torrentActions) }
+    @Test fun phoneTorrentWaiting() = snap("phone_torrent_wait", phone, FormFactor.PHONE) {
+        TorrentContent(TorrentState(link = "magnet:?", title = "Северный ветер (2024) 2160p", phase = TorrentPhase.METADATA, peers = 3), torrentActions)
+    }
+    @Test fun tvPlayerTorrent() = snap("tv_player_torrent", tv, FormFactor.TV) { player(touch = false, status = "17 из 48 пиров · 6,3 МБ/с") }
+
     @Test fun tvPlayer() = snap("tv_player", tv, FormFactor.TV) { player(touch = false) }
     @Test fun phonePlayer() = snap(
         "phone_player",
@@ -188,7 +226,7 @@ class ScreensTest {
     ) { player(touch = true) }
 
     @Composable
-    private fun player(touch: Boolean, live: LiveUi? = null) {
+    private fun player(touch: Boolean, live: LiveUi? = null, status: String? = null) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1D2B4F), Color(0xFF0A0F1F))))) {
             PlayerOverlay(
                 PlayerUi(
@@ -196,9 +234,10 @@ class ScreensTest {
                     positionMs = 51 * minute + 22_000,
                     durationMs = 135 * minute,
                     playing = true,
-                    buffering = false,
                     qualityLabel = "Авто · 1080p",
                     live = live,
+                    status = status,
+                    buffering = status != null,
                 ),
                 visible = true,
                 controls = PlayerControls({}, {}, {}, {}, {}, {}, {}, {}, {}, {}),

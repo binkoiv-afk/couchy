@@ -18,7 +18,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.couchy.data.Prefs
 import app.couchy.data.ThemeMode
+import app.couchy.data.TorrEngineMode
 import app.couchy.data.UiMode
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import app.couchy.ui.components.Chip
 import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.SecondaryButton
@@ -37,6 +46,9 @@ class SettingsActions(
     val onUiMode: (UiMode) -> Unit,
     val onCheckUpdate: () -> Unit,
     val onInstallUpdate: () -> Unit,
+    val onTorrEngine: (TorrEngineMode, String) -> Unit = { _, _ -> },
+    /** Checks a TorrServe address and reports the answer as a line of text. */
+    val onCheckTorr: (String, (String) -> Unit) -> Unit = { _, _ -> },
 )
 
 @Composable
@@ -57,6 +69,13 @@ fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions:
         Section("Интерфейс", "Для пульта: крупные карточки и рамка фокуса. Для сенсора: жесты и нижнее меню.") {
             UiMode.entries.forEach { Chip(it.label, it == prefs.uiMode, onClick = { actions.onUiMode(it) }) }
         }
+        Section(
+            "Торренты",
+            "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
+            row = false,
+        ) {
+            TorrSettings(prefs, actions)
+        }
         Section("О приложении", "Couchy $version") {
             when (update) {
                 UpdateState.Idle -> SecondaryButton("Проверить обновления", null, onClick = actions.onCheckUpdate)
@@ -74,7 +93,7 @@ fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions:
 }
 
 @Composable
-private fun Section(title: String, hint: String, content: @Composable () -> Unit) {
+private fun Section(title: String, hint: String, row: Boolean = true, content: @Composable () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -84,6 +103,38 @@ private fun Section(title: String, hint: String, content: @Composable () -> Unit
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        if (row) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() } else content()
+    }
+}
+
+@Composable
+private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
+    var address by rememberSaveable(prefs.torrAddress) { mutableStateOf(prefs.torrAddress) }
+    var result by remember { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TorrEngineMode.entries.forEach { mode ->
+                Chip(mode.label, mode == prefs.torrEngine, onClick = { actions.onTorrEngine(mode, address) })
+            }
+        }
+        if (prefs.torrEngine == TorrEngineMode.REMOTE) {
+            OutlinedTextField(
+                address,
+                { address = it; result = null },
+                label = { Text("Адрес TorrServe") },
+                placeholder = { Text("192.168.1.20:8090") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                SecondaryButton("Сохранить и проверить", null, onClick = {
+                    actions.onTorrEngine(TorrEngineMode.REMOTE, address)
+                    result = "Проверяю…"
+                    actions.onCheckTorr(address) { result = it }
+                })
+                result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
     }
 }

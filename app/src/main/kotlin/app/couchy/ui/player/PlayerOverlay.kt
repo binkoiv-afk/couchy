@@ -70,6 +70,8 @@ data class PlayerUi(
     val resizeLabel: String = "Вписать",
     /** Set while watching a TV channel live; null for videos and archive recordings. */
     val live: LiveUi? = null,
+    /** Torrent peers and speed, shown under the spinner while buffering. */
+    val status: String? = null,
 )
 
 /** What a live channel shows instead of a timeline: the programme now and the next one. */
@@ -106,7 +108,17 @@ class PlayerControls(
 fun PlayerOverlay(ui: PlayerUi, visible: Boolean, controls: PlayerControls, touch: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize()) {
         if (ui.buffering && ui.error == null) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(56.dp), color = Color.White)
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                CircularProgressIndicator(Modifier.size(56.dp), color = Color.White)
+                if (ui.status != null) {
+                    Text(
+                        ui.status,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
         if (ui.error != null) {
             ErrorPanel(ui.error, controls, Modifier.align(Alignment.Center))

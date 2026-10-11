@@ -35,7 +35,11 @@ import app.couchy.ui.home.HomeContent
 import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
 import app.couchy.ui.open.OpenDialog
+import app.couchy.torrent.TorrentViewModel
 import app.couchy.tv.ChannelNow
+import app.couchy.ui.torrent.TorrentActions
+import app.couchy.ui.torrent.TorrentContent
+import androidx.activity.compose.BackHandler
 import app.couchy.tv.TvState
 import app.couchy.tv.TvViewModel
 import app.couchy.ui.player.LiveUi
@@ -59,6 +63,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
     private val tvVm: TvViewModel by viewModels()
+    private val torrentVm: TorrentViewModel by viewModels()
 
     /** Bumped when the app comes back after a long time away, to start fresh on Home. */
     private val freshStart = MutableStateFlow(0)
@@ -74,7 +79,7 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode)) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, tvVm, fresh)
+                    MainScreen(vm, tvVm, torrentVm, fresh)
                 }
             }
         }
@@ -85,6 +90,12 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handle(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Leaving Couchy for good stops the built-in torrent engine; a rotation does not.
+        if (isFinishing) (application as CouchyApp).torrEngine.stop()
     }
 
     override fun onStop() {
@@ -116,7 +127,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
+private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentViewModel, freshStart: Int) {
     val form = LocalFormFactor.current
     val playback by vm.playback.collectAsStateWithLifecycle()
     val home by vm.home.collectAsStateWithLifecycle()
@@ -133,8 +144,25 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
     var addPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
     var showPlaylists by rememberSaveable { mutableStateOf(false) }
     var channelFor by remember { mutableStateOf<ChannelNow?>(null) }
+    val torrent by torrentVm.state.collectAsStateWithLifecycle()
+    val torrentAutoPlay by torrentVm.autoPlay.collectAsStateWithLifecycle()
+    val pendingTorrent by vm.pendingTorrent.collectAsStateWithLifecycle()
     LaunchedEffect(freshStart) {
-        if (freshStart > 0) { destination = Destination.HOME; showOpen = false; actionsFor = null; channelFor = null; showPlaylists = false }
+        if (freshStart > 0) {
+            destination = Destination.HOME; showOpen = false; actionsFor = null; channelFor = null; showPlaylists = false
+            torrentVm.close()
+        }
+    }
+    LaunchedEffect(pendingTorrent) {
+        pendingTorrent?.let { link ->
+            showOpen = false
+            actionsFor = null
+            torrentVm.open(link)
+            vm.torrentHandled()
+        }
+    }
+    LaunchedEffect(torrentAutoPlay) {
+        torrentAutoPlay?.let { vm.playDirect(it); torrentVm.autoPlayHandled() }
     }
     LaunchedEffect(pendingPlaylist) {
         pendingPlaylist?.let { link ->
@@ -160,14 +188,37 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
         PlayerScreen(
             playback = current,
             touch = !form.isTv,
-            onProgress = { pos, dur -> vm.saveProgress(current.uri, pos, dur) },
-            onTracksChosen = { audio, subs -> vm.saveTracks(current.uri, audio, subs) },
+            onProgress = { pos, dur -> vm.saveProgress(current.key, pos, dur) },
+            onTracksChosen = { audio, subs -> vm.saveTracks(current.key, audio, subs) },
             onExit = vm::closePlayer,
             live = live?.takeIf { it.archiveOf == null }?.let { l -> liveUi(tv, l.channelId, current.title) },
             onZap = live?.takeIf { it.archiveOf == null && it.zapOrder.size > 1 }?.let { l ->
                 { delta: Int -> scope.launch { tvVm.zap(l, delta)?.let(vm::playDirect) }; Unit }
             },
+            status = current.torrent?.let { torrentVm.statusLine(torrent) },
+            onFinished = {
+                // Series: the next episode of the torrent starts by itself.
+                val next = current.torrent?.nextFileId
+                if (next == null) vm.closePlayer()
+                else scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
+            },
         )
+        return
+    }
+
+    val openTorrent = torrent
+    if (openTorrent != null) {
+        BackHandler { torrentVm.close() }
+        TorrentContent(
+            openTorrent,
+            TorrentActions(
+                onBack = torrentVm::close,
+                onPlay = { f -> scope.launch { torrentVm.prepare(f.file)?.let(vm::playDirect) } },
+                onPlayFromStart = { f -> scope.launch { torrentVm.prepare(f.file, fromStart = true)?.let(vm::playDirect) } },
+                onRetry = torrentVm::retry,
+            ),
+        )
+        notice?.let { n -> NoticeDialog(n.text, vm::dismissNotice) }
         return
     }
 
@@ -228,6 +279,18 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
                                 }
                             }
                         },
+                        onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
+                        onCheckTorr = { address, report ->
+                            scope.launch {
+                                report(
+                                    try {
+                                        "Работает · " + torrentVm.engine.check(address)
+                                    } catch (e: Exception) {
+                                        "Не отвечает. Проверьте адрес и что TorrServe запущен."
+                                    },
+                                )
+                            }
+                        },
                         onInstallUpdate = {
                             val target = available
                             if (target != null) scope.launch {
@@ -251,7 +314,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
             onOpen = { showOpen = false; vm.open(it) },
             onPickFile = {
                 try {
-                    pickFile.launch(arrayOf("video/*"))
+                    pickFile.launch(arrayOf("video/*", "application/x-bittorrent", "application/octet-stream"))
                 } catch (e: ActivityNotFoundException) {
                     showOpen = false
                     vm.showNotice("На этом устройстве нет выбора файлов. Откройте видео по ссылке.")
@@ -303,13 +366,16 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
         )
     }
 
-    notice?.let { n ->
-        AlertDialog(
-            onDismissRequest = vm::dismissNotice,
-            confirmButton = { TextButton(onClick = vm::dismissNotice) { Text("Понятно") } },
-            text = { Text(n.text, style = MaterialTheme.typography.bodyLarge) },
-        )
-    }
+    notice?.let { n -> NoticeDialog(n.text, vm::dismissNotice) }
+}
+
+@Composable
+private fun NoticeDialog(text: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Понятно") } },
+        text = { Text(text, style = MaterialTheme.typography.bodyLarge) },
+    )
 }
 
 /** Name, number and programme of the channel on air, from the guide already loaded for the TV screen. */

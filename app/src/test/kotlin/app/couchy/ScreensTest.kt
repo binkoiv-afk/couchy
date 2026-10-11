@@ -148,6 +148,7 @@ class ScreensTest {
             SettingsContent(
                 Prefs(bypassHosts = setOf("rezka.ag", "kinozal.tv")), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}),
                 bypass = app.couchy.ui.settings.BypassUi("Подключён: WARP"),
+                castInfo = "Это устройство: Xiaomi Mi Box S, адрес 192.168.1.20",
             )
         }
     }

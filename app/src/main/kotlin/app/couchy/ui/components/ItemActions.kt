@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -41,6 +42,8 @@ fun ItemActionsDialog(
     onUnwatched: () -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
+    /** "Watch on TV"; null when the item only exists on this device. */
+    onCast: (() -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
     AlertDialog(
@@ -56,6 +59,7 @@ fun ItemActionsDialog(
                     Modifier.focusRequester(first),
                 ) { onDismiss(); onPlay() }
                 if (resume > 0) ActionRow(Icons.Rounded.Replay, "Смотреть сначала") { onDismiss(); onFromStart() }
+                onCast?.let { cast -> ActionRow(Icons.Rounded.Cast, "Смотреть на ТВ") { onDismiss(); cast() } }
                 ActionRow(
                     if (item.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                     if (item.favorite) "Убрать из избранного" else "В избранное",

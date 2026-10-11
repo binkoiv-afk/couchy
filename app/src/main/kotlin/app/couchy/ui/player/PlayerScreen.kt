@@ -95,6 +95,8 @@ fun PlayerScreen(
     status: String? = null,
     /** Called when the video plays to the end; by default the player closes. */
     onFinished: () -> Unit = onExit,
+    /** "On TV": gets the current position and length; null when this video cannot be sent. */
+    onCast: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri) { buildPlayer(context, playback) }
@@ -223,6 +225,13 @@ fun PlayerScreen(
             player.play()
         },
         onInteract = ::poke,
+        onCast = onCast?.let { cast ->
+            {
+                poke()
+                save()
+                cast(player.currentPosition, player.duration.takeIf { it != C.TIME_UNSET } ?: 0)
+            }
+        },
     )
 
     Box(

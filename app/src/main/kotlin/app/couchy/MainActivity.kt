@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.couchy.core.Links
 import app.couchy.data.MediaEntity
 import app.couchy.ui.components.ItemActionsDialog
+import app.couchy.ui.components.CastDialog
+import app.couchy.core.cast.CastRequest
 import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.rememberFormFactor
 import app.couchy.ui.home.HomeActions
@@ -91,6 +93,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Listens for "watch on TV" from other devices while Couchy is open.
+        (application as CouchyApp).cast.start()
         if (savedInstanceState == null) handle(intent)
         setContent {
             val prefs by vm.prefs.collectAsStateWithLifecycle()
@@ -117,6 +121,7 @@ class MainActivity : ComponentActivity() {
         if (isFinishing) {
             (application as CouchyApp).torrEngine.stop()
             (application as CouchyApp).bypass.stop()
+            (application as CouchyApp).cast.stop()
         }
     }
 
@@ -177,6 +182,9 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
     val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
     val bypassEngine = (LocalContext.current.applicationContext as CouchyApp).bypass
+    val cast = (LocalContext.current.applicationContext as CouchyApp).cast
+    var castRequest by remember { mutableStateOf<CastRequest?>(null) }
+    LaunchedEffect(cast) { cast.incoming.collect { vm.openCast(it) } }
     val bypassStatus by bypassEngine.status.collectAsStateWithLifecycle()
     val bypassUi = BypassUi(
         status = when (val st = bypassStatus) {
@@ -255,6 +263,19 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         )
     }
 
+    castRequest?.let { request ->
+        CastDialog(
+            cast,
+            request,
+            onSent = { device ->
+                castRequest = null
+                if (playback?.key == request.link || playback?.uri == request.link) vm.closePlayer()
+                vm.showNotice("Отправил на ${device.name}.")
+            },
+            onDismiss = { castRequest = null },
+        )
+    }
+
     val current = playback
     if (current != null) {
         val live = current.live
@@ -269,6 +290,12 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 { delta: Int -> scope.launch { tvVm.zap(l, delta)?.let(vm::playDirect) }; Unit }
             },
             status = current.torrent?.let { torrentVm.statusLine(torrent) },
+            onCast = if (current.live != null || CastRequest.isLocalOnly(current.key)) null else ({ pos, dur ->
+                castRequest = CastRequest(
+                    current.key, current.title, pos, dur,
+                    headers = if (current.key == current.uri) current.headers else emptyMap(),
+                )
+            }),
             onFinished = {
                 // Series: the next episode starts by itself, from the torrent or the online source.
                 val next = current.torrent?.nextFileId
@@ -438,6 +465,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                         },
                     ),
                     bypass = bypassUi,
+                    castInfo = "Это устройство: ${cast.deviceName}" + (cast.address()?.let { ", адрес $it" } ?: ""),
                 )
             }
         }
@@ -467,8 +495,12 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
             onUnwatched = { vm.markUnwatched(item) },
             onRemove = { vm.remove(item) },
             onDismiss = { actionsFor = null },
+            onCast = if (CastRequest.isLocalOnly(item.uri)) null else ({
+                castRequest = CastRequest(item.uri, item.title, item.positionMs, item.durationMs)
+            }),
         )
     }
+
 
     addPlaylist?.let { initial ->
         AddPlaylistDialog(

@@ -166,6 +166,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun play(item: MediaEntity, fromStart: Boolean = false) = open(item.uri, item.title, fromStart)
 
+    /** Another device sent something to watch here: it continues from where it was there. */
+    fun openCast(request: app.couchy.core.cast.CastRequest) {
+        if (request.headers.isNotEmpty() && !Rezka.isRef(request.link)) {
+            _playback.value = Playback(request.link, request.title, request.positionMs, headers = request.headers)
+            return
+        }
+        viewModelScope.launch {
+            library.open(request.link, request.title)
+            if (request.positionMs > 0) library.saveProgress(request.link, request.positionMs, request.durationMs)
+            open(request.link, request.title)
+        }
+    }
+
     fun closePlayer() { _playback.value = null }
 
     fun playDirect(playback: Playback) { _playback.value = playback }

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -98,6 +99,8 @@ class PlayerControls(
     val onRetry: () -> Unit,
     /** Any interaction, so the overlay stays up while it is being used. */
     val onInteract: () -> Unit,
+    /** Hands the video to a TV box in the home network; null where there is nothing to send. */
+    val onCast: (() -> Unit)? = null,
 )
 
 /**
@@ -202,6 +205,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     modifier = Modifier.padding(horizontal = 6.dp),
                 )
                 Spacer(Modifier.weight(1f))
+                if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
                 Pill(Icons.Rounded.Subtitles, "Озвучка и субтитры", onClick = controls.onTracks)
                 Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
                 if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)

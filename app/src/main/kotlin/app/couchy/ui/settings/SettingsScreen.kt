@@ -64,7 +64,16 @@ class SettingsActions(
 data class BypassUi(val status: String = "Не запущен", val available: Boolean = true)
 
 @Composable
-fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions: SettingsActions, modifier: Modifier = Modifier, bypass: BypassUi = BypassUi()) {
+fun SettingsContent(
+    prefs: Prefs,
+    version: String,
+    update: UpdateState,
+    actions: SettingsActions,
+    modifier: Modifier = Modifier,
+    bypass: BypassUi = BypassUi(),
+    /** How this device is seen in the home network, for "watch on TV". */
+    castInfo: String? = null,
+) {
     val side = if (LocalFormFactor.current.wide) 32.dp else 18.dp
     Column(
         modifier
@@ -108,6 +117,14 @@ fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions:
             row = false,
         ) {
             BypassSettings(prefs, bypass, actions)
+        }
+        castInfo?.let { info ->
+            Section(
+                "Смотреть на ТВ",
+                "На телефоне нажмите кнопку ТВ в плеере или «Смотреть на ТВ» в медиатеке, и видео продолжится здесь с того же места. Couchy на приставке должен быть открыт.",
+            ) {
+                Text(info, style = MaterialTheme.typography.bodyMedium)
+            }
         }
         Section("О приложении", "Couchy $version") {
             when (update) {

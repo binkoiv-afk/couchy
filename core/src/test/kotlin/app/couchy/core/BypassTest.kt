@@ -95,3 +95,17 @@ class BypassTest {
         assertEquals("выход через RU", BypassRules.traceSummary("loc=RU\nwarp=off"))
     }
 }
+
+class DohTest {
+    @org.junit.Test fun readsAnswersAndProxyRequests() {
+        val json = """{"Status":0,"Answer":[{"name":"rezka.ag","type":5,"data":"x.cdn."},{"name":"x.cdn","type":1,"TTL":60,"data":"104.21.1.2"}]}"""
+        org.junit.Assert.assertEquals(listOf("104.21.1.2"), app.couchy.core.bypass.Doh.parse(json))
+        org.junit.Assert.assertEquals(emptyList<String>(), app.couchy.core.bypass.Doh.parse("""{"Status":3}"""))
+        org.junit.Assert.assertEquals("rezka.ag" to 443, app.couchy.core.bypass.Doh.target("CONNECT rezka.ag:443 HTTP/1.1"))
+        org.junit.Assert.assertEquals("a.org" to 8080, app.couchy.core.bypass.Doh.target("GET http://a.org:8080/x?y=1 HTTP/1.1"))
+        org.junit.Assert.assertEquals("b.org" to 80, app.couchy.core.bypass.Doh.target("GET http://b.org HTTP/1.1"))
+        org.junit.Assert.assertEquals("GET /x?y=1 HTTP/1.1", app.couchy.core.bypass.Doh.originForm("GET http://a.org:8080/x?y=1 HTTP/1.1"))
+        org.junit.Assert.assertEquals("GET / HTTP/1.1", app.couchy.core.bypass.Doh.originForm("GET http://b.org HTTP/1.1"))
+        org.junit.Assert.assertEquals("GET /?q=1 HTTP/1.1", app.couchy.core.bypass.Doh.originForm("GET http://b.org?q=1 HTTP/1.1"))
+    }
+}

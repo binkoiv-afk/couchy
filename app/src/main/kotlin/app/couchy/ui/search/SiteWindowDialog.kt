@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.couchy.CouchyApp
+import app.couchy.bypass.Bypass
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import app.couchy.core.sources.SiteRef
 import app.couchy.core.sources.Sites
 import app.couchy.sources.SiteWindow
@@ -61,6 +65,23 @@ fun SiteWindowDialog(
 ) {
     var web by remember { mutableStateOf<WebView?>(null) }
     val bypass = (LocalContext.current.applicationContext as CouchyApp).bypass
+    val scope = rememberCoroutineScope()
+    var tries by remember { mutableStateOf(0) }
+    // The provider refused the page: learn the site, bring up what the bypass can and load it again.
+    val onBlocked: (WebView, String) -> Unit = { view, url ->
+        val host = Bypass.hostOf(url)
+        if (tries >= 2 || host == null) {
+            view.loadDataWithBaseURL(null, blockedPage(host ?: url), "text/html", "utf-8", null)
+        } else {
+            tries += 1
+            scope.launch {
+                if (bypass.canLearn(host)) bypass.learn(host) else runCatching { bypass.ensure() }
+                // The browser picks up the new route a moment later.
+                delay(700)
+                view.loadUrl(url)
+            }
+        }
+    }
     // A blocked site needs the tunnel up before the page starts loading.
     val ready by produceState(false, window.url) {
         bypass.prepare(window.url)
@@ -108,7 +129,7 @@ fun SiteWindowDialog(
                         settings.userAgentString = userAgent
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = Catcher(window.url, userAgent, onVideo)
+                        webViewClient = Catcher(window.url, userAgent, onVideo, onBlocked)
                         loadUrl(window.url)
                         web = this
                     }
@@ -128,6 +149,7 @@ private class Catcher(
     start: String,
     private val userAgent: String,
     private val onVideo: (String, Map<String, String>, String) -> Unit,
+    private val onBlocked: (WebView, String) -> Unit,
 ) : WebViewClient() {
     private val main = Handler(Looper.getMainLooper())
     private val startHost = SiteRef.hostOf(start)
@@ -170,7 +192,22 @@ private class Catcher(
         return !(host == startHost || SiteRef.siteOf(url) != null)
     }
 
+    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+        if (!request.isForMainFrame) return
+        val blocked = error.errorCode in setOf(ERROR_HOST_LOOKUP, ERROR_CONNECT, ERROR_TIMEOUT, ERROR_FAILED_SSL_HANDSHAKE, ERROR_IO)
+        if (blocked) onBlocked(view, request.url.toString())
+    }
+
     override fun onPageFinished(view: WebView, url: String?) {
         if (url != null && url.startsWith("http")) page = url
     }
 }
+
+/** Shown in place of the browser's white error page, in Couchy's colours. */
+private fun blockedPage(host: String) = """
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+    <body style="background:#0D0E12;color:#F3F3F6;font-family:sans-serif;padding:28px;line-height:1.5">
+    <h2 style="margin-top:40px">Сайт не открылся</h2>
+    <p style="color:#A4A8B4">$host блокирует провайдер, а обход не помог. Закройте окно и выберите другой источник,
+    или включите свой конфиг обхода в настройках.</p></body></html>
+""".trimIndent()

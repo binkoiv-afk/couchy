@@ -112,6 +112,16 @@ fun PlayerScreen(
 
     fun poke() { lastTouch = System.currentTimeMillis(); overlay = true }
 
+    // Full screen: the status and navigation bars hide and come back with a swipe from the edge.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        val window = (view.context as? android.app.Activity)?.window
+        val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
+        bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+    }
+
     fun save() {
         if (playback.live != null) return
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0

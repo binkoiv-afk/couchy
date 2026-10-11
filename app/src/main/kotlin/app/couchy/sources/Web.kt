@@ -46,17 +46,32 @@ class Web(private val context: Context) {
     private suspend fun request(start: String, body: String?, headers: Map<String, String>): String {
         val host = Bypass.hostOf(start)
         bypass.prepare(start)
-        return try {
-            once(start, body, headers)
+        try {
+            return once(start, body, headers)
         } catch (e: IOException) {
-            if (e is ChallengeException || !bypass.canLearn(host) || !(Bypass.looksBlocked(e) || e is BlockedException)) throw e
-            bypass.learn(host!!)
-            try {
-                bypass.ensure()
-            } catch (failed: IOException) {
-                throw IOException("Сайт заблокирован, а обход не подключился: ${failed.message}", e)
+            if (e is ChallengeException || !(Bypass.looksBlocked(e) || e is BlockedException)) throw e
+            var last: IOException = e
+            // A site that fails like blocked ones do is remembered and goes through the DNS tier at once.
+            if (bypass.canLearn(host)) {
+                bypass.learn(host!!)
+                try {
+                    return once(start, body, headers)
+                } catch (again: IOException) {
+                    if (again is ChallengeException || !(Bypass.looksBlocked(again) || again is BlockedException)) throw again
+                    last = again
+                }
             }
-            once(start, body, headers)
+            // Blocked deeper than DNS: only the tunnel helps.
+            if (bypass.wants(host) && !bypass.ready) {
+                try {
+                    bypass.ensure()
+                    return once(start, body, headers)
+                } catch (tunnel: IOException) {
+                    if (tunnel is ChallengeException) throw tunnel
+                    throw IOException("Сайт заблокирован провайдером, а обход не помог: ${tunnel.message}", last)
+                }
+            }
+            throw IOException("Сайт не открывается: похоже, его блокирует провайдер. Попробуйте зеркало или свой конфиг обхода в настройках.", last)
         }
     }
 

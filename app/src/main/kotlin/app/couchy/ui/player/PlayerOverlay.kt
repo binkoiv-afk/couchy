@@ -206,10 +206,11 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 )
                 Spacer(Modifier.weight(1f))
                 if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
-                Pill(Icons.Rounded.Subtitles, "Озвучка и субтитры", onClick = controls.onTracks)
+                // A phone held sideways has room for icons and short values only.
+                Pill(Icons.Rounded.Subtitles, if (touch) null else "Озвучка и субтитры", onClick = controls.onTracks)
                 Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
                 if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
-                Pill(Icons.Rounded.AspectRatio, ui.resizeLabel, onClick = controls.onResize)
+                Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
             }
         }
     }

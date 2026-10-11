@@ -72,12 +72,22 @@ class Bypass(private val context: Context, private val settings: Settings) {
 
     private val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", HTTP_PORT))
 
+    /** The light tier, always on unless the bypass is off: names looked up over HTTPS. */
+    private val dns = DnsProxy()
+    private val dnsProxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", DnsProxy.PORT))
+
+    /** When the tunnel last failed: it is not retried for a while, so nothing waits on it again and again. */
+    @Volatile private var failedAt = 0L
+    @Volatile private var failure: String? = null
+
     fun install() {
         ProxySelector.setDefault(selector)
         scope.launch {
             settings.prefs.collect { p ->
                 val old = prefs
                 prefs = p
+                if (p.bypassMode == BypassMode.OFF) dns.stop() else dns.start()
+                if (old.bypassKind != p.bypassKind || old.bypassConfig != p.bypassConfig) failedAt = 0
                 when {
                     p.bypassMode == BypassMode.OFF -> stop()
                     process != null && (old.bypassKind != p.bypassKind || old.bypassConfig != p.bypassConfig) -> {
@@ -114,14 +124,18 @@ class Bypass(private val context: Context, private val settings: Settings) {
     }
 
     /** Starts the tunnel if [url]'s site needs it, so the request that follows can use it. */
-    suspend fun prepare(url: String) {
-        if (wants(hostOf(url))) runCatching { ensure() }
+    fun prepare(url: String) {
+        // Blocked sites go through the DNS tier at once; the tunnel comes up in the background and takes over.
+        if (wants(hostOf(url)) && !ready && !backingOff()) scope.launch { runCatching { ensure() } }
     }
 
+    private fun backingOff() = failedAt > 0 && System.currentTimeMillis() - failedAt < BACKOFF_MS
+
     /** Starts the engine (registering a WARP device first if needed) and waits until the tunnel carries traffic. */
-    suspend fun ensure(): Unit = lock.withLock {
+    suspend fun ensure(force: Boolean = false): Unit = lock.withLock {
         if (ready && process?.isAliveCompat() == true) return
         if (!available) throw IOException("Обход не работает на этом процессоре.")
+        if (!force && backingOff()) throw IOException(failure ?: "Туннель не подключился")
         _status.value = BypassStatus.Starting
         try {
             val p = prefs
@@ -132,6 +146,7 @@ class Bypass(private val context: Context, private val settings: Settings) {
                 try {
                     start(config)
                     if (waitReady()) {
+                        failedAt = 0
                         _status.value = BypassStatus.Ready(if (p.bypassKind == BypassKind.WARP) "WARP" else "свой конфиг")
                         applyWebView()
                         return
@@ -150,14 +165,25 @@ class Bypass(private val context: Context, private val settings: Settings) {
                 BypassKind.WARP -> "WARP не подключился. Возможно, его блокирует провайдер; попробуйте свой конфиг."
                 BypassKind.OWN -> e.message ?: "Свой конфиг не подключился. Проверьте его и сервер."
             }
+            failedAt = System.currentTimeMillis()
+            failure = message
             _status.value = BypassStatus.Failed(message)
+            applyWebView()
             throw IOException(message, e)
         }
     }
 
     /** Checks the tunnel end to end and says where traffic comes out. */
     suspend fun check(): String {
-        ensure()
+        try {
+            ensure(force = true)
+        } catch (e: IOException) {
+            if (!dns.running) throw e
+            throw IOException(
+                (e.message ?: "Туннель не подключился.") + " Работает лёгкий обход: сайты, закрытые только через DNS, откроются.",
+                e,
+            )
+        }
         val text = withContext(Dispatchers.IO) {
             val c = URL("https://www.cloudflare.com/cdn-cgi/trace").openConnection(proxy) as HttpURLConnection
             c.connectTimeout = 10_000
@@ -280,11 +306,12 @@ class Bypass(private val context: Context, private val settings: Settings) {
         scope.launch(Dispatchers.Main) {
             runCatching {
                 val controller = ProxyController.getInstance()
-                if (!ready || p.bypassMode == BypassMode.OFF) {
+                if (p.bypassMode == BypassMode.OFF || (!ready && !dns.running)) {
                     controller.clearProxyOverride(Direct, {})
                     return@runCatching
                 }
-                val builder = ProxyConfig.Builder().addProxyRule("http://127.0.0.1:$HTTP_PORT").bypassSimpleHostnames()
+                val port = if (ready) HTTP_PORT else DnsProxy.PORT
+                val builder = ProxyConfig.Builder().addProxyRule("http://127.0.0.1:$port").bypassSimpleHostnames()
                 if (p.bypassMode == BypassMode.AUTO) {
                     if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE_REVERSE_BYPASS)) {
                         controller.clearProxyOverride(Direct, {})
@@ -305,12 +332,12 @@ class Bypass(private val context: Context, private val settings: Settings) {
         override fun select(uri: URI?): List<Proxy> {
             val host = uri?.host
             if (!wants(host)) return listOf(Proxy.NO_PROXY)
-            if (!ready || process?.isAliveCompat() != true) {
-                // Connections are opened off the main thread, so waiting for the tunnel here is fine.
-                if (Looper.myLooper() == Looper.getMainLooper()) return listOf(Proxy.NO_PROXY)
-                runBlocking { withTimeoutOrNull(READY_TIMEOUT_MS * 2) { runCatching { ensure() } } }
+            // Nothing waits here: the tunnel when it is up, the DNS tier until then.
+            return when {
+                ready && process?.isAliveCompat() == true -> listOf(proxy)
+                dns.running -> listOf(dnsProxy)
+                else -> listOf(Proxy.NO_PROXY)
             }
-            return if (ready) listOf(proxy) else listOf(Proxy.NO_PROXY)
         }
 
         override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
@@ -333,12 +360,15 @@ class Bypass(private val context: Context, private val settings: Settings) {
         const val INFO_PORT = 18091
         private const val READY_TIMEOUT_MS = 12_000L
         private const val WARP_PORT_TRIES = 3
+        private const val BACKOFF_MS = 3 * 60_000L
 
         fun hostOf(url: String): String? = runCatching { URI(url).host }.getOrNull()
 
         /** Errors that look like a provider blocking the site rather than the site being down. */
         fun looksBlocked(e: Throwable): Boolean = e is java.net.UnknownHostException || e is java.net.ConnectException ||
             e is java.net.SocketTimeoutException || e is javax.net.ssl.SSLException ||
-            (e is java.net.SocketException && e.message?.contains("reset", ignoreCase = true) == true)
+            (e is java.net.SocketException && e.message?.contains("reset", ignoreCase = true) == true) ||
+            // The DNS tier could not reach the site either.
+            e.message?.contains("Unable to tunnel", ignoreCase = true) == true
     }
 }

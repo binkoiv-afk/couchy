@@ -288,7 +288,8 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 val cell = maxWidth / bottom.size.coerceAtLeast(1)
                 val captions = cell >= 52.dp
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    bottom.forEach { t -> ToolButton(t, captions, Modifier.width(cell.coerceAtMost(110.dp))) }
+                    // "Авто · 1080p" becomes "1080p" where the caption is short of room.
+                    bottom.forEach { t -> ToolButton(t, captions, Modifier.width(cell.coerceAtMost(110.dp)), short = cell < 80.dp) }
                 }
             }
         }
@@ -432,7 +433,7 @@ private class Tool(
 
 /** An icon with its caption under it, as in the players of streaming apps; the caption goes when space is short. */
 @Composable
-private fun ToolButton(t: Tool, caption: Boolean, modifier: Modifier) {
+private fun ToolButton(t: Tool, caption: Boolean, modifier: Modifier, short: Boolean = false) {
     Column(
         modifier
             .then(if (t.focus != null) Modifier.focusRequester(t.focus) else Modifier)
@@ -449,7 +450,7 @@ private fun ToolButton(t: Tool, caption: Boolean, modifier: Modifier) {
         }
         if (caption) {
             Text(
-                t.label,
+                if (short) t.label.substringAfterLast(" · ") else t.label,
                 color = Color.White.copy(alpha = 0.85f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,

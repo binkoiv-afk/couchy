@@ -694,10 +694,6 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
         )
     }
     // One even row of icons with short captions, like the actions under a film in a store.
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-    ) { }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         val cell = Modifier.weight(1f)
         KeepAction(if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, "Позже", state.later, actions.onLater, cell)
@@ -711,18 +707,7 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
             cell,
         )
         if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
-            KeepAction(
-                if (state.following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
-                if (state.following) "Слежу" else "Следить",
-                state.following,
-                {
-                    if (!state.following && !app.couchy.episodes.NewEpisodes.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {
-                        ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                    actions.onFollow()
-                },
-                cell,
-            )
+            FollowAction(state.following, actions.onFollow, cell)
         }
         KeepAction(Icons.Rounded.HighQuality, app.couchy.QualityChoice.name(quality), false, { picking = true }, cell)
     }
@@ -789,4 +774,25 @@ private fun KeepAction(
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
+}
+
+/** Following a series for new episodes; asks for notifications the first time. */
+@Composable
+private fun FollowAction(following: Boolean, onFollow: () -> Unit, modifier: Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+    KeepAction(
+        if (following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
+        if (following) "Слежу" else "Следить",
+        following,
+        {
+            if (!following && !app.couchy.episodes.NewEpisodes.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {
+                ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            onFollow()
+        },
+        modifier,
+    )
 }

@@ -179,8 +179,12 @@ fun SettingsContent(
                     if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
                     var key by rememberSaveable(prefs.tmdbKey) { mutableStateOf(prefs.tmdbKey) }
                     Text(
-                        "Описания, актёры, каталог и рекомендации. Без ключа данные идут из Cinemeta (IMDb) на английском. " +
-                            "С бесплатным ключом TMDB всё на русском: themoviedb.org → Настройки → API → ключ API или токен.",
+                        if (app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) {
+                            "Описания, актёры, каталог и рекомендации идут из TMDB на русском: ключ уже встроен. Своё поле можно оставить пустым."
+                        } else {
+                            "Описания, актёры, каталог и рекомендации. Без ключа данные идут из Cinemeta (IMDb) на английском. " +
+                                "С бесплатным ключом TMDB всё на русском: themoviedb.org → Настройки → API → ключ API или токен."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp),

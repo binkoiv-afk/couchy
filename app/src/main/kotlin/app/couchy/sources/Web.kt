@@ -65,8 +65,9 @@ class Web(private val context: Context) {
         repeat(6) {
             val c = (URL(url).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
-                connectTimeout = 15_000
-                readTimeout = 25_000
+                // A blocked site usually never answers the connection; waiting long only delays the bypass.
+                connectTimeout = 7_000
+                readTimeout = 20_000
                 setRequestProperty("User-Agent", userAgent)
                 setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
                 cookies?.getCookie(url)?.let { setRequestProperty("Cookie", it) }

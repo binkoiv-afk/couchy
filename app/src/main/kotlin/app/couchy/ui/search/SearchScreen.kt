@@ -123,6 +123,12 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
             }
         } else {
             if (state.siteBlocked) item(span = { GridItemSpan(maxLineSpan) }) { Hint("HDrezka просит пройти проверку: результаты с неё появятся после неё.") }
+            if (state.moreLoading) item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    Text("Ещё ищу на HDrezka…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (state.titles.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ничего не нашлось. Попробуйте название на русском или на английском.") }
             items(state.titles, key = { it.key }) { t -> PosterCard(t, onClick = { actions.onTitle(t) }) }
         }

@@ -72,6 +72,8 @@ class RezkaClient(private val web: Web, private val host: () -> String) {
 
 /** Film search across IMDb and HDrezka, and torrents for a title across Jacred and Torrentio. */
 class Catalog(private val web: Web, val rezka: RezkaClient) {
+    suspend fun imdb(query: String): List<Title> = Imdb.parse(web.get(Imdb.suggestUrl(query)))
+
     suspend fun search(query: String): SearchResult = coroutineScope {
         val imdb = async { runCatching { Imdb.parse(web.get(Imdb.suggestUrl(query))) } }
         val site = async { runCatching { rezka.search(query) } }

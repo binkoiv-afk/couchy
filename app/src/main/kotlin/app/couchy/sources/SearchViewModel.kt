@@ -44,6 +44,8 @@ data class SearchState(
     val history: List<String> = emptyList(),
     /** The site needs its check passed before its results can be shown. */
     val siteBlocked: Boolean = false,
+    /** Some results are shown and a slower source is still being asked. */
+    val moreLoading: Boolean = false,
 )
 
 enum class SourceStatus { LOADING, READY, NOT_FOUND, BLOCKED, ERROR }
@@ -152,19 +154,54 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isNotBlank()) searchJob = viewModelScope.launch { run(text, remember = true) }
     }
 
+    /**
+     * IMDb answers in a moment, HDrezka can take long (a slow mirror, or the bypass starting up).
+     * Whatever comes first is shown at once and the rest is merged in when it arrives.
+     */
+    private suspend fun searchTitles(query: String) {
+        var imdb: Result<List<Title>>? = null
+        var site: Result<List<Title>>? = null
+        fun publish() {
+            val challenge = (site?.exceptionOrNull() as? ChallengeException)?.url
+            val titles = TitleMerge.merge(site?.getOrNull().orEmpty(), imdb?.getOrNull().orEmpty())
+            val pending = imdb == null || site == null
+            val failed = imdb?.isFailure == true && site?.isFailure == true && challenge == null
+            _search.update {
+                it.copy(
+                    loading = pending && titles.isEmpty(),
+                    moreLoading = pending && titles.isNotEmpty(),
+                    searched = true,
+                    titles = titles,
+                    torrents = emptyList(),
+                    siteBlocked = challenge != null,
+                    error = if (failed) "Не получилось найти. Проверьте интернет." else null,
+                )
+            }
+        }
+        kotlinx.coroutines.coroutineScope {
+            launch {
+                imdb = runCatching { catalog.imdb(query) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                publish()
+            }
+            launch {
+                site = runCatching { catalog.rezka.search(query) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                publish()
+                (site?.exceptionOrNull() as? ChallengeException)?.url?.let { url -> ask(url) { submit(query) } }
+            }
+        }
+    }
+
     fun clearHistory() = viewModelScope.launch { couchy.settings.setSearchHistory(emptyList()) }
 
     private suspend fun run(text: String, remember: Boolean = false) {
         val query = text.trim()
-        _search.update { it.copy(loading = true, error = null) }
+        _search.update { it.copy(loading = true, moreLoading = false, error = null, titles = emptyList()) }
         try {
             if (_search.value.mode == SearchMode.TORRENTS) {
                 val hits = catalog.rawTorrents(query)
                 _search.update { it.copy(loading = false, searched = true, torrents = TorrentHits.group(hits), titles = emptyList(), siteBlocked = false) }
             } else {
-                val result = catalog.search(query)
-                _search.update { it.copy(loading = false, searched = true, titles = result.titles, torrents = emptyList(), siteBlocked = result.challengeUrl != null) }
-                if (result.challengeUrl != null) ask(result.challengeUrl) { submit(query) }
+                searchTitles(query)
             }
             if (remember) {
                 val history = (listOf(query) + _search.value.history.filter { !it.equals(query, ignoreCase = true) }).take(12)

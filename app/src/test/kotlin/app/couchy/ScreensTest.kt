@@ -32,6 +32,21 @@ import app.couchy.tv.PlaylistEntity
 import app.couchy.tv.ProgramEntity
 import app.couchy.tv.TvState
 import app.couchy.ui.tv.TvActions
+import app.couchy.core.sources.EpisodeRef
+import app.couchy.core.sources.RezkaPage
+import app.couchy.core.sources.Title
+import app.couchy.core.sources.TitleKind
+import app.couchy.core.sources.TorrentHit
+import app.couchy.core.sources.TorrentHits
+import app.couchy.core.sources.Translator
+import app.couchy.sources.RezkaUi
+import app.couchy.sources.SearchState
+import app.couchy.sources.SourceStatus
+import app.couchy.sources.TitleUi
+import app.couchy.ui.search.SearchActions
+import app.couchy.ui.search.SearchContent
+import app.couchy.ui.search.TitleActions
+import app.couchy.ui.search.TitleContent
 import app.couchy.core.torrent.TorrFile
 import app.couchy.torrent.TorrentFileUi
 import app.couchy.torrent.TorrentPhase
@@ -217,6 +232,66 @@ class ScreensTest {
         TorrentContent(TorrentState(link = "magnet:?", title = "Северный ветер (2024) 2160p", phase = TorrentPhase.METADATA, peers = 3), torrentActions)
     }
     @Test fun tvPlayerTorrent() = snap("tv_player_torrent", tv, FormFactor.TV) { player(touch = false, status = "17 из 48 пиров · 6,3 МБ/с") }
+
+    private val found = listOf(
+        Title("Дюна: Часть вторая", "Dune: Part Two", year = 2024, rating = "КП 8.17", imdbId = "tt15239678"),
+        Title("Дюна", "Dune: Part One", year = 2021, rating = "КП 7.68"),
+        Title("Дюна: Пророчество", "Dune: Prophecy", year = 2024, kind = TitleKind.SERIES, rating = "КП 7.16"),
+        Title("«Дюна» Ходоровского", "Jodorowsky's Dune", year = 2013, rating = "КП 8.08"),
+        Title("Дюна: Часть третья", "Dune: Part Three", year = 2026),
+        Title("Dune", "Dune", year = 1984, imdbId = "tt0087182", info = "Kyle MacLachlan, Virginia Madsen"),
+        Title("Долгая дорога в дюнах", year = 1980, kind = TitleKind.SERIES),
+        Title("Dune Drifter", year = 2020),
+    )
+    private val searchState = SearchState(query = "дюна", searched = true, titles = found)
+    private val searchActions = SearchActions({}, {}, {}, {}, {}, {}, {}, {})
+
+    private fun hit(name: String, seeds: Int, gb: Double, tracker: String, voices: List<String> = emptyList()) = TorrentHit(
+        title = name, magnet = "magnet:?xt=urn:btih:${name.hashCode()}", hash = name.hashCode().toString(), size = (gb * (1L shl 30)).toLong(),
+        seeds = seeds, tracker = tracker, quality = TorrentHits.qualityOf(name), voices = voices, hdr = "HDR" in name,
+    )
+    private val torrentGroups = TorrentHits.group(
+        listOf(
+            hit("Дюна: Часть вторая / Dune: Part Two (2024) WEB-DL 2160p HDR | Дубляж", 412, 31.2, "rutracker", listOf("Дубляж")),
+            hit("Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR.H.265-FLUX", 433, 29.3, "TorrentGalaxy"),
+            hit("Дюна: Часть вторая / Dune: Part Two (2024) WEB-DL 1080p | Дубляж, MVO", 1798, 12.2, "rutor", listOf("Дубляж", "MVO")),
+            hit("Dune Part Two 2024 1080p WEBRip", 1090, 2.76, "YTS"),
+            hit("Дюна: Часть вторая (2024) WEB-DLRip 1080p | Jaskier", 132, 1.99, "bitru", listOf("Jaskier")),
+            hit("Dune.Part.Two.2024.1080p.WEBRip.1600MB.DD5.1.x264-GalaxyRG", 299, 1.6, "TorrentGalaxy"),
+            hit("Dune.Part.Two.2024.1080p.WEB-DL.H264.AAC-EVO", 154, 6.59, "1337x"),
+            hit("Дюна: Часть вторая (2024) WEB-DLRip 720p | Дубляж", 640, 4.37, "kinozal", listOf("Дубляж")),
+        ),
+    )
+    private val titleUi = TitleUi(
+        title = found[2],
+        description = "За десять тысяч лет до восхождения Пола Атрейдеса сёстры Харконнен основывают легендарный орден Бене Гессерит.",
+        rezka = RezkaUi(
+            SourceStatus.READY,
+            url = "https://rezka.ag/series/fiction/74658-dyuna-prorochestvo-2024.html",
+            page = RezkaPage(74658, true, "Дюна: Пророчество", "Dune: Prophecy", null, null, "IMDb 7.1",
+                listOf(Translator(56, "Дубляж"), Translator(111, "HDrezka Studio"), Translator(238, "LostFilm"), Translator(1, "Оригинал · Английский")), 56,
+                (1..6).map { EpisodeRef(1, it, "Серия $it") }),
+            translator = 56,
+            episodes = (1..6).map { EpisodeRef(1, it, "Серия $it") } + (1..2).map { EpisodeRef(2, it, "Серия $it") },
+            season = 1,
+        ),
+        torrents = torrentGroups,
+        torrentsLoading = false,
+        progress = mapOf("1:3" to 0.4f),
+        watched = setOf("1:1", "1:2"),
+    )
+    private val titleActions = TitleActions({}, {}, {}, { _, _, _ -> }, {}, {}, {})
+
+    @Test fun phoneSearch() = snap("phone_search", phone, FormFactor.PHONE) { Shell(Destination.SEARCH, {}, {}) { SearchContent(searchState, searchActions) } }
+    @Test fun tvSearch() = snap("tv_search", tv, FormFactor.TV) { Shell(Destination.SEARCH, {}, {}) { SearchContent(searchState, searchActions) } }
+    @Test fun phoneSearchHistory() = snap("phone_search_history", phone, FormFactor.PHONE) {
+        Shell(Destination.SEARCH, {}, {}) { SearchContent(SearchState(history = listOf("дюна", "во все тяжкие", "оппенгеймер")), searchActions) }
+    }
+    @Test fun tvTitle() = snap("tv_title", tv, FormFactor.TV) { TitleContent(titleUi, titleActions) }
+    @Test fun phoneTitle() = snap("phone_title", phone, FormFactor.PHONE) { TitleContent(titleUi, titleActions) }
+    @Test fun phoneTitleBlocked() = snap("phone_title_blocked", phone, FormFactor.PHONE) {
+        TitleContent(titleUi.copy(title = found[0], rezka = RezkaUi(SourceStatus.BLOCKED), torrentsLoading = true, torrents = emptyList()), titleActions)
+    }
 
     @Test fun tvPlayer() = snap("tv_player", tv, FormFactor.TV) { player(touch = false) }
     @Test fun phonePlayer() = snap(

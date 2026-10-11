@@ -8,6 +8,7 @@ import app.couchy.core.LinkKind
 import app.couchy.core.Links
 import app.couchy.core.Progress
 import app.couchy.core.SortOrder
+import app.couchy.core.sources.Rezka
 import app.couchy.data.MediaEntity
 import app.couchy.data.Prefs
 import app.couchy.data.ThemeMode
@@ -37,6 +38,10 @@ data class Playback(
     val key: String = uri,
     /** Set for a file played from a torrent: the next episode starts by itself. */
     val torrent: TorrentPlay? = null,
+    /** Subtitles that come as separate files: label and URL. */
+    val subtitles: List<Pair<String, String>> = emptyList(),
+    /** The next episode from an online source, opened when this one ends. */
+    val nextRef: String? = null,
 )
 
 data class TorrentPlay(val hash: String, val fileId: Int, val nextFileId: Int?)
@@ -121,8 +126,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun torrentHandled() { _pendingTorrent.value = null }
 
+    /** An episode saved from an online source; its stream link has to be fetched again. */
+    private val _pendingSource = MutableStateFlow<String?>(null)
+    val pendingSource: StateFlow<String?> = _pendingSource.asStateFlow()
+
+    fun sourceHandled() { _pendingSource.value = null }
+
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
+        if (Rezka.isRef(link)) {
+            _pendingSource.value = link
+            return
+        }
         val kind = if (library.isTorrentFile(link)) LinkKind.TORRENT else Links.classify(link)
         if (kind == LinkKind.TORRENT) {
             _pendingTorrent.value = link
@@ -180,6 +195,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setTheme(value: ThemeMode) = viewModelScope.launch { settings.setTheme(value) }
     fun setUiMode(value: UiMode) = viewModelScope.launch { settings.setUiMode(value) }
     fun setTorrEngine(mode: TorrEngineMode, address: String) = viewModelScope.launch { settings.setTorrEngine(mode, address) }
+    fun setRezkaHost(value: String) = viewModelScope.launch { settings.setRezkaHost(value) }
 
     private fun unsupportedText(kind: LinkKind) = when (kind) {
         LinkKind.YOUTUBE -> "YouTube появится отдельным разделом в следующих сборках."

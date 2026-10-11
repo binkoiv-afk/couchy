@@ -49,6 +49,7 @@ class SettingsActions(
     val onTorrEngine: (TorrEngineMode, String) -> Unit = { _, _ -> },
     /** Checks a TorrServe address and reports the answer as a line of text. */
     val onCheckTorr: (String, (String) -> Unit) -> Unit = { _, _ -> },
+    val onRezkaHost: (String) -> Unit = {},
 )
 
 @Composable
@@ -75,6 +76,20 @@ fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions:
             row = false,
         ) {
             TorrSettings(prefs, actions)
+        }
+        Section("Онлайн-источники", "Если HDrezka не открывается, укажите рабочее зеркало, например https://hdrezka.me", row = false) {
+            var host by rememberSaveable(prefs.rezkaHost) { mutableStateOf(prefs.rezkaHost) }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    host, { host = it },
+                    label = { Text("Адрес HDrezka") },
+                    placeholder = { Text("https://rezka.ag") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
+            }
         }
         Section("О приложении", "Couchy $version") {
             when (update) {
@@ -137,4 +152,9 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
             }
         }
     }
+}
+
+private fun normalizeHost(text: String): String {
+    val t = text.trim().trimEnd('/')
+    return if (t.isEmpty() || "://" in t) t else "https://$t"
 }

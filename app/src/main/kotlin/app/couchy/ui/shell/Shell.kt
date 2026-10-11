@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import app.couchy.ui.components.couchyClickable
 
 enum class Destination(val label: String, val icon: ImageVector) {
     HOME("Главная", Icons.Rounded.Home),
+    SEARCH("Поиск", Icons.Rounded.Search),
     TV("ТВ", Icons.Rounded.LiveTv),
     LIBRARY("Медиатека", Icons.Rounded.GridView),
     SETTINGS("Настройки", Icons.Rounded.Settings),
@@ -131,8 +133,8 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
     ) {
         val item = Modifier.weight(1f)
         BarItem(Destination.HOME.icon, Destination.HOME.label, current == Destination.HOME, item) { onNavigate(Destination.HOME) }
+        BarItem(Destination.SEARCH.icon, Destination.SEARCH.label, current == Destination.SEARCH, item) { onNavigate(Destination.SEARCH) }
         BarItem(Destination.TV.icon, Destination.TV.label, current == Destination.TV, item) { onNavigate(Destination.TV) }
-        BarItem(Icons.Rounded.AddCircle, "Открыть", false, item, onClick = onOpen)
         BarItem(Destination.LIBRARY.icon, Destination.LIBRARY.label, current == Destination.LIBRARY, item) { onNavigate(Destination.LIBRARY) }
         BarItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS, item) { onNavigate(Destination.SETTINGS) }
     }

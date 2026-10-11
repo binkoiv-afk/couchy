@@ -36,6 +36,20 @@ import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
 import app.couchy.ui.open.OpenDialog
 import app.couchy.torrent.TorrentViewModel
+import app.couchy.sources.SearchViewModel
+import app.couchy.ui.search.ChallengeDialog
+import app.couchy.ui.search.SearchActions
+import app.couchy.ui.search.SearchContent
+import app.couchy.ui.search.TitleActions
+import app.couchy.ui.search.TitleContent
+import android.speech.RecognizerIntent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import app.couchy.tv.ChannelNow
 import app.couchy.ui.torrent.TorrentActions
 import app.couchy.ui.torrent.TorrentContent
@@ -64,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
     private val tvVm: TvViewModel by viewModels()
     private val torrentVm: TorrentViewModel by viewModels()
+    private val searchVm: SearchViewModel by viewModels()
 
     /** Bumped when the app comes back after a long time away, to start fresh on Home. */
     private val freshStart = MutableStateFlow(0)
@@ -79,7 +94,7 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode)) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, tvVm, torrentVm, fresh)
+                    MainScreen(vm, tvVm, torrentVm, searchVm, fresh)
                 }
             }
         }
@@ -127,7 +142,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentViewModel, freshStart: Int) {
+private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentViewModel, searchVm: SearchViewModel, freshStart: Int) {
     val form = LocalFormFactor.current
     val playback by vm.playback.collectAsStateWithLifecycle()
     val home by vm.home.collectAsStateWithLifecycle()
@@ -147,11 +162,25 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val torrent by torrentVm.state.collectAsStateWithLifecycle()
     val torrentAutoPlay by torrentVm.autoPlay.collectAsStateWithLifecycle()
     val pendingTorrent by vm.pendingTorrent.collectAsStateWithLifecycle()
+    val search by searchVm.search.collectAsStateWithLifecycle()
+    val titlePage by searchVm.title.collectAsStateWithLifecycle()
+    val challenge by searchVm.challenge.collectAsStateWithLifecycle()
+    val sourceAutoPlay by searchVm.autoPlay.collectAsStateWithLifecycle()
+    val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
+    val sourceError by searchVm.error.collectAsStateWithLifecycle()
+    val pendingSource by vm.pendingSource.collectAsStateWithLifecycle()
     LaunchedEffect(freshStart) {
         if (freshStart > 0) {
             destination = Destination.HOME; showOpen = false; actionsFor = null; channelFor = null; showPlaylists = false
             torrentVm.close()
+            searchVm.closeTitle()
         }
+    }
+    LaunchedEffect(pendingSource) {
+        pendingSource?.let { ref -> searchVm.playRef(ref); vm.sourceHandled() }
+    }
+    LaunchedEffect(sourceAutoPlay) {
+        sourceAutoPlay?.let { vm.playDirect(it); searchVm.autoPlayHandled() }
     }
     LaunchedEffect(pendingTorrent) {
         pendingTorrent?.let { link ->
@@ -181,6 +210,20 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { showOpen = false; vm.open(uri.toString()) }
     }
+    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { searchVm.submit(it) }
+    }
+    val voiceIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Что посмотреть?")
+    }
+    val hasVoice = remember { voiceIntent.resolveActivity(context.packageManager) != null }
+
+    challenge?.let { url ->
+        ChallengeDialog(url, searchVm.userAgent, onPassed = searchVm::challengePassed, onDismiss = searchVm::challengeDismissed)
+    }
+    sourceError?.let { text -> NoticeDialog(text, searchVm::dismissError) }
 
     val current = playback
     if (current != null) {
@@ -197,10 +240,14 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
             },
             status = current.torrent?.let { torrentVm.statusLine(torrent) },
             onFinished = {
-                // Series: the next episode of the torrent starts by itself.
+                // Series: the next episode starts by itself, from the torrent or the online source.
                 val next = current.torrent?.nextFileId
-                if (next == null) vm.closePlayer()
-                else scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
+                val nextRef = current.nextRef
+                when {
+                    next != null -> scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
+                    nextRef != null -> searchVm.playRef(nextRef)
+                    else -> vm.closePlayer()
+                }
             },
         )
         return
@@ -218,6 +265,32 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 onRetry = torrentVm::retry,
             ),
         )
+        notice?.let { n -> NoticeDialog(n.text, vm::dismissNotice) }
+        return
+    }
+
+    val page = titlePage
+    if (page != null) {
+        BackHandler { searchVm.closeTitle() }
+        Box(Modifier.fillMaxSize()) {
+            TitleContent(
+                page,
+                TitleActions(
+                    onBack = searchVm::closeTitle,
+                    onTranslator = searchVm::selectTranslator,
+                    onSeason = { searchVm.selectSeason(it) },
+                    onPlay = { s, e, fromStart -> scope.launch { searchVm.playRezka(s, e, fromStart)?.let(vm::playDirect) } },
+                    onChallenge = searchVm::retryRezka,
+                    onRetryRezka = searchVm::retryRezka,
+                    onTorrent = { hit -> torrentVm.open(hit.magnet) },
+                ),
+            )
+            if (sourceBusy) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
         notice?.let { n -> NoticeDialog(n.text, vm::dismissNotice) }
         return
     }
@@ -252,6 +325,19 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 ),
             )
             Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
+            Destination.SEARCH -> SearchContent(
+                search,
+                SearchActions(
+                    onQuery = searchVm::setQuery,
+                    onSubmit = { searchVm.submit(it) },
+                    onMode = searchVm::setMode,
+                    onTitle = searchVm::openTitle,
+                    onTorrent = { hit -> torrentVm.open(hit.magnet) },
+                    onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
+                    onOpenLink = { showOpen = true },
+                    onClearHistory = { searchVm.clearHistory() },
+                ),
+            )
             Destination.LIBRARY -> LibraryContent(
                 library,
                 LibraryActions(
@@ -280,6 +366,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                             }
                         },
                         onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
+                        onRezkaHost = { vm.setRezkaHost(it) },
                         onCheckTorr = { address, report ->
                             scope.launch {
                                 report(

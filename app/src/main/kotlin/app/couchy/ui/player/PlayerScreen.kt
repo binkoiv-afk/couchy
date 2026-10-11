@@ -368,7 +368,14 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
     }
     player.trackSelectionParameters = params.build()
 
-    val item = MediaItem.Builder().setUri(Uri.parse(playback.uri)).apply {
+    val subtitles = playback.subtitles.map { (label, url) ->
+        MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+            .setMimeType(if (url.substringBefore('?').endsWith(".srt", ignoreCase = true)) MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
+            .setLabel(label)
+            .setLanguage(languageOf(label))
+            .build()
+    }
+    val item = MediaItem.Builder().setUri(Uri.parse(playback.uri)).setSubtitleConfigurations(subtitles).apply {
         when (Links.classify(playback.uri)) {
             LinkKind.HLS -> setMimeType(MimeTypes.APPLICATION_M3U8)
             LinkKind.DASH -> setMimeType(MimeTypes.APPLICATION_MPD)
@@ -379,6 +386,17 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
     player.prepare()
     player.playWhenReady = true
     return player
+}
+
+/** Sites label subtitle files by language name; the player wants a code to remember the choice. */
+private fun languageOf(label: String): String? {
+    val l = label.lowercase()
+    return when {
+        "рус" in l || "russian" in l -> "ru"
+        "укр" in l || "ukrain" in l -> "uk"
+        "англ" in l || "english" in l || "eng" == l -> "en"
+        else -> null
+    }
 }
 
 @OptIn(UnstableApi::class)

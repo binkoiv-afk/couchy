@@ -275,9 +275,9 @@ object YouTubeClient {
 /** The video to start with: the quality wanted, or the best one not above it, or the best there is. */
 object QualityPick {
     fun choose(labels: List<String>): String? {
-        val label = app.couchy.QualityChoice.label ?: return labels.firstOrNull()
+        val label = app.couchy.QualityChoice.label
         labels.firstOrNull { it == label }?.let { return it }
-        val target = heightOf(label).takeIf { it > 0 } ?: return labels.firstOrNull()
+        val target = app.couchy.QualityChoice.maxHeight ?: return labels.firstOrNull()
         return labels.filter { heightOf(it) in 1..target }.maxByOrNull { heightOf(it) } ?: labels.lastOrNull()
     }
 

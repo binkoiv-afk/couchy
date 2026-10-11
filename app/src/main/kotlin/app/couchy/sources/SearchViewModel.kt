@@ -699,7 +699,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         name: String, episodes: List<EpisodeRef>, fromStart: Boolean,
     ): Playback {
         val stream = if (series) catalog.rezka.episode(id, translator.id, season, episode, url) else catalog.rezka.movie(id, translator, url)
-        val ranked = stream.options.sortedByDescending { it.rank }
+        // The site sometimes gives the same file under two names; one entry per file is enough.
+        val ranked = stream.options.sortedByDescending { it.rank }.distinctBy { it.url }
         // The quality picked last time, or the best there is.
         val wanted = app.couchy.youtube.QualityPick.choose(ranked.map { it.quality })
         val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")

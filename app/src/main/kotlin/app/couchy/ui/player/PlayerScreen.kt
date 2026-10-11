@@ -490,8 +490,8 @@ fun PlayerScreen(
                     if (playback.variants.size > 1 && onVariant != null) {
                         playback.variants.map { (label, url) ->
                             Option(label, url == playback.uri) {
+                                // Only this video changes; the default stays as set on the title page.
                                 if (url != playback.uri) {
-                                    app.couchy.QualityChoice.label = label
                                     save()
                                     onVariant(url, player.currentPosition)
                                 }
@@ -568,6 +568,8 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
 
     val params = player.trackSelectionParameters.buildUpon()
         .setPreferredAudioLanguage(playback.audioLanguage ?: Locale.getDefault().language)
+    // Streams with several qualities start no higher than the one wanted (1080p unless changed).
+    app.couchy.QualityChoice.maxHeight?.let { params.setMaxVideoSize(Int.MAX_VALUE, it) }
     when (playback.subtitleLanguage) {
         null -> Unit
         "" -> params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -641,13 +643,19 @@ private fun trackOptions(player: Player, tracks: Tracks, type: Int, onChosen: (S
 @OptIn(UnstableApi::class)
 private fun qualityOptions(player: Player, tracks: Tracks, onLabel: (String) -> Unit): List<Option> {
     val overridden = player.trackSelectionParameters.overrides.keys.any { it.type == C.TRACK_TYPE_VIDEO }
-    val auto = Option("Авто", !overridden) {
+    val limit = app.couchy.QualityChoice.maxHeight
+    val auto = Option(if (limit != null) "Авто, до ${heightLabel(limit)}" else "Авто", !overridden) {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).build()
         onLabel("Авто")
     }
     val variants = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }.flatMap { group ->
         (0 until group.length).filter { group.isTrackSupported(it) }.map { i -> Triple(group, i, group.getTrackFormat(i)) }
-    }.sortedByDescending { it.third.height }
+    }.sortedByDescending { it.third.height }.distinctBy { it.third.height }
+    // One file, one picture: say so instead of offering a choice that changes nothing.
+    if (variants.size <= 1) {
+        val only = variants.firstOrNull()?.third?.let(::videoLabel) ?: "одно"
+        return listOf(Option("Качество $only: у этого источника других нет. Выберите другую раздачу или источник.", true) {})
+    }
     return listOf(auto) + variants.map { (group, i, format) ->
         val label = videoLabel(format)
         Option(label, overridden && group.isTrackSelected(i)) {

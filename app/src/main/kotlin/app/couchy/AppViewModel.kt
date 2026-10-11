@@ -53,14 +53,17 @@ data class Playback(
 data class Skip(val startMs: Long, val endMs: Long, val label: String)
 
 /**
- * The quality wanted for online sources and YouTube: picked before watching on the title page
- * or in the player, kept between launches. Null means the best there is.
+ * The quality wanted for online sources, YouTube and streams with several qualities: picked on
+ * the title page or in the player, kept between launches. 1080p unless changed; "best" means
+ * the highest there is.
  */
 object QualityChoice {
-    val options = listOf(null, "2160p", "1440p", "1080p", "720p", "480p", "360p")
+    const val BEST = "best"
+    const val DEFAULT = "1080p"
+    val options = listOf(BEST, "2160p", "1440p", "1080p", "720p", "480p", "360p")
     private var prefs: android.content.SharedPreferences? = null
 
-    @Volatile var label: String? = null
+    @Volatile var label: String = DEFAULT
         set(value) {
             field = value
             prefs?.edit()?.putString("quality", value)?.apply()
@@ -68,11 +71,14 @@ object QualityChoice {
 
     fun init(context: android.content.Context) {
         prefs = context.getSharedPreferences("player", android.content.Context.MODE_PRIVATE)
-        label = prefs?.getString("quality", null)
+        label = prefs?.getString("quality", null) ?: DEFAULT
     }
 
-    fun name(label: String?) = when (label) {
-        null -> "Лучшее"
+    /** The highest picture wanted, or null for no limit. */
+    val maxHeight: Int? get() = if (label == BEST) null else app.couchy.youtube.QualityPick.heightOf(label).takeIf { it > 0 }
+
+    fun name(label: String) = when (label) {
+        BEST -> "Лучшее"
         "2160p" -> "4K"
         else -> label
     }

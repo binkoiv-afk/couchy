@@ -19,6 +19,7 @@ class CouchyApp : Application() {
     val bypass by lazy { Bypass(this, settings) }
     val cast by lazy { app.couchy.cast.Cast(this) }
     val marks by lazy { app.couchy.data.Marks(this) }
+    val downloads by lazy { app.couchy.download.Downloads(this) }
     val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv, marks) }
 
     override fun onCreate() {

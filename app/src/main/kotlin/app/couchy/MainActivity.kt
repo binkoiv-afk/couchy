@@ -243,6 +243,8 @@ private fun MainScreen(
     if (askPin) PinDialog(check = vm::exitKids, onDismiss = { askPin = false })
     LaunchedEffect(cast) { cast.incoming.collect { vm.openCast(it) } }
     val sync = (LocalContext.current.applicationContext as CouchyApp).sync
+    val downloads = (LocalContext.current.applicationContext as CouchyApp).downloads
+    val offline by downloads.items.collectAsStateWithLifecycle()
     val syncStatus by sync.status.collectAsStateWithLifecycle()
     // Leaving the player and every few minutes on a TV box that stays open: positions travel.
     LaunchedEffect(playback == null) { if (playback == null) sync.syncSoon() }
@@ -449,6 +451,9 @@ private fun MainScreen(
                 )
             }),
             onVariant = { url, position -> vm.playDirect(current.copy(uri = url, startMs = position)) },
+            onDownload = if (current.live == null && current.uri.startsWith("http")) ({
+                downloads.start(current)
+            }) else null,
             onSubtitle = { label, uri, language, position ->
                 vm.saveTracks(current.key, current.audioLanguage, language)
                 vm.playDirect(current.copy(subtitles = current.subtitles + (label to uri), subtitleLanguage = language, startMs = position))
@@ -637,13 +642,17 @@ private fun MainScreen(
             )
             Destination.LIBRARY -> LibraryContent(
                 library.copy(saved = saved),
-                LibraryActions(
+                downloads = offline,
+                onDownloads = { downloads.refresh() },
+                actions = LibraryActions(
                     onPlay = { vm.play(it) },
                     onMore = { if (!kids) actionsFor = it },
                     onFilter = vm::setFilter,
                     onSort = { vm.setSort(it) },
                     onSettings = { if (kids) askPin = true else destination = Destination.SETTINGS },
                     onTitle = searchVm::openTitle,
+                    onSaved = { s -> if (s.done) vm.open(s.playback.key, s.playback.title) },
+                    onRemoveSaved = { s -> downloads.remove(s.playback.key) },
                 ),
             )
             Destination.SETTINGS -> prefs?.let { p ->

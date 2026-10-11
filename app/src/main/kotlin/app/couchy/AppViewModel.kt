@@ -181,6 +181,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
+        // Saved on the device: plays from there, with or without the internet.
+        couchy.downloads.ready(link)?.let { saved ->
+            viewModelScope.launch {
+                val entry = library.open(link, saved.title)
+                _playback.value = saved.copy(
+                    startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
+                    audioLanguage = entry.audioLanguage,
+                    subtitleLanguage = entry.subtitleLanguage,
+                )
+            }
+            return
+        }
         if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link) || app.couchy.core.youtube.YouTubeLinks.isVideo(link)) {
             _pendingSource.value = link
             return

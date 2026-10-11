@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.material.icons.rounded.Favorite
 
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Delete
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.rounded.Settings
@@ -17,6 +19,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import app.couchy.ui.components.couchyClickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -46,11 +51,20 @@ class LibraryActions(
     val onSort: (SortOrder) -> Unit,
     val onSettings: (() -> Unit)? = null,
     val onTitle: (app.couchy.core.sources.Title) -> Unit = {},
+    val onSaved: (app.couchy.download.Saved) -> Unit = {},
+    val onRemoveSaved: (app.couchy.download.Saved) -> Unit = {},
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
 @Composable
-fun LibraryContent(state: LibraryState, actions: LibraryActions, modifier: Modifier = Modifier) {
+fun LibraryContent(
+    state: LibraryState,
+    actions: LibraryActions,
+    modifier: Modifier = Modifier,
+    downloads: List<app.couchy.download.Saved> = emptyList(),
+    /** Called every second while the downloads tab is open, to read progress again. */
+    onDownloads: () -> Unit = {},
+) {
     val form = LocalFormFactor.current
     val side = if (form.wide) 32.dp else 18.dp
     Column(modifier.fillMaxSize()) {
@@ -76,12 +90,22 @@ fun LibraryContent(state: LibraryState, actions: LibraryActions, modifier: Modif
             item {
                 Chip("Любимое · ${state.saved.loved.size}", list == "loved", onClick = { list = if (list == "loved") null else "loved" }, icon = Icons.Rounded.Favorite)
             }
+            item {
+                Chip("Загрузки · ${downloads.size}", list == "saved", onClick = { list = if (list == "saved") null else "saved" }, icon = Icons.Rounded.Download)
+            }
             items(LibraryFilter.entries) { f -> Chip(f.label, list == null && f == state.filter, onClick = { list = null; actions.onFilter(f) }) }
             item {
                 // One chip that cycles through the orders: easy on a remote, no menus to dig through.
                 val next = SortOrder.entries[(state.sort.ordinal + 1) % SortOrder.entries.size]
                 Chip(state.sort.label, false, onClick = { actions.onSort(next) }, icon = Icons.AutoMirrored.Rounded.Sort)
             }
+        }
+        if (list == "saved") {
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                while (true) { onDownloads(); kotlinx.coroutines.delay(1_000) }
+            }
+            SavedList(downloads, actions, side)
+            return@Column
         }
         val titles = when (list) {
             "later" -> state.saved.later
@@ -138,6 +162,60 @@ fun LibraryContent(state: LibraryState, actions: LibraryActions, modifier: Modif
                 items(state.items, key = { it.uri }) { media ->
                     MediaCard(media, null, onClick = { actions.onPlay(media) }, onLongClick = { actions.onMore(media) })
                 }
+            }
+        }
+    }
+}
+
+/** Videos saved on the device: progress while they download, play and delete once they are there. */
+@Composable
+private fun SavedList(items: List<app.couchy.download.Saved>, actions: LibraryActions, side: androidx.compose.ui.unit.Dp) {
+    if (items.isEmpty()) {
+        Box(Modifier.fillMaxSize().padding(side), contentAlignment = Alignment.Center) {
+            Text(
+                "Здесь будут скачанные фильмы и видео. В плеере нажмите «Скачать», и их можно будет смотреть без интернета.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    androidx.compose.foundation.lazy.LazyColumn(
+        contentPadding = PaddingValues(start = side, end = side, top = 14.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(items, key = { it.playback.key }) { s ->
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainer, androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .couchyClickable(androidx.compose.foundation.shape.RoundedCornerShape(14.dp), focusScale = 1.02f) { actions.onSaved(s) }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(s.playback.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    val mb = s.bytes / 1_048_576
+                    Text(
+                        when {
+                            s.done -> "Скачано · $mb МБ · можно смотреть без интернета"
+                            s.failed -> "Не скачалось. Удалите и попробуйте снова, ссылка могла устареть"
+                            else -> "Скачивается · ${s.percent.toInt()}% · $mb МБ"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (s.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!s.done && !s.failed) {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { s.percent / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                Box(
+                    Modifier.size(44.dp).couchyClickable(androidx.compose.foundation.shape.CircleShape) { actions.onRemoveSaved(s) },
+                    contentAlignment = Alignment.Center,
+                ) { androidx.compose.material3.Icon(Icons.Rounded.Delete, "Удалить", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }

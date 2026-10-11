@@ -116,6 +116,8 @@ fun PlayerScreen(
     onNumber: ((Int) -> Unit)? = null,
     /** Subtitles found on the internet: label, local file, language, and where to go on from. */
     onSubtitle: ((label: String, uri: String, language: String, positionMs: Long) -> Unit)? = null,
+    /** Saves the video on the device; null where it cannot be saved. */
+    onDownload: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
@@ -335,6 +337,7 @@ fun PlayerScreen(
         onRotate = if (phone) ({ poke(); upright = !upright }) else null,
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
+        onDownload = onDownload?.let { d -> { poke(); d(); flash("Скачивается. Найдёте в «Моё» → «Загрузки»") } },
         onFavorite = onFavorite?.let { f -> { poke(); f() } },
         onPrevious = onPrevious?.let { f -> { poke(); f() } },
         onNextNow = { save(); onFinished() },
@@ -669,7 +672,10 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(20_000)
-    val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http))
+    val network = DefaultDataSource.Factory(context, http)
+    // A saved copy plays from the device, without the internet.
+    val downloads = (context.applicationContext as app.couchy.CouchyApp).downloads
+    val sources = DefaultMediaSourceFactory(if (downloads.has(playback.key)) downloads.readThrough(network) else network)
     // Cheap TV boxes often have a broken first decoder; falling back to the next one plays the video anyway.
     val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
     val player = ExoPlayer.Builder(context, renderers)

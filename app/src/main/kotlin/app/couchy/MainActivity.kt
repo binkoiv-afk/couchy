@@ -449,6 +449,10 @@ private fun MainScreen(
                 )
             }),
             onVariant = { url, position -> vm.playDirect(current.copy(uri = url, startMs = position)) },
+            onSubtitle = { label, uri, language, position ->
+                vm.saveTracks(current.key, current.audioLanguage, language)
+                vm.playDirect(current.copy(subtitles = current.subtitles + (label to uri), subtitleLanguage = language, startMs = position))
+            },
             hasNext = current.torrent?.nextFileId != null || current.nextRef != null,
             onFavorite = onAir?.let { l -> { tvVm.toggleFavorite(l.channelId); Unit } },
             onPrevious = onAir?.let { l ->

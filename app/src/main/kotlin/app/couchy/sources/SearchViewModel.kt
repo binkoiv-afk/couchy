@@ -747,6 +747,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             subtitles = stream.subtitles.map { it.label to it.url },
             nextRef = next,
             variants = ranked.map { it.quality to it.url },
+            imdb = _title.value?.title?.takeIf { it.rezkaUrl == null || it.rezkaUrl == url }?.imdbId,
         )
     }
 

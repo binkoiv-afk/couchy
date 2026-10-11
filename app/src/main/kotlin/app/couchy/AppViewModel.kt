@@ -48,6 +48,8 @@ data class Playback(
     val audioUri: String? = null,
     /** Parts to jump over (YouTube sponsor reads, intros): start, end and what it was. */
     val skips: List<Skip> = emptyList(),
+    /** IMDb id of the film or series, for looking up subtitles. */
+    val imdb: String? = null,
 )
 
 data class Skip(val startMs: Long, val endMs: Long, val label: String)

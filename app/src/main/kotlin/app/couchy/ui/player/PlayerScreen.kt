@@ -38,6 +38,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -76,7 +78,7 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS }
 
 private val sleepMinutes = listOf(15, 30, 45, 60, 90)
 
@@ -112,9 +114,11 @@ fun PlayerScreen(
     onPrevious: (() -> Unit)? = null,
     /** A channel number typed on the remote. */
     onNumber: ((Int) -> Unit)? = null,
+    /** Subtitles found on the internet: label, local file, language, and where to go on from. */
+    onSubtitle: ((label: String, uri: String, language: String, positionMs: Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val player = remember(playback.uri) { buildPlayer(context, playback) }
+    val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
 
     var ui by remember(playback.uri) { mutableStateOf(PlayerUi(playback.title)) }
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
@@ -139,6 +143,22 @@ fun PlayerScreen(
     var intro by remember(series) { mutableStateOf(series?.let { app.couchy.data.Intros.get(marks, it) }) }
     var introFrom by remember(playback.key) { mutableStateOf<Long?>(null) }
     var introSkipped by remember(playback.key) { mutableStateOf(false) }
+    // Subtitles looked up on the internet for this video.
+    var findSubs by remember { mutableStateOf(false) }
+    var subHits by remember(playback.key) { mutableStateOf<List<app.couchy.core.sources.SubHit>?>(null) }
+    var subError by remember(playback.key) { mutableStateOf<String?>(null) }
+    val subScope = rememberCoroutineScope()
+    LaunchedEffect(findSubs) {
+        if (!findSubs) return@LaunchedEffect
+        findSubs = false
+        sheet = Sheet.FIND_SUBS
+        if (subHits.isNullOrEmpty()) {
+            subError = null
+            subHits = null
+            subHits = runCatching { app.couchy.sources.SubtitleFinder.find(playback) }
+                .getOrElse { subError = "OpenSubtitles не ответил, попробуйте позже"; emptyList() }
+        }
+    }
 
     fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
     LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
@@ -490,7 +510,8 @@ fun PlayerScreen(
                                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                             onTracksChosen(currentAudioLanguage(player), "")
                         },
-                    ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) },
+                    ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) } +
+                        (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSubs = true }) else emptyList()),
                 ),
             ),
             onDismiss = { sheet = null },
@@ -545,6 +566,37 @@ fun PlayerScreen(
             ),
             onDismiss = { sheet = null },
         )
+        Sheet.FIND_SUBS -> {
+            val found = subHits
+            OptionsDialog(
+                "Субтитры из интернета",
+                listOf(
+                    OptionSection(
+                        when {
+                            subError != null -> subError
+                            found == null -> "Ищу на OpenSubtitles…"
+                            found.isEmpty() -> "Ничего не нашлось для «${app.couchy.core.sources.Subtitles.queryOf(playback.title)}»"
+                            else -> "OPENSUBTITLES"
+                        },
+                        found.orEmpty().map { hit ->
+                            Option("${if (hit.lang == "rus") "Русские" else "Английские"} · ${hit.name}", false) {
+                                subScope.launch {
+                                    flash("Загружаю субтитры…")
+                                    runCatching { app.couchy.sources.SubtitleFinder.download(context, hit) }
+                                        .onSuccess { uri ->
+                                            save()
+                                            val lang = if (hit.lang == "rus") "ru" else "en"
+                                            onSubtitle?.invoke(if (lang == "ru") "Русские (интернет)" else "Английские (интернет)", uri, lang, player.currentPosition)
+                                        }
+                                        .onFailure { flash("Не удалось скачать субтитры") }
+                                }
+                            }
+                        },
+                    ),
+                ),
+                onDismiss = { sheet = null },
+            )
+        }
         Sheet.INTRO -> {
             val at = player.currentPosition
             val from = introFrom

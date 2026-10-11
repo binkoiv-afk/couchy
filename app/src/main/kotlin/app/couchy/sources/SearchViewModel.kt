@@ -1,6 +1,7 @@
 package app.couchy.sources
 
 import app.couchy.data.Marks
+import app.couchy.episodes.NewEpisodes
 import app.couchy.data.SavedTitles
 import app.couchy.BuildConfig
 import android.app.Application
@@ -183,21 +184,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         marks.toggleTitle(list, t)
         if (adding && t.kind == TitleKind.SERIES && t.imdbId != null && !marks.hasTitle(Marks.FOLLOW, t)) {
             marks.toggleTitle(Marks.FOLLOW, t)
-            app.couchy.episodes.NewEpisodes.checkSoon(couchy)
+            NewEpisodes.checkSoon(couchy)
         }
         couchy.sync.syncSoon()
     }
 
     /** Series the person hears about when a new episode is out. */
     val following: StateFlow<Set<String>> = marks.all
-        .map { app.couchy.episodes.NewEpisodes.followed(marks).mapNotNull { it.imdbId }.toSet() }
+        .map { NewEpisodes.followed(marks).mapNotNull { it.imdbId }.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     fun toggleFollow(t: Title) {
         val on = marks.hasTitle(Marks.FOLLOW, t)
         marks.toggleTitle(Marks.FOLLOW, t)
         couchy.sync.syncSoon()
-        if (!on) app.couchy.episodes.NewEpisodes.checkSoon(couchy)
+        if (!on) NewEpisodes.checkSoon(couchy)
     }
 
     private val _siteWindow = MutableStateFlow<SiteWindow?>(null)

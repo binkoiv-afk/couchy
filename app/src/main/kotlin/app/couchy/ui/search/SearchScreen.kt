@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -87,7 +89,15 @@ class SearchActions(
  * a page with every way to watch it. "Только торренты" searches trackers directly.
  */
 @Composable
-fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier = Modifier, focusKey: Int = 0) {
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+fun SearchContent(
+    state: SearchState,
+    actions: SearchActions,
+    modifier: Modifier = Modifier,
+    focusKey: Int = 0,
+    /** Rows shown before anything is typed: what is watched now, saved, seen. */
+    shelves: List<Pair<String, List<Title>>> = emptyList(),
+) {
     val form = LocalFormFactor.current
     val side = if (form.wide) 32.dp else 18.dp
     val cell = when (form) {
@@ -104,7 +114,23 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) { Header(state, actions, focusKey) }
 
-        if (state.loading) {
+        val guessing = state.query.isNotBlank() && (state.typing || state.loading) &&
+            (state.suggestions.isNotEmpty() || state.hints.isNotEmpty())
+        if (guessing) {
+            // While typing: past searches and quick guesses, each a tap away.
+            state.hints.forEach { q ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "hint:$q") { HintRow(q, onClick = { actions.onSubmit(q) }) }
+            }
+            state.suggestions.forEach { t ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "guess:" + t.key) { SuggestionRow(t, onClick = { actions.onTitle(t) }) }
+            }
+            if (state.loading) item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    Text("Ищу везде…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else if (state.loading) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -115,19 +141,27 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
             if (state.mode == SearchMode.TORRENTS) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Hint("Ищу раздачи на rutracker, rutor, kinozal и других трекерах.") }
             } else {
-                // Nothing typed yet: the catalogue to browse, by kind and by genre.
-                item(span = { GridItemSpan(maxLineSpan) }) { Label("Каталог") }
-                item(span = { GridItemSpan(maxLineSpan) }) { Kinds(actions) }
-                item(span = { GridItemSpan(maxLineSpan) }) { Label("Жанры") }
-                items(app.couchy.core.sources.Genres.all.take(18), key = { "genre:" + it.slug }) { g -> val slug = g.slug; val name = g.name
-                    GenreTile(name, slug) { actions.onCatalog(CatalogFilter(genre = slug)) }
+                // Nothing typed yet: what is watched now and what was kept, then the catalogue as tags.
+                shelves.filter { it.second.isNotEmpty() }.forEach { (name, titles) ->
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "shelf:$name") { Shelf(name, titles, actions) }
                 }
+                item(span = { GridItemSpan(maxLineSpan) }) { Section("Подборки") }
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                        SecondaryButton("Все фильтры", androidx.compose.material.icons.Icons.Rounded.Tune, onClick = { actions.onCatalog(CatalogFilter()) })
-                        SecondaryButton("Лучшие за год", null, onClick = {
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CatalogType.entries.forEach { type -> Chip(type.label, false, onClick = { actions.onCatalog(CatalogFilter(type, CatalogSort.WATCHING)) }) }
+                        Chip("Лучшие за год", false, onClick = {
                             actions.onCatalog(CatalogFilter(sort = CatalogSort.BEST, year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1))
                         })
+                        Chip("Все фильтры", false, onClick = { actions.onCatalog(CatalogFilter()) }, icon = Icons.Rounded.Tune)
+                    }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) { Section("Жанры") }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        app.couchy.core.sources.Genres.all.take(20).forEach { g ->
+                            val slug = g.slug
+                            Chip(g.name, false, onClick = { actions.onCatalog(CatalogFilter(genre = slug)) })
+                        }
                     }
                 }
             }
@@ -186,30 +220,93 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
         if (focusKey > 0) runCatching { focus.requestFocus(); keyboard?.show() }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Поиск", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(top = 4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                state.query,
-                actions.onQuery,
-                placeholder = { Text("Фильм, сериал или мультфильм") },
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(999.dp),
-                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); actions.onSubmit(state.query) }),
-                modifier = Modifier.weight(1f).focusRequester(focus),
-            )
-            actions.onVoice?.let { SecondaryButton(null, Icons.Rounded.Mic, onClick = it) }
-            SecondaryButton(null, Icons.Rounded.AddLink, onClick = actions.onOpenLink)
-        }
+        // One clean line: the field holds its own buttons, the hint never wraps.
+        OutlinedTextField(
+            state.query,
+            actions.onQuery,
+            placeholder = { Text("Фильмы и сериалы", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            leadingIcon = { Icon(Icons.Rounded.Search, null) },
+            trailingIcon = {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(onClick = { actions.onQuery(""); runCatching { focus.requestFocus() } }) { Icon(Icons.Rounded.Close, "Стереть") }
+                    } else {
+                        actions.onVoice?.let { IconButton(onClick = it) { Icon(Icons.Rounded.Mic, "Голосом", tint = MaterialTheme.colorScheme.primary) } }
+                        IconButton(onClick = actions.onOpenLink) { Icon(Icons.Rounded.AddLink, "Открыть ссылку") }
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(999.dp),
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); actions.onSubmit(state.query) }),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        )
         androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(SearchMode.entries.size) { i -> val m = SearchMode.entries[i]; Chip(m.label, m == state.mode, onClick = { actions.onMode(m) }) }
+        }
+    }
+}
+
+/** A section name, like the rows on Home. */
+@Composable
+private fun Section(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground, modifier = modifier.padding(top = 6.dp))
+}
+
+/** A row of small posters under a name. */
+@Composable
+private fun Shelf(name: String, titles: List<Title>, actions: SearchActions) {
+    val tv = LocalFormFactor.current.isTv
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Section(name)
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(titles.take(20).size) { i ->
+                val t = titles[i]
+                PosterCard(t, onClick = { actions.onTitle(t) }, modifier = Modifier.width(if (tv) 130.dp else 96.dp))
+            }
+        }
+    }
+}
+
+/** A past search matching what is typed. */
+@Composable
+private fun HintRow(query: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().couchyClickable(shape, focusScale = 1.01f, onClick = onClick).padding(horizontal = 6.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Text(query, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** A quick guess: small poster, name, year and kind; a tap opens the title. */
+@Composable
+private fun SuggestionRow(title: Title, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().couchyClickable(shape, focusScale = 1.01f, onClick = onClick).padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.width(40.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
+            Artwork(title.name, Modifier.fillMaxSize()) {
+                if (title.poster != null) AsyncImage(title.poster, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val meta = listOfNotNull(title.year?.toString(), if (title.kind == TitleKind.SERIES) "сериал" else "фильм", title.original?.takeIf { it != title.name }).joinToString(" · ")
+            Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -219,7 +316,7 @@ private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
 private fun History(history: List<String>, actions: SearchActions) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Вы искали", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+            Section("Вы искали", Modifier.weight(1f))
             Text(
                 "Очистить",
                 style = MaterialTheme.typography.labelLarge,
@@ -232,57 +329,8 @@ private fun History(history: List<String>, actions: SearchActions) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            history.forEach { q -> Chip(q, false, onClick = { actions.onSubmit(q) }, icon = Icons.Rounded.History) }
+            history.take(10).forEach { q -> Chip(q, false, onClick = { actions.onSubmit(q) }, icon = Icons.Rounded.History) }
         }
-    }
-}
-
-/** Films, series, cartoons and anime as four big buttons. */
-@Composable
-private fun Kinds(actions: SearchActions) {
-    val colors = listOf(Color(0xFFFF7A3D), Color(0xFF7B5CFF), Color(0xFF2BB673), Color(0xFFE6417A))
-    val wide = LocalFormFactor.current.wide
-    // Two by two on a phone, so "Мультфильмы" fits; one row on wide screens.
-    val rows = if (wide) listOf(CatalogType.entries) else CatalogType.entries.chunked(2)
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { type ->
-                    val color = colors[type.ordinal]
-                    val shape = RoundedCornerShape(16.dp)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .aspectRatio(2.4f)
-                            .couchyClickable(shape) { actions.onCatalog(CatalogFilter(type, CatalogSort.WATCHING)) }
-                            .clip(shape)
-                            .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.55f)))),
-                        contentAlignment = Alignment.BottomStart,
-                    ) {
-                        Text(type.label, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.padding(12.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** A genre as a dark tile with a stripe of its own color. */
-@Composable
-private fun GenreTile(name: String, slug: String, onClick: () -> Unit) {
-    val hue = ((slug.hashCode() and 0xFFFF) % 360).toFloat()
-    val accent = Color.hsv(hue, 0.6f, 0.85f)
-    val shape = RoundedCornerShape(14.dp)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(1.7f)
-            .couchyClickable(shape, onClick = onClick)
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(accent.copy(alpha = 0.38f), MaterialTheme.colorScheme.surfaceContainerHigh))),
-        contentAlignment = Alignment.BottomStart,
-    ) {
-        Text(name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(10.dp))
     }
 }
 

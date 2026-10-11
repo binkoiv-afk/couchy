@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -200,7 +201,7 @@ private fun NextCard(seconds: Int, controls: PlayerControls, modifier: Modifier)
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
     val playFocus = remember { FocusRequester() }
-    Box(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(
@@ -212,8 +213,29 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 ),
             ),
     ) {
+        // A phone held upright has room for about six buttons in a row: the rest go up, next to the title.
+        val upright = touch && maxWidth < 560.dp
+        val tools = buildList {
+            if (!touch) add(Tool(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (ui.playing) "Пауза" else "Играть", highlighted = true, focus = playFocus, onClick = controls.onTogglePlay))
+            if (touch) controls.onCast?.let { add(Tool(Icons.Rounded.Cast, "На ТВ", onClick = it)) }
+            add(Tool(Icons.Rounded.Subtitles, "Озвучка", onClick = controls.onTracks))
+            add(Tool(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality))
+            if (ui.live == null) add(Tool(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed))
+            add(Tool(Icons.Rounded.AspectRatio, ui.resizeLabel, onClick = controls.onResize))
+            controls.onIntro?.let { add(Tool(Icons.Rounded.FastForward, "Заставка", top = true, onClick = it)) }
+            controls.onDownload?.let { add(Tool(Icons.Rounded.Download, "Скачать", top = true, onClick = it)) }
+            controls.onPip?.let { add(Tool(Icons.Rounded.PictureInPictureAlt, "Окно", top = true, onClick = it)) }
+            add(Tool(Icons.Rounded.Bedtime, ui.sleepLabel ?: "Сон", highlighted = ui.sleepLabel != null, top = true, onClick = controls.onSleep))
+            if (ui.live != null) {
+                controls.onFavorite?.let { add(Tool(if (ui.live.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, "Избранное", highlighted = ui.live.favorite, top = true, onClick = it)) }
+                controls.onPrevious?.let { add(Tool(Icons.Rounded.History, "Предыдущий", top = true, onClick = it)) }
+            }
+            controls.onRotate?.let { add(Tool(Icons.Rounded.ScreenRotation, "Поворот", onClick = it)) }
+        }
+        val bottom = if (upright) tools.filter { !it.top } else tools
+        val up = if (upright) tools.filter { it.top } else emptyList()
         Row(
-            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 28.dp, vertical = 22.dp),
+            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = if (upright) 8.dp else 28.dp, vertical = if (upright) 12.dp else 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -232,7 +254,8 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (ui.durationMs > 0 && ui.live == null) {
+            up.forEach { t -> ToolButton(t, false, Modifier) }
+            if (!upright && ui.durationMs > 0 && ui.live == null) {
                 val endsAt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                     .format(java.util.Date(System.currentTimeMillis() + ui.durationMs - ui.positionMs))
                 Text("Закончится в $endsAt", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
@@ -252,43 +275,20 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
         }
 
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = if (touch) 16.dp else 28.dp, vertical = if (touch) 10.dp else 20.dp)) {
+            if (ui.live == null) Text(
+                "${Time.clock(ui.positionMs)} / ${if (ui.durationMs > 0) Time.clock(ui.durationMs) else "--:--"}",
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 4.dp),
+            )
             if (ui.live != null) LiveInfo(ui.live, touch) else Timeline(ui, controls)
-            Row(
-                Modifier.fillMaxWidth().padding(top = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                if (!touch) {
-                    Pill(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.focusRequester(playFocus), highlighted = true, onClick = controls.onTogglePlay)
-                }
-                if (ui.live == null) Text(
-                    "${Time.clock(ui.positionMs)} / ${if (ui.durationMs > 0) Time.clock(ui.durationMs) else "--:--"}",
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                // Every button is in sight: when they do not fit in one line they wrap to a second.
-                androidx.compose.foundation.layout.FlowRow(
-                    Modifier.weight(3f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
-                    Pill(Icons.Rounded.Subtitles, if (touch) null else "Озвучка и субтитры", onClick = controls.onTracks)
-                    Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
-                    if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
-                    Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
-                    controls.onPip?.let { Pill(Icons.Rounded.PictureInPictureAlt, null, onClick = it) }
-                    controls.onDownload?.let { Pill(Icons.Rounded.Download, if (touch) null else "Скачать", onClick = it) }
-                    controls.onIntro?.let { Pill(Icons.Rounded.FastForward, if (touch) null else "Заставка", onClick = it) }
-                    Pill(Icons.Rounded.Bedtime, ui.sleepLabel ?: if (touch) null else "Таймер сна", highlighted = ui.sleepLabel != null, onClick = controls.onSleep)
-                    if (ui.live != null) {
-                        controls.onFavorite?.let { Pill(if (ui.live.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (touch) null else "Избранное", highlighted = ui.live.favorite, onClick = it) }
-                        controls.onPrevious?.let { Pill(Icons.Rounded.History, if (touch) null else "Предыдущий", onClick = it) }
-                    }
-                    controls.onRotate?.let { Pill(Icons.Rounded.ScreenRotation, null, onClick = it) }
+            // One row, always: the buttons share the width, with captions when there is room for them.
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                val cell = maxWidth / bottom.size.coerceAtLeast(1)
+                val captions = cell >= 52.dp
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    bottom.forEach { t -> ToolButton(t, captions, Modifier.width(cell.coerceAtMost(110.dp))) }
                 }
             }
         }
@@ -417,4 +417,45 @@ private fun ErrorPanel(message: String, controls: PlayerControls, modifier: Modi
         }
     }
     LaunchedEffect(Unit) { runCatching { retry.requestFocus() } }
+}
+
+/** One of the player's buttons. */
+private class Tool(
+    val icon: ImageVector,
+    val label: String,
+    val highlighted: Boolean = false,
+    val focus: FocusRequester? = null,
+    /** On an upright phone it sits in the top bar. */
+    val top: Boolean = false,
+    val onClick: () -> Unit,
+)
+
+/** An icon with its caption under it, as in the players of streaming apps; the caption goes when space is short. */
+@Composable
+private fun ToolButton(t: Tool, caption: Boolean, modifier: Modifier) {
+    Column(
+        modifier
+            .then(if (t.focus != null) Modifier.focusRequester(t.focus) else Modifier)
+            .couchyClickable(RoundedCornerShape(12.dp), onClick = t.onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(
+            Modifier.size(36.dp).background(if (t.highlighted) Color.White else Color.White.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(t.icon, t.label, tint = if (t.highlighted) Color(0xFF111111) else Color.White, modifier = Modifier.size(20.dp))
+        }
+        if (caption) {
+            Text(
+                t.label,
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }

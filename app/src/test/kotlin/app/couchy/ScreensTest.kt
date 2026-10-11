@@ -387,7 +387,14 @@ class ScreensTest {
     @Test fun phoneSearch() = snap("phone_search", phone, FormFactor.PHONE) { Shell(Destination.SEARCH, {}, {}) { SearchContent(searchState, searchActions) } }
     @Test fun tvSearch() = snap("tv_search", tv, FormFactor.TV) { Shell(Destination.SEARCH, {}, {}) { SearchContent(searchState, searchActions) } }
     @Test fun phoneSearchHistory() = snap("phone_search_history", phone, FormFactor.PHONE) {
-        Shell(Destination.SEARCH, {}, {}) { SearchContent(SearchState(history = listOf("дюна", "во все тяжкие", "оппенгеймер")), searchActions) }
+        Shell(Destination.SEARCH, {}, {}) {
+            SearchContent(SearchState(history = listOf("дюна", "во все тяжкие", "оппенгеймер")), searchActions, shelves = listOf("Сейчас смотрят" to found, "Просмотрено" to found.reversed()))
+        }
+    }
+    @Test fun phoneSearchTyping() = snap("phone_search_typing", phone, FormFactor.PHONE) {
+        Shell(Destination.SEARCH, {}, {}) {
+            SearchContent(SearchState(query = "дю", typing = true, hints = listOf("дюна 2"), suggestions = found), searchActions)
+        }
     }
     private val tall = phone.copy(screenHeight = phone.screenHeight * 3)
     @Test fun phoneTitleFull() = snap("phone_title_full", tall, FormFactor.PHONE) { TitleContent(titleUi, titleActions) }
@@ -429,10 +436,11 @@ class ScreensTest {
         "phone_player",
         phone.copy(orientation = ScreenOrientation.LANDSCAPE, screenWidth = phone.screenHeight, screenHeight = phone.screenWidth),
         FormFactor.PHONE,
-    ) { player(touch = true) }
+    ) { player(touch = true, full = true) }
+    @Test fun phonePlayerUpright() = snap("phone_player_upright", phone, FormFactor.PHONE) { player(touch = true, full = true) }
 
     @Composable
-    private fun player(touch: Boolean, live: LiveUi? = null, status: String? = null) {
+    private fun player(touch: Boolean, live: LiveUi? = null, status: String? = null, full: Boolean = false) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1D2B4F), Color(0xFF0A0F1F))))) {
             PlayerOverlay(
                 PlayerUi(
@@ -446,7 +454,11 @@ class ScreensTest {
                     buffering = status != null,
                 ),
                 visible = true,
-                controls = PlayerControls({}, {}, {}, {}, {}, {}, {}, {}, {}, {}),
+                controls = if (full) {
+                    PlayerControls({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, onCast = {}, onRotate = {}, onIntro = {}, onDownload = {}, onPip = {})
+                } else {
+                    PlayerControls({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+                },
                 touch = touch,
             )
         }

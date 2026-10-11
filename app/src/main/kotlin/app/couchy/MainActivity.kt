@@ -682,6 +682,11 @@ private fun MainScreen(
             Destination.SEARCH -> SearchContent(
                 focusKey = searchFocus,
                 state = search,
+                shelves = listOf(
+                    "Сейчас смотрят" to feed.trending,
+                    "Хочу посмотреть" to saved.later,
+                    "Просмотрено" to saved.seen,
+                ),
                 actions = SearchActions(
                     onQuery = searchVm::setQuery,
                     onSubmit = { searchVm.submit(it) },

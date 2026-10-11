@@ -693,57 +693,38 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
             },
         )
     }
-    androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        app.couchy.ui.components.Chip(
-            if (state.later) "В «Смотреть позже»" else "Смотреть позже",
-            state.later,
-            onClick = actions.onLater,
-            icon = if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-        )
-        app.couchy.ui.components.Chip(
-            "Любимое",
-            state.loved,
-            onClick = actions.onLoved,
-            icon = if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-        )
-        app.couchy.ui.components.Chip(
-            "Просмотрено",
-            state.seen,
-            onClick = actions.onSeen,
-            icon = if (state.seen) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-        )
-        app.couchy.ui.components.Chip(
-            state.score?.let { "Моя оценка: $it" } ?: "Оценить",
+    // One even row of icons with short captions, like the actions under a film in a store.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        val cell = Modifier.weight(1f)
+        KeepAction(if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, "Позже", state.later, actions.onLater, cell)
+        KeepAction(if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Любимое", state.loved, actions.onLoved, cell)
+        KeepAction(if (state.seen) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, "Смотрел", state.seen, actions.onSeen, cell)
+        KeepAction(
+            if (state.score != null) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            state.score?.let { "Моя: $it" } ?: "Оценить",
             state.score != null,
-            onClick = { rating = true },
-            icon = if (state.score != null) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            { rating = true },
+            cell,
         )
         if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val ask = androidx.activity.compose.rememberLauncherForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-            ) { }
-            app.couchy.ui.components.Chip(
-                if (state.following) "Сообщу о новых сериях" else "Сообщать о новых сериях",
+            KeepAction(
+                if (state.following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
+                if (state.following) "Слежу" else "Следить",
                 state.following,
-                onClick = {
+                {
                     if (!state.following && !app.couchy.episodes.NewEpisodes.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {
                         ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                     }
                     actions.onFollow()
                 },
-                icon = if (state.following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
+                cell,
             )
         }
-        app.couchy.ui.components.Chip(
-            "Качество: ${app.couchy.QualityChoice.name(quality)}",
-            false,
-            onClick = { picking = true },
-            icon = Icons.Rounded.HighQuality,
-        )
+        KeepAction(Icons.Rounded.HighQuality, app.couchy.QualityChoice.name(quality), false, { picking = true }, cell)
     }
     if (picking) {
         androidx.compose.material3.AlertDialog(
@@ -772,6 +753,40 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
             },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { picking = false }) { Text("Закрыть") } },
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        )
+    }
+}
+
+/** An icon in a soft circle over a one-line caption; filled with the accent when on. */
+@Composable
+private fun KeepAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    on: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+    Column(
+        modifier.couchyClickable(shape, onClick = onClick).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp).background(
+                if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                androidx.compose.foundation.shape.CircleShape,
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

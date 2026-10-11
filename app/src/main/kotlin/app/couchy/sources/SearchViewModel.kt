@@ -64,6 +64,11 @@ data class SearchState(
     val moreLoading: Boolean = false,
     /** Nothing was found for the query as said or typed, so these are for a corrected one. */
     val corrected: String? = null,
+    /** Quick guesses while typing: titles from IMDb's suggest and matching past searches. */
+    val suggestions: List<Title> = emptyList(),
+    val hints: List<String> = emptyList(),
+    /** The query was edited and its full results are not on screen yet. */
+    val typing: Boolean = false,
 )
 
 /** What Home shows to pick from: HDrezka's catalogue. Empty when the site cannot be reached. */
@@ -352,11 +357,23 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         _feed.update { it.copy(similar = picks, similarTo = page?.name ?: name) }
     }
 
+    private var suggestJob: Job? = null
+
     fun setQuery(text: String) {
-        _search.update { it.copy(query = text) }
+        val q = text.trim()
+        val hints = if (q.isEmpty()) emptyList() else _search.value.history
+            .filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }.take(3)
+        _search.update { it.copy(query = text, typing = q.isNotEmpty(), hints = hints, suggestions = if (q.length < 2) emptyList() else it.suggestions) }
+        // Guesses come in a moment; the full search, from every source, after a pause.
+        suggestJob?.cancel()
+        if (q.length >= 2 && _search.value.mode.titles) suggestJob = viewModelScope.launch {
+            delay(220)
+            val found = runCatching { catalog.imdb(q) }.getOrNull() ?: return@launch
+            _search.update { if (it.query.trim() == q) it.copy(suggestions = found.take(6)) else it }
+        }
         // Typing on a phone searches by itself after a pause; the remote's keyboard submits.
         searchJob?.cancel()
-        if (text.trim().length >= 3) searchJob = viewModelScope.launch { delay(700); run(text) }
+        if (q.length >= 3) searchJob = viewModelScope.launch { delay(700); run(text) }
     }
 
     fun setMode(mode: SearchMode) {
@@ -377,7 +394,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun submit(text: String = _search.value.query) {
-        _search.update { it.copy(query = text) }
+        _search.update { it.copy(query = text, typing = false, hints = emptyList()) }
+        suggestJob?.cancel()
         searchJob?.cancel()
         if (text.isNotBlank()) searchJob = viewModelScope.launch { run(text, remember = true) }
     }
@@ -401,6 +419,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val failed = imdb?.isFailure == true && site?.isFailure == true && challenge == null
             _search.update {
                 it.copy(
+                    typing = it.typing && titles.isEmpty() && pending,
                     loading = pending && titles.isEmpty(),
                     moreLoading = pending && titles.isNotEmpty(),
                     searched = true,
@@ -452,14 +471,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val query = text.trim()
         val cached = cache[query.lowercase()]?.takeIf { _search.value.mode.titles }
         if (cached != null) {
-            _search.update { it.copy(loading = false, moreLoading = false, searched = true, error = null, titles = cached, torrents = emptyList(), siteBlocked = false) }
+            _search.update { it.copy(typing = false, loading = false, moreLoading = false, searched = true, error = null, titles = cached, torrents = emptyList(), siteBlocked = false) }
         } else {
             _search.update { it.copy(loading = true, moreLoading = false, error = null, titles = emptyList()) }
         }
         try {
             if (_search.value.mode == SearchMode.TORRENTS) {
                 val hits = catalog.rawTorrents(query)
-                _search.update { it.copy(loading = false, searched = true, torrents = TorrentHits.group(hits), titles = emptyList(), siteBlocked = false) }
+                _search.update { it.copy(typing = false, loading = false, searched = true, torrents = TorrentHits.group(hits), titles = emptyList(), siteBlocked = false) }
             } else {
                 _search.update { it.copy(corrected = null) }
                 searchTitles(query, quiet = cached != null)
@@ -487,7 +506,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            _search.update { it.copy(loading = false, searched = true, error = "Не получилось найти. Проверьте интернет.") }
+            _search.update { it.copy(typing = false, loading = false, searched = true, error = "Не получилось найти. Проверьте интернет.") }
         }
     }
 

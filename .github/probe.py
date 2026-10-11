@@ -186,6 +186,42 @@ def engines():
         log.write(f"warp reg: FAIL {e!r}\n")
 
 
-for name, fn in [("engines", engines)]:
+def details():
+    """Film page details, people pages and catalogue filters, for the title card and the catalogue."""
+    base = "https://rezka.ag"
+    for name, url in [
+        ("cat_genre", base + "/films/fiction/"),
+        ("cat_genre_best", base + "/films/best/fiction/"),
+        ("cat_year", base + "/year/2023/"),
+        ("cat_country", base + "/country/" + urllib.parse.quote("США") + "/"),
+        ("cat_series_genre", base + "/series/comedy/"),
+        ("cat_cartoons", base + "/cartoons/"),
+        ("cat_anime", base + "/animation/"),
+        ("cat_filter", base + "/films/fiction/?filter=popular"),
+        ("cat_best_year", base + "/films/best/2023/"),
+        ("cat_page2", base + "/films/page/2/?filter=last"),
+        ("film", base + "/films/fiction/57233-dyuna-chast-vtoraya-2024.html"),
+        ("series", base + "/series/thriller/646-vo-vse-tyazhkie-2008.html"),
+        ("imdb_title", "https://www.imdb.com/title/tt15239678/"),
+        ("imdb_more", "https://www.imdb.com/title/tt15239678/fullcredits"),
+    ]:
+        try:
+            code, final, text = get(url, headers={"Accept-Language": "ru-RU,ru;q=0.9"})
+            log.write(f"{name}: {code} {final} len={len(text)} challenge={'anubis' in text or 'Just a moment' in text}\n")
+            save("d_" + name, text)
+            if name == "film":
+                people = re.findall(r'href="(https?://[^"]+/person/[^"]+)"', text)
+                log.write(f"  people: {people[:4]}\n")
+                if people:
+                    c, u, t = get(people[0])
+                    log.write(f"  person: {c} {u} len={len(t)}\n")
+                    save("d_person", t)
+                    if len(people) > 1:
+                        save("d_person2", get(people[1])[2])
+        except Exception as e:
+            log.write(f"{name}: FAIL {e!r}\n")
+
+
+for name, fn in [("details", details)]:
     step(name, fn)
 log.close()

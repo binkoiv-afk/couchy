@@ -192,6 +192,13 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (key.trim() != prefs.tmdbKey) SecondaryButton("Сохранить", null, onClick = { actions.onTmdbKey(key) })
+                    // TMDB asks apps that use its API to say so.
+                    Text(
+                        "Данные о фильмах: TMDB и Cinemeta. This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
             }
             SettingsPage.TORRENTS -> TorrSettings(prefs, actions)

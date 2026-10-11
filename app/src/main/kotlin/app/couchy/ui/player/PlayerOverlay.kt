@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,6 +104,8 @@ class PlayerControls(
     val onInteract: () -> Unit,
     /** Hands the video to a TV box in the home network; null where there is nothing to send. */
     val onCast: (() -> Unit)? = null,
+    /** Turns a phone between sideways and upright; null elsewhere. */
+    val onRotate: (() -> Unit)? = null,
 )
 
 /**
@@ -187,7 +192,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
             }
         }
 
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = if (touch) 16.dp else 28.dp, vertical = if (touch) 10.dp else 20.dp)) {
             if (ui.live != null) LiveInfo(ui.live, touch) else Timeline(ui, controls)
             Row(
                 Modifier.fillMaxWidth().padding(top = 6.dp),
@@ -205,12 +210,19 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     modifier = Modifier.padding(horizontal = 6.dp),
                 )
                 Spacer(Modifier.weight(1f))
-                if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
-                // A phone held sideways has room for icons and short values only.
-                Pill(Icons.Rounded.Subtitles, if (touch) null else "Озвучка и субтитры", onClick = controls.onTracks)
-                Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
-                if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
-                Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
+                // A phone has room for icons and short values only; held upright, the row scrolls.
+                Row(
+                    Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
+                    Pill(Icons.Rounded.Subtitles, if (touch) null else "Озвучка и субтитры", onClick = controls.onTracks)
+                    Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
+                    if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
+                    Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
+                    controls.onRotate?.let { Pill(Icons.Rounded.ScreenRotation, null, onClick = it) }
+                }
             }
         }
     }
@@ -236,10 +248,10 @@ private fun LiveInfo(live: LiveUi, touch: Boolean) {
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.weight(1f))
-            Text(if (touch) "Свайп ▲ ▼ — каналы" else "▲ ▼ каналы", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp)
+            if (!touch) Text("▲ ▼ каналы", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp)
         }
         if (live.nowTitle != null) {
-            Text(live.nowTitle, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(live.nowTitle, color = Color.White, fontSize = if (touch) 16.sp else 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(time.format(java.util.Date(live.nowStart)), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
                 val fraction = ((live.nowMs - live.nowStart).toFloat() / (live.nowStop - live.nowStart).coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -248,7 +260,8 @@ private fun LiveInfo(live: LiveUi, touch: Boolean) {
                 }
                 Text(time.format(java.util.Date(live.nowStop)), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
             }
-            if (live.nextTitle != null) {
+            // On a phone the next programme stays off, so the picture is not half covered.
+            if (live.nextTitle != null && !touch) {
                 Text(
                     "Далее в ${time.format(java.util.Date(live.nextStart))}: ${live.nextTitle}",
                     color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,

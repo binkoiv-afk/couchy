@@ -169,14 +169,17 @@ fun PlayerScreen(
         }
     }
 
-    // Phones turn sideways for video; tablets and TVs keep whatever they have.
+    // Phones turn sideways for video, and the rotate button stands them up again; tablets and TVs keep whatever they have.
+    val phone = touch && context.resources.configuration.smallestScreenWidthDp < 600
+    var upright by remember { mutableStateOf(false) }
     DisposableEffect(touch) {
         val activity = context as? Activity
         val before = activity?.requestedOrientation
-        if (touch && context.resources.configuration.smallestScreenWidthDp < 600) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
         onDispose { if (before != null) activity?.requestedOrientation = before }
+    }
+    androidx.compose.runtime.LaunchedEffect(upright, phone) {
+        if (phone) (context as? Activity)?.requestedOrientation =
+            if (upright) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
     }
 
     // Leaving the app pauses playback and saves the spot; coming back does not auto-play.
@@ -237,6 +240,7 @@ fun PlayerScreen(
             player.play()
         },
         onInteract = ::poke,
+        onRotate = if (phone) ({ poke(); upright = !upright }) else null,
         onCast = onCast?.let { cast ->
             {
                 poke()

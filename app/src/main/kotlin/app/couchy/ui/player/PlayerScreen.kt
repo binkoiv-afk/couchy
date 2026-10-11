@@ -294,7 +294,8 @@ fun PlayerScreen(
 
     LaunchedEffect(overlay, lastTouch, ui.playing, sheet) {
         if (overlay && ui.playing && sheet == null && ui.error == null) {
-            delay(4_000)
+            // Long enough to read the buttons and reach the one wanted.
+            delay(if (touch) 7_000 else 8_000)
             overlay = false
         }
     }

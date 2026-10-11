@@ -138,6 +138,7 @@ class PlayerControls(
  * The player chrome from the mockups: title on top, a timeline and four buttons at the bottom.
  * On a remote the play button gets focus first; on the timeline ◀ ▶ jump by 10 seconds.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PlayerOverlay(ui: PlayerUi, visible: Boolean, controls: PlayerControls, touch: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize()) {
@@ -264,11 +265,11 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     modifier = Modifier.padding(horizontal = 6.dp),
                 )
                 Spacer(Modifier.weight(1f))
-                // A phone has room for icons and short values only; held upright, the row scrolls.
-                Row(
-                    Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                // Every button is in sight: when they do not fit in one line they wrap to a second.
+                androidx.compose.foundation.layout.FlowRow(
+                    Modifier.weight(3f, fill = false),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (touch) controls.onCast?.let { cast -> Pill(Icons.Rounded.Cast, null, onClick = cast) }
                     Pill(Icons.Rounded.Subtitles, if (touch) null else "Озвучка и субтитры", onClick = controls.onTracks)

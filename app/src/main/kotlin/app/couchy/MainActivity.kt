@@ -1,5 +1,6 @@
 package app.couchy
 
+import app.couchy.ui.search.WatchDialog
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -539,9 +540,22 @@ private fun MainScreen(
     }
 
     val page = titlePage
+    // The film or episode waiting for its voice-over and quality: season, episode, from the start.
+    var watchAsk by remember { mutableStateOf<Triple<Int, Int, Boolean>?>(null) }
     if (route is app.couchy.sources.Route.TitlePage && page != null) {
         BackHandler { searchVm.back() }
         Box(Modifier.fillMaxSize()) {
+            watchAsk?.let { (s, e, fromStart) ->
+                val r = page.rezka
+                WatchDialog(
+                    translators = r.page?.translators.orEmpty(),
+                    current = r.translator,
+                    onTranslator = { searchVm.selectTranslator(it) },
+                    load = { searchVm.playRezka(s, e, fromStart) },
+                    onPlay = { p -> watchAsk = null; vm.playDirect(p) },
+                    onDismiss = { watchAsk = null },
+                )
+            }
             TitleContent(
                 page.copy(
                     later = saved.later.any { it.key == page.title.key },
@@ -552,7 +566,8 @@ private fun MainScreen(
                     onBack = searchVm::back,
                     onTranslator = searchVm::selectTranslator,
                     onSeason = { searchVm.selectSeason(it) },
-                    onPlay = { s, e, fromStart -> scope.launch { searchVm.playRezka(s, e, fromStart)?.let(vm::playDirect) } },
+                    // Voice-over and quality are asked for first, as in LazyMedia.
+                    onPlay = { s, e, fromStart -> watchAsk = Triple(s, e, fromStart) },
                     onChallenge = searchVm::retryRezka,
                     onRetryRezka = searchVm::retryRezka,
                     onTorrent = { hit -> torrentVm.open(hit.magnet) },

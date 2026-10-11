@@ -92,6 +92,40 @@ def misc():
     save("wikidata", get("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" + urllib.parse.quote("дюна") + "&language=ru&uselang=ru&type=item&format=json&limit=5")[2])
 
 
-for name, fn in [("rezka", rezka), ("jacred", jacred), ("torrentio", torrentio), ("imdb", imdb), ("misc", misc)]:
+def sites():
+    """Plain search requests to other online cinemas, to see which answer and how."""
+    q = urllib.parse.quote("дюна")
+    for name, url in [
+        ("gidonline", "https://gidonline.io/?s=" + q),
+        ("gidonline_eu", "https://gidonline.eu/?s=" + q),
+        ("zona", "https://w140.zona.plus/search/" + q),
+        ("zona_plus", "https://zona.plus/search/" + q),
+        ("filmix", "https://filmix.my/search/" + q),
+        ("filmix_api", "https://filmix.my/api/v2/search?story=" + q),
+        ("octopus", "https://octopus.film/search?q=" + q),
+        ("kinooctopus", "https://kinooctopus.club/index.php?do=search&subaction=search&story=" + q),
+        ("kinogo", "https://kinogo.ec/index.php?do=search&subaction=search&story=" + q),
+        ("lordfilm", "https://lordfilm.lu/index.php?do=search&subaction=search&story=" + q),
+        ("kinokrad", "https://kinokrad.cc/index.php?do=search&subaction=search&story=" + q),
+        ("baskino", "https://baskino.me/index.php?do=search&subaction=search&story=" + q),
+        ("seasonvar", "http://seasonvar.ru/search?q=" + q),
+        ("anilibria", "https://api.anilibria.tv/v3/title/search?search=naruto&limit=2"),
+        ("kinopub", "https://api.service-kp.com/v1/items/search?q=" + q),
+        ("youtube_movies", "https://www.youtube.com/results?search_query=" + q + "+фильм"),
+        ("ivi", "https://api.ivi.ru/mobileapi/search/v7/?query=" + q + "&app_version=870"),
+        ("okko", "https://okko.tv/search?q=" + q),
+        ("vk_video_search", "https://vk.com/video?q=" + q),
+        ("rutube_search", "https://rutube.ru/api/search/video/?query=" + urllib.parse.quote("дюна фильм")),
+        ("archive", "https://archive.org/advancedsearch.php?q=" + urllib.parse.quote("title:(nosferatu) AND mediatype:movies") + "&fl[]=identifier&fl[]=title&rows=3&output=json"),
+    ]:
+        try:
+            code, final, text = get(url)
+            log.write(f"{name}: {code} {final} len={len(text)} challenge={'anubis' in text or 'Just a moment' in text or 'challenge' in text.lower()[:5000]}\n")
+            save("site_" + name, text)
+        except Exception as e:
+            log.write(f"{name}: FAIL {e!r}\n")
+
+
+for name, fn in [("sites", sites)]:
     step(name, fn)
 log.close()

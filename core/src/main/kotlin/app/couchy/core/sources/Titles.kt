@@ -58,6 +58,9 @@ object Imdb {
 }
 
 object TitleMerge {
+    /** Unknown years match anything; known ones may differ by one (festival vs release). */
+    fun yearsClose(a: Int?, b: Int?): Boolean = a == null || b == null || kotlin.math.abs(a - b) <= 1
+
     fun normalize(name: String): String =
         name.lowercase().replace('ё', 'е').replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
@@ -71,7 +74,7 @@ object TitleMerge {
         val joined = site.map { s ->
             val names = (listOfNotNull(s.original) + s.altNames).map(::normalize).filter { it.isNotEmpty() }.toSet()
             val match = left.firstOrNull { i ->
-                normalize(i.name) in names && (s.year == null || i.year == null || kotlin.math.abs(s.year - i.year) <= 1)
+                normalize(i.name) in names && yearsClose(s.year, i.year)
             }
             if (match == null) s else {
                 left.remove(match)

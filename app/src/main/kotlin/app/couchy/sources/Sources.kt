@@ -83,7 +83,7 @@ class Catalog(private val web: Web, val rezka: RezkaClient) {
     suspend fun findImdb(title: Title): String? {
         val name = title.original ?: return null
         return runCatching { Imdb.parse(web.get(Imdb.suggestUrl(name))) }.getOrNull()
-            ?.firstOrNull { TitleMerge.normalize(it.name) == TitleMerge.normalize(name) && (title.year == null || it.year == null || kotlin.math.abs(title.year - it.year) <= 1) }
+            ?.firstOrNull { TitleMerge.normalize(it.name) == TitleMerge.normalize(name) && TitleMerge.yearsClose(title.year, it.year) }
             ?.imdbId
     }
 

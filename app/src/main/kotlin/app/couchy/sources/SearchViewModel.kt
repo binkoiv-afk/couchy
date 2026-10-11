@@ -205,7 +205,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val wanted = (names + title.altNames).map(TitleMerge::normalize).toSet()
             found.firstOrNull { f ->
                 val fNames = (listOf(f.name) + f.altNames + listOfNotNull(f.original)).map(TitleMerge::normalize)
-                fNames.any { it in wanted } && (title.year == null || f.year == null || kotlin.math.abs(title.year - f.year) <= 1)
+                fNames.any { it in wanted } && TitleMerge.yearsClose(title.year, f.year)
             }?.rezkaUrl?.let { return it }
         }
         return null

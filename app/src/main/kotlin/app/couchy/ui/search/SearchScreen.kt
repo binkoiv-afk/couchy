@@ -232,19 +232,27 @@ private fun History(history: List<String>, actions: SearchActions) {
 @Composable
 private fun Kinds(actions: SearchActions) {
     val colors = listOf(Color(0xFFFF7A3D), Color(0xFF7B5CFF), Color(0xFF2BB673), Color(0xFFE6417A))
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        CatalogType.entries.forEachIndexed { i, type ->
-            val shape = RoundedCornerShape(16.dp)
-            Box(
-                Modifier
-                    .weight(1f)
-                    .aspectRatio(1.25f)
-                    .couchyClickable(shape) { actions.onCatalog(CatalogFilter(type, CatalogSort.WATCHING)) }
-                    .clip(shape)
-                    .background(Brush.linearGradient(listOf(colors[i], colors[i].copy(alpha = 0.55f)))),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Text(type.label, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.padding(10.dp))
+    val wide = LocalFormFactor.current.wide
+    // Two by two on a phone, so "Мультфильмы" fits; one row on wide screens.
+    val rows = if (wide) listOf(CatalogType.entries) else CatalogType.entries.chunked(2)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { type ->
+                    val color = colors[type.ordinal]
+                    val shape = RoundedCornerShape(16.dp)
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .aspectRatio(2.4f)
+                            .couchyClickable(shape) { actions.onCatalog(CatalogFilter(type, CatalogSort.WATCHING)) }
+                            .clip(shape)
+                            .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.55f)))),
+                        contentAlignment = Alignment.BottomStart,
+                    ) {
+                        Text(type.label, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.padding(12.dp))
+                    }
+                }
             }
         }
     }

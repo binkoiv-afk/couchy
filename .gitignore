@@ -6,3 +6,4 @@ local.properties
 .DS_Store
 .kotlin/
 app/src/main/jniLibs/
+app/tmdb-key.txt

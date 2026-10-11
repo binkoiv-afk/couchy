@@ -71,10 +71,13 @@ jobs:
       - name: Test and build
         run: |
           set -o pipefail
+          # The TMDB key lives in the repository secrets, not in the public code.
+          if [ -n "$TMDB_KEY" ]; then printf %s "$TMDB_KEY" > app/tmdb-key.txt; fi
           ./gradlew :core:test :app:assembleRelease 2>&1 | tee build.log
         env:
           VERSION_CODE: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
       # Pictures of the main screens, rendered on the JVM; attached to the service pre-release.
       - name: Screenshots
         continue-on-error: true

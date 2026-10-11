@@ -214,9 +214,11 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             couchy.settings.prefs.collect { p ->
                 host = p.rezkaHost.ifBlank { Rezka.DEFAULT_HOST }
-                if (p.tmdbKey != tmdbKey) {
+                // A key typed in settings wins over the one built into the app.
+                val key = p.tmdbKey.ifBlank { app.couchy.BuildConfig.TMDB_KEY }
+                if (key != tmdbKey) {
                     val changed = _feed.value.loaded
-                    tmdbKey = p.tmdbKey
+                    tmdbKey = key
                     // A new key changes the language of everything: Home is loaded again.
                     if (changed) loadFeed(force = true)
                 }

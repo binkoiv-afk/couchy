@@ -147,7 +147,7 @@ fun SettingsContent(
     var page by rememberSaveable { mutableStateOf(initialPage) }
     fun summary(p: SettingsPage): String = when (p) {
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
-        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
+        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
         SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
         SettingsPage.SYNC -> sync.status

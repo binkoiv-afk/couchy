@@ -12,6 +12,7 @@ val buildNumber = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
 // The release key lives in the repo, encrypted; its password is a GitHub secret. Without either
 // (local builds, or before the owner sets the secret) the build falls back to the debug key.
 // Yandex sign-in needs the app registered on oauth.yandex.ru; its client id is public, kept in this file.
+val tmdbKey: String = file("tmdb-key.txt").takeIf { it.exists() }?.readText()?.trim().orEmpty()
 val yandexClientId: String = file("yandex-client-id.txt").takeIf { it.exists() }?.readText()?.trim().orEmpty()
 val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotEmpty() }
     ?.takeIf { file("signing/couchy.jks").exists() }
@@ -30,6 +31,7 @@ android {
         vectorDrawables.useSupportLibrary = true
         manifestPlaceholders["YANDEX_CLIENT_ID"] = yandexClientId
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
+        buildConfigField("String", "TMDB_KEY", "\"$tmdbKey\"")
     }
 
     signingConfigs {

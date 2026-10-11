@@ -145,7 +145,12 @@ private fun Problem(message: String, actions: TorrentActions) {
 private fun Files(state: TorrentState, actions: TorrentActions, wide: Boolean) {
     val first = state.resume ?: state.files.firstOrNull()
     val focus = remember { FocusRequester() }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    // Side by side on wide screens; on a phone the peers line goes under the button.
+    val stack: @Composable (@Composable () -> Unit) -> Unit = { content ->
+        if (wide) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) { content() }
+        else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+    }
+    stack {
         if (first != null) {
             val label = when {
                 state.resume != null && state.files.size > 1 -> "Продолжить: ${first.label}"

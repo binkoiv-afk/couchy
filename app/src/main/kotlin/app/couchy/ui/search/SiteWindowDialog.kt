@@ -169,7 +169,7 @@ fun SiteWindowDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    SecondaryButton("Показать сайт", null) { hidden = false }
+                    SecondaryButton("Показать сайт", null, onClick = { hidden = false })
                 }
             }
             }

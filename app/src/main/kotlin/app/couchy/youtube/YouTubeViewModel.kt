@@ -1,5 +1,7 @@
 package app.couchy.youtube
 
+import app.couchy.data.Marks
+import app.couchy.data.SavedTitles
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -66,7 +68,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         // Follows can arrive from another device through sync.
         viewModelScope.launch {
             marks.all.collect {
-                val subs = marks.list(app.couchy.data.Marks.YOUTUBE).map { o -> YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null }) }
+                val subs = marks.list(Marks.YOUTUBE).map { o -> YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null }) }
                 if (subs != _state.value.subscriptions) _state.update { s -> s.copy(subscriptions = subs) }
             }
         }
@@ -234,18 +236,18 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 val array = JSONArray(old)
                 (0 until array.length()).map { array.getJSONObject(it) }.forEach { o ->
-                    marks.put("${app.couchy.data.Marks.YOUTUBE}|${o.getString("url")}", JSONObject().put("url", o.getString("url")).put("name", o.optString("name")).put("avatar", o.optString("avatar")))
+                    marks.put("${Marks.YOUTUBE}|${o.getString("url")}", JSONObject().put("url", o.getString("url")).put("name", o.optString("name")).put("avatar", o.optString("avatar")))
                 }
             }
             store.edit().remove("subs").apply()
         }
-        return marks.list(app.couchy.data.Marks.YOUTUBE).map { o ->
+        return marks.list(Marks.YOUTUBE).map { o ->
             YtChannel(o.getString("url"), o.optString("name"), o.optString("avatar").ifBlank { null })
         }
     }
 
     private fun saveSubs(list: List<YtChannel>) {
-        val prefix = app.couchy.data.Marks.YOUTUBE
+        val prefix = Marks.YOUTUBE
         val now = System.currentTimeMillis()
         val keep = marks.all.value.filterKeys { !it.startsWith("$prefix|") }
         // Newest follow first: the order is kept in the time stamps.

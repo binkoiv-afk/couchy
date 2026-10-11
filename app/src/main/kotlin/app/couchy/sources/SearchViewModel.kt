@@ -1,5 +1,7 @@
 package app.couchy.sources
 
+import app.couchy.data.Marks
+import app.couchy.data.SavedTitles
 import app.couchy.BuildConfig
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -167,12 +169,12 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val marks = couchy.marks
 
     /** "Смотреть позже" and "Любимое": the person's own lists of films and series. */
-    val saved: StateFlow<app.couchy.data.SavedTitles> = marks.all
-        .map { app.couchy.data.SavedTitles(marks.titles(app.couchy.data.Marks.LATER), marks.titles(app.couchy.data.Marks.LOVED)) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, app.couchy.data.SavedTitles())
+    val saved: StateFlow<SavedTitles> = marks.all
+        .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED)) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, SavedTitles())
 
-    fun toggleLater(t: Title) { marks.toggleTitle(app.couchy.data.Marks.LATER, t); couchy.sync.syncSoon() }
-    fun toggleLoved(t: Title) { marks.toggleTitle(app.couchy.data.Marks.LOVED, t); couchy.sync.syncSoon() }
+    fun toggleLater(t: Title) { marks.toggleTitle(Marks.LATER, t); couchy.sync.syncSoon() }
+    fun toggleLoved(t: Title) { marks.toggleTitle(Marks.LOVED, t); couchy.sync.syncSoon() }
 
     private val _siteWindow = MutableStateFlow<SiteWindow?>(null)
     val siteWindow: StateFlow<SiteWindow?> = _siteWindow.asStateFlow()

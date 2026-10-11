@@ -165,7 +165,7 @@ def players():
 def engines():
     for repo in ["bepass-org/warp-plus", "whyvl/wireproxy", "artem-russkikh/wireproxy-awg", "XTLS/Xray-core", "SagerNet/sing-box", "amnezia-vpn/amneziawg-go"]:
         try:
-            code, url, text = get(f"https://api.github.com/repos/{repo}/releases?per_page=3", headers={"Accept": "application/vnd.github+json"})
+            code, url, text = get(f"https://api.github.com/repos/{repo}/releases?per_page=2", headers={"Accept": "application/vnd.github+json", "Authorization": "Bearer " + os.environ.get("GH_TOKEN", "")})
             for rel in json.loads(text):
                 names = [a["name"] for a in rel["assets"] if re.search(r"android|linux.*(arm|aarch)|arm64|armv7", a["name"], re.I)]
                 log.write(f"{repo} {rel['tag_name']} {rel['published_at']} {names}\n")

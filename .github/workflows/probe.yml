@@ -17,6 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 .github/probe.py || true
           cat out/summary.txt

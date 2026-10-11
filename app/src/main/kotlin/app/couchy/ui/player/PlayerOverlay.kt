@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +126,8 @@ class PlayerControls(
     val onIntro: (() -> Unit)? = null,
     /** Saves the video for watching offline. */
     val onDownload: (() -> Unit)? = null,
+    /** Shrinks the player into a window over other apps. */
+    val onPip: (() -> Unit)? = null,
     /** Stars or unstars the live channel. */
     val onFavorite: (() -> Unit)? = null,
     /** Back to the channel watched before this one. */
@@ -277,6 +280,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
                     if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
                     Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
+                    controls.onPip?.let { Pill(Icons.Rounded.PictureInPictureAlt, null, onClick = it) }
                     controls.onDownload?.let { Pill(Icons.Rounded.Download, if (touch) null else "Скачать", onClick = it) }
                     controls.onIntro?.let { Pill(Icons.Rounded.FastForward, if (touch) null else "Заставка", onClick = it) }
                     Pill(Icons.Rounded.Bedtime, ui.sleepLabel ?: if (touch) null else "Таймер сна", highlighted = ui.sleepLabel != null, onClick = controls.onSleep)

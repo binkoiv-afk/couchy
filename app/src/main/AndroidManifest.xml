@@ -9,6 +9,8 @@
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- One APK for phones, tablets and TV boxes: neither a touchscreen nor leanback is required. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -108,6 +110,10 @@
             android:name=".tvhome.PosterProvider"
             android:authorities="${applicationId}.posters"
             android:exported="true" />
+        <service
+            android:name=".ui.player.BackgroundAudioService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <service
             android:name=".download.DownloadsService"
             android:exported="false"

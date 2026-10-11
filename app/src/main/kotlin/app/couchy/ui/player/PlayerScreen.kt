@@ -38,6 +38,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -139,6 +140,9 @@ fun PlayerScreen(
     var sleepAfterEpisode by remember { mutableStateOf(false) }
     var nextCancelled by remember(playback.uri) { mutableStateOf(false) }
     val skipped = remember(playback.key) { mutableSetOf<app.couchy.Skip>() }
+    val pip by PlayerWindow.pip.collectAsState()
+    // YouTube goes on in the background, like YouTube Premium.
+    val background = playback.live == null && (playback.audioUri != null || app.couchy.core.youtube.YouTubeLinks.isVideo(playback.key))
     // The series' opening titles, marked once and jumped over in every episode after.
     val marks = (context.applicationContext as app.couchy.CouchyApp).marks
     val series = remember(playback.key) { app.couchy.data.Intros.seriesOf(playback) }
@@ -253,7 +257,23 @@ fun PlayerScreen(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, player) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) { player.pause(); save() }
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    save()
+                    if (background && player.isPlaying) {
+                        // The sound goes on with the screen off; the picture is not decoded meanwhile.
+                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
+                        BackgroundAudio.start(context, player, playback.title)
+                    } else {
+                        player.pause()
+                    }
+                }
+                Lifecycle.Event.ON_START -> {
+                    BackgroundAudio.stop(context)
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
+                }
+                else -> Unit
+            }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -338,6 +358,7 @@ fun PlayerScreen(
         onRotate = if (phone) ({ poke(); upright = !upright }) else null,
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
+        onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
         onDownload = onDownload?.let { d -> { poke(); d(); flash("Скачивается. Найдёте в «Моё» → «Загрузки»") } },
         onFavorite = onFavorite?.let { f -> { poke(); f() } },
         onPrevious = onPrevious?.let { f -> { poke(); f() } },
@@ -497,7 +518,7 @@ fun PlayerScreen(
                     else -> null
                 },
             ),
-            overlay, controls, touch,
+            overlay && !pip, controls, touch,
         )
     }
 
@@ -684,6 +705,8 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
         .setHandleAudioBecomingNoisy(true)
         .build()
+    // YouTube may go on with the screen off: the network and the CPU stay awake for it.
+    if (playback.audioUri != null || app.couchy.core.youtube.YouTubeLinks.isVideo(playback.key)) player.setWakeMode(C.WAKE_MODE_NETWORK)
 
     val params = player.trackSelectionParameters.buildUpon()
         .setPreferredAudioLanguage(playback.audioLanguage ?: Locale.getDefault().language)

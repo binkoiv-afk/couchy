@@ -131,6 +131,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Going home while a video plays shrinks it into a window instead of stopping it. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (vm.playback.value != null) app.couchy.ui.player.PlayerWindow.enter(this)
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        app.couchy.ui.player.PlayerWindow.pip.value = isInPictureInPictureMode
+    }
+
     /** singleTask: every new launch or shared link lands here instead of reviving an old screen. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

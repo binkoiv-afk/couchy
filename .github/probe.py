@@ -1,20 +1,23 @@
-import json, os, urllib.request
+import os, urllib.request, io, zipfile
 os.makedirs("out", exist_ok=True)
+u = "https://codeload.github.com/TeamNewPipe/NewPipeExtractor/zip/refs/tags/v0.26.5"
+data = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "probe"}), timeout=60).read()
+z = zipfile.ZipFile(io.BytesIO(data))
+want = ["downloader/Downloader.java", "downloader/Request.java", "downloader/Response.java", "NewPipe.java",
+        "stream/StreamInfo.java", "stream/VideoStream.java", "stream/AudioStream.java", "stream/Stream.java", "stream/StreamInfoItem.java",
+        "channel/ChannelInfo.java", "channel/tabs/ChannelTabInfo.java", "channel/tabs/ChannelTabs.java",
+        "kiosk/KioskList.java", "kiosk/KioskInfo.java", "search/SearchInfo.java", "Image.java", "ListInfo.java", "InfoItem.java",
+        "localization/DateWrapper.java", "services/youtube/linkHandler/YoutubeSearchQueryHandlerFactory.java", "StreamingService.java",
+        "services/youtube/YoutubeParsingHelper.java", "services/youtube/YoutubeService.java", "build.gradle", "extractor/build.gradle",
+        "linkhandler/SearchQueryHandlerFactory.java", "stream/DeliveryMethod.java", "Page.java", "ListExtractor.java"]
 log = open("out/summary.txt", "w")
-def get(u):
-    r = urllib.request.Request(u, headers={"User-Agent": "probe", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(r, timeout=30) as x: return x.read().decode()
-for u in ["https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases?per_page=5",
-          "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/tags?per_page=8",
-          "https://jitpack.io/api/builds/com.github.TeamNewPipe/NewPipeExtractor/latestOk",
-          "https://api.github.com/repos/TeamNewPipe/NewPipe/releases?per_page=2"]:
-    try:
-        t = get(u)
-        try:
-            j = json.loads(t)
-            if isinstance(j, list): t = "\n".join(f"{x.get('tag_name') or x.get('name')} {x.get('published_at','')}" for x in j)
-        except Exception: pass
-        log.write(u + "\n" + t[:1500] + "\n\n")
-    except Exception as e:
-        log.write(u + " ERR " + str(e) + "\n")
+for n in z.namelist():
+    for w in want:
+        if n.endswith("/" + w) and "/test/" not in n:
+            t = z.read(n).decode("utf-8", "replace")
+            # keep only signatures to stay small
+            if n.endswith(".java"):
+                lines = [l for l in t.splitlines() if ("public " in l or "static " in l or "abstract " in l) and "*" not in l.strip()[:2]]
+                t = "\n".join(lines)
+            log.write("=== " + n + "\n" + t[:12000] + "\n")
 log.close()

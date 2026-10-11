@@ -222,6 +222,27 @@ def details():
             log.write(f"{name}: FAIL {e!r}\n")
 
 
-for name, fn in [("details", details)]:
+def meta():
+    """Cinemeta: free film data by IMDb id, catalogues by genre and search; TMDB answer without a key."""
+    for name, url in [
+        ("cm_movie", "https://v3-cinemeta.strem.io/meta/movie/tt15239678.json"),
+        ("cm_series", "https://v3-cinemeta.strem.io/meta/series/tt0903747.json"),
+        ("cm_top", "https://v3-cinemeta.strem.io/catalog/movie/top.json"),
+        ("cm_genre", "https://v3-cinemeta.strem.io/catalog/movie/top/genre=Comedy.json"),
+        ("cm_year", "https://v3-cinemeta.strem.io/catalog/movie/year/genre=2023.json"),
+        ("cm_rating", "https://v3-cinemeta.strem.io/catalog/series/imdbRating/genre=Drama&skip=50.json"),
+        ("cm_search", "https://v3-cinemeta.strem.io/catalog/movie/top/search=dune.json"),
+        ("cm_manifest", "https://v3-cinemeta.strem.io/manifest.json"),
+        ("tmdb_nokey", "https://api.themoviedb.org/3/movie/693134?language=ru-RU"),
+    ]:
+        try:
+            code, final, text = get(url)
+            log.write(f"{name}: {code} len={len(text)}\n")
+            save("m_" + name, text)
+        except Exception as e:
+            log.write(f"{name}: FAIL {e!r}\n")
+
+
+for name, fn in [("meta", meta)]:
     step(name, fn)
 log.close()

@@ -81,6 +81,7 @@ import app.couchy.sync.SyncStatus
 import androidx.lifecycle.repeatOnLifecycle
 import app.couchy.bypass.BypassStatus
 import app.couchy.ui.settings.UpdateState
+import app.couchy.ui.settings.UpdateDialog
 import app.couchy.ui.shell.Destination
 import app.couchy.ui.shell.Shell
 import app.couchy.ui.theme.CouchyTheme
@@ -278,8 +279,62 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var googleAnswer by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<androidx.activity.result.ActivityResult>?>(null) }
+    val googleScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { googleAnswer?.complete(it) }
+    var yandexReport by remember { mutableStateOf<((String?) -> Unit)?>(null) }
+    // The Yandex SDK reads its id from the manifest; without one it is not created at all.
+    val yandexContract = remember {
+        if (app.couchy.sync.YandexAuth.configured) runCatching { com.yandex.authsdk.YandexAuthSdkContract(com.yandex.authsdk.YandexAuthOptions(context)) }.getOrNull() else null
+    }
+    val yandexLogin = yandexContract?.let { contract ->
+        rememberLauncherForActivityResult(contract) { result ->
+            val report = yandexReport ?: return@rememberLauncherForActivityResult
+            when (result) {
+                is com.yandex.authsdk.YandexAuthResult.Success -> scope.launch {
+                    report(runCatching { sync.connectYandex(result.token.value); null }.getOrElse { it.message ?: "Не удалось подключиться." })
+                }
+                is com.yandex.authsdk.YandexAuthResult.Failure -> report("Яндекс не пустил: ${result.exception.message}")
+                else -> report("Вход отменён.")
+            }
+        }
+    }
     var update by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var available by remember { mutableStateOf<AppUpdate?>(null) }
+    // A new build found on start is offered once, in a dialog that downloads and installs it.
+    var offer by remember { mutableStateOf<AppUpdate?>(null) }
+    var pendingApk by remember { mutableStateOf<java.io.File?>(null) }
+    LaunchedEffect(Unit) {
+        runCatching { Updates.check() }.getOrNull()?.let {
+            available = it
+            update = UpdateState.Available(it.build)
+            offer = it
+        }
+    }
+    fun installUpdate(target: AppUpdate) {
+        scope.launch {
+            update = try {
+                val apk = Updates.download(context, target) { update = UpdateState.Downloading(it) }
+                // Without the permission the system screen for it opens; installing goes on when the person comes back.
+                if (!Updates.install(context, apk)) pendingApk = apk else offer = null
+                UpdateState.Available(target.build)
+            } catch (e: Exception) {
+                UpdateState.Failed("Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз.")
+            }
+        }
+    }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            val apk = pendingApk
+            if (apk != null && Updates.canInstall(context)) {
+                pendingApk = null
+                offer = null
+                Updates.install(context, apk)
+            }
+        }
+    }
+    offer?.let { target ->
+        UpdateDialog(target, update, onUpdate = { installUpdate(target) }, onLater = { offer = null })
+    }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { showOpen = false; vm.open(uri.toString()) }
@@ -354,6 +409,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     headers = if (current.key == current.uri) current.headers else emptyMap(),
                 )
             }),
+            onVariant = { url, position -> vm.playDirect(current.copy(uri = url, startMs = position)) },
             onFinished = {
                 // Series: the next episode starts by itself, from the torrent or the online source.
                 val next = current.torrent?.nextFileId
@@ -531,6 +587,28 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                             }
                         },
                         onSyncNow = { sync.syncSoon() },
+                        onGoogleSync = { report ->
+                            scope.launch {
+                                val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+                                    .filterIsInstance<android.app.Activity>().first()
+                                val problem = app.couchy.sync.GoogleAuth.signIn(activity) { request ->
+                                    val answer = kotlinx.coroutines.CompletableDeferred<androidx.activity.result.ActivityResult>()
+                                    googleAnswer = answer
+                                    googleScreen.launch(request)
+                                    answer.await()
+                                }
+                                report(problem ?: runCatching { sync.connectGoogle(); null }.getOrElse { it.message ?: "Не удалось подключиться." })
+                            }
+                        },
+                        onYandexSync = { report ->
+                            if (!app.couchy.sync.YandexAuth.configured) {
+                                report("Вход через Яндекс заработает после регистрации Couchy на oauth.yandex.ru. Пока можно по паролю приложения.")
+                            } else {
+                                yandexReport = report
+                                runCatching { yandexLogin?.launch(com.yandex.authsdk.YandexAuthLoginOptions()) }
+                                    .onFailure { report("Яндекс не открылся: ${it.message}") }
+                            }
+                        },
                         onKidsPin = { vm.setKidsPin(it) },
                         onEnterKids = { vm.enterKids() },
                         onSyncDisconnect = { scope.launch { sync.disconnect() } },
@@ -556,18 +634,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                                 )
                             }
                         },
-                        onInstallUpdate = {
-                            val target = available
-                            if (target != null) scope.launch {
-                                update = try {
-                                    val apk = Updates.download(context, target) { update = UpdateState.Downloading(it) }
-                                    Updates.install(context, apk)
-                                    UpdateState.Available(target.build)
-                                } catch (e: Exception) {
-                                    UpdateState.Failed("Не удалось скачать обновление.")
-                                }
-                            }
-                        },
+                        onInstallUpdate = { available?.let { installUpdate(it) } },
                     ),
                     bypass = bypassUi,
                     sync = SyncUi(

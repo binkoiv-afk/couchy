@@ -86,6 +86,9 @@ class SettingsActions(
     /** Connects a WebDAV account; the callback gets an error, or null when it worked. */
     val onSyncConnect: (url: String, login: String, password: String, (String?) -> Unit) -> Unit = { _, _, _, _ -> },
     val onSyncNow: () -> Unit = {},
+    /** Sign-in with the Google or Yandex account on the device; reports an error or null. */
+    val onGoogleSync: ((String?) -> Unit) -> Unit = {},
+    val onYandexSync: ((String?) -> Unit) -> Unit = {},
     val onSyncDisconnect: () -> Unit = {},
     val onKidsPin: (String) -> Unit = {},
     val onEnterKids: () -> Unit = {},
@@ -185,7 +188,10 @@ fun SettingsContent(
                 UpdateState.Checking -> Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)
                 UpdateState.UpToDate -> Text("Установлена последняя версия", style = MaterialTheme.typography.bodyMedium)
                 is UpdateState.Available -> SecondaryButton("Установить сборку ${update.build}", null, onClick = actions.onInstallUpdate)
-                is UpdateState.Downloading -> Text("Скачиваю… ${(update.progress * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium)
+                is UpdateState.Downloading -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.LinearProgressIndicator(progress = { update.progress }, modifier = Modifier.fillMaxWidth())
+                    Text("Скачиваю… ${(update.progress * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium)
+                }
                 is UpdateState.Failed -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(update.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SecondaryButton("Проверить ещё раз", null, onClick = actions.onCheckUpdate)
@@ -349,10 +355,12 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (sync.connected) {
-            Text(
-                (if (sync.url.trimEnd('/') == YANDEX_DAV) "Яндекс Диск" else sync.url) + " · " + sync.login,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            val where = when (sync.url.trimEnd('/')) {
+                YANDEX_DAV, app.couchy.sync.WebDav.YANDEX_ACCOUNT -> "Яндекс Диск"
+                app.couchy.sync.WebDav.GOOGLE_ACCOUNT -> "Google Диск"
+                else -> sync.url
+            }
+            Text(listOf(where, sync.login).filter { it.isNotBlank() && it != "Google" }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             Text(sync.status, style = MaterialTheme.typography.bodySmall, color = muted)
             Choices {
                 SecondaryButton("Синхронизировать", null, onClick = actions.onSyncNow)
@@ -360,23 +368,51 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
             }
             return@Column
         }
-        var yandex by rememberSaveable { mutableStateOf(true) }
+        // 0: Google, 1: Яндекс, 2: other WebDAV
+        var kind by rememberSaveable { mutableStateOf(0) }
         var url by rememberSaveable { mutableStateOf("") }
         var login by rememberSaveable { mutableStateOf("") }
         var password by rememberSaveable { mutableStateOf("") }
+        var byPassword by rememberSaveable { mutableStateOf(false) }
         var result by remember { mutableStateOf<String?>(null) }
+        Text(
+            "История, места просмотра, избранное и плейлисты одинаковые на телефоне, планшете и ТВ.",
+            style = MaterialTheme.typography.bodySmall,
+            color = muted,
+        )
         Choices {
-            Chip("Яндекс Диск", yandex, onClick = { yandex = true })
-            Chip("Другой WebDAV", !yandex, onClick = { yandex = false })
+            Chip("Google Диск", kind == 0, onClick = { kind = 0; result = null })
+            Chip("Яндекс Диск", kind == 1, onClick = { kind = 1; result = null })
+            Chip("Другой WebDAV", kind == 2, onClick = { kind = 2; result = null })
         }
-        if (yandex) {
-            Text(
+        val fields = kind == 2 || (kind == 1 && byPassword)
+        when {
+            kind == 0 -> {
+                Text("Войдите аккаунтом Google с этого устройства. Couchy хранит данные в своей скрытой папке и не видит остальные файлы.", style = MaterialTheme.typography.bodySmall, color = muted)
+                app.couchy.ui.components.PrimaryButton("Войти через Google", null, onClick = {
+                    result = "Подключаю…"
+                    actions.onGoogleSync { error -> result = error ?: "Готово." }
+                })
+            }
+            kind == 1 && !byPassword -> {
+                Text("Войдите аккаунтом Яндекса с этого устройства, пароль не нужен. Данные лягут в папку «Приложения/Couchy».", style = MaterialTheme.typography.bodySmall, color = muted)
+                app.couchy.ui.components.PrimaryButton("Войти через Яндекс", null, onClick = {
+                    result = "Подключаю…"
+                    actions.onYandexSync { error -> result = error ?: "Готово." }
+                })
+                Text(
+                    "Войти по паролю приложения",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = muted,
+                    modifier = Modifier.couchyClickable(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { byPassword = true }.padding(vertical = 6.dp),
+                )
+            }
+            kind == 1 -> Text(
                 "Нужен пароль приложения: id.yandex.ru → Безопасность → Пароли приложений → Файлы (WebDAV).",
                 style = MaterialTheme.typography.bodySmall,
                 color = muted,
             )
-        } else {
-            OutlinedTextField(
+            else -> OutlinedTextField(
                 url, { url = it; result = null },
                 label = { Text("Адрес WebDAV") },
                 placeholder = { Text("https://cloud.example.com/remote.php/dav/files/me") },
@@ -385,24 +421,24 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        OutlinedTextField(
-            login, { login = it; result = null },
-            label = { Text(if (yandex) "Логин Яндекса" else "Логин") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            password, { password = it; result = null },
-            label = { Text(if (yandex) "Пароль приложения" else "Пароль") },
-            singleLine = true,
-            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (fields) {
+            OutlinedTextField(
+                login, { login = it; result = null },
+                label = { Text(if (kind == 1) "Логин Яндекса" else "Логин") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                password, { password = it; result = null },
+                label = { Text(if (kind == 1) "Пароль приложения" else "Пароль") },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
             SecondaryButton("Подключить", null, onClick = {
-                val address = if (yandex) YANDEX_DAV else normalizeHost(url)
+                val address = if (kind == 1) YANDEX_DAV else normalizeHost(url)
                 if (login.isBlank() || password.isBlank() || address.isBlank()) {
                     result = "Заполните все поля."
                     return@SecondaryButton
@@ -410,8 +446,8 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
                 result = "Подключаю…"
                 actions.onSyncConnect(address, login, password) { error -> result = error }
             })
-            result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.weight(1f)) }
         }
+        result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
     }
 }
 

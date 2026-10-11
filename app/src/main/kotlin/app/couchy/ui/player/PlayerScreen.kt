@@ -97,6 +97,8 @@ fun PlayerScreen(
     onFinished: () -> Unit = onExit,
     /** "On TV": gets the current position and length; null when this video cannot be sent. */
     onCast: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
+    /** Another quality of the same video, to continue from the given position. */
+    onVariant: ((url: String, positionMs: Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri) { buildPlayer(context, playback) }
@@ -151,7 +153,7 @@ fun PlayerScreen(
 
             override fun onTracksChanged(t: Tracks) {
                 tracks = t
-                ui = ui.copy(qualityLabel = qualityLabel(player))
+                ui = ui.copy(qualityLabel = playback.variants.firstOrNull { it.second == playback.uri }?.first ?: qualityLabel(player))
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -340,7 +342,25 @@ fun PlayerScreen(
         )
         Sheet.QUALITY -> OptionsDialog(
             "Качество",
-            listOf(OptionSection(null, qualityOptions(player, tracks) { ui = ui.copy(qualityLabel = it) })),
+            listOf(
+                OptionSection(
+                    null,
+                    // A source with a file per quality switches files; a stream switches its own tracks.
+                    if (playback.variants.size > 1 && onVariant != null) {
+                        playback.variants.map { (label, url) ->
+                            Option(label, url == playback.uri) {
+                                if (url != playback.uri) {
+                                    app.couchy.QualityChoice.label = label
+                                    save()
+                                    onVariant(url, player.currentPosition)
+                                }
+                            }
+                        }
+                    } else {
+                        qualityOptions(player, tracks) { ui = ui.copy(qualityLabel = it) }
+                    },
+                ),
+            ),
             onDismiss = { sheet = null },
         )
         Sheet.SPEED -> OptionsDialog(

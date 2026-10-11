@@ -42,7 +42,14 @@ data class Playback(
     val subtitles: List<Pair<String, String>> = emptyList(),
     /** The next episode from an online source, opened when this one ends. */
     val nextRef: String? = null,
+    /** The same video in other qualities, best first: label and URL. */
+    val variants: List<Pair<String, String>> = emptyList(),
 )
+
+/** The quality picked last for online sources; the next film or episode starts in it too. */
+object QualityChoice {
+    @Volatile var label: String? = null
+}
 
 data class TorrentPlay(val hash: String, val fileId: Int, val nextFileId: Int?)
 

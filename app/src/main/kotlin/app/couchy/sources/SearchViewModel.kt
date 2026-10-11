@@ -621,7 +621,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         name: String, episodes: List<EpisodeRef>, fromStart: Boolean,
     ): Playback {
         val stream = if (series) catalog.rezka.episode(id, translator.id, season, episode, url) else catalog.rezka.movie(id, translator, url)
-        val best = stream.options.maxByOrNull { it.rank } ?: throw IllegalStateException("Нет видео")
+        val ranked = stream.options.sortedByDescending { it.rank }
+        // The quality picked last time, or the best there is.
+        val best = ranked.firstOrNull { it.quality == app.couchy.QualityChoice.label } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
         val entry = library.open(key, title)
@@ -640,6 +642,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             headers = mapOf("User-Agent" to web.userAgent),
             subtitles = stream.subtitles.map { it.label to it.url },
             nextRef = next,
+            variants = ranked.map { it.quality to it.url },
         )
     }
 

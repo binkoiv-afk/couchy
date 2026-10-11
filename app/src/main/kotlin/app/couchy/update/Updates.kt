@@ -47,43 +47,58 @@ object Updates {
         }
     }
 
+    /** Downloads the APK, or reuses one already downloaded for the same build. */
     suspend fun download(context: Context, update: AppUpdate, onProgress: (Float) -> Unit): File =
         withContext(Dispatchers.IO) {
             val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
             val target = File(dir, "couchy-${update.build}.apk")
+            if (target.length() > 0) return@withContext target
+            dir.listFiles()?.forEach { it.delete() }
+            val part = File(dir, target.name + ".part")
             val connection = (URL(update.apkUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 connectTimeout = 15_000
                 readTimeout = 30_000
             }
             try {
+                if (connection.responseCode !in 200..299) throw java.io.IOException("Сервер ответил ${connection.responseCode}")
                 val total = connection.contentLengthLong.takeIf { it > 0 }
+                onProgress(0f)
                 connection.inputStream.use { input ->
-                    target.outputStream().use { output ->
+                    part.outputStream().use { output ->
                         val buffer = ByteArray(64 * 1024)
                         var done = 0L
+                        var shown = 0L
                         while (true) {
                             val read = input.read(buffer)
                             if (read < 0) break
                             output.write(buffer, 0, read)
                             done += read
-                            if (total != null) onProgress(done.toFloat() / total)
+                            if (total != null && done - shown > total / 100) {
+                                shown = done
+                                onProgress(done.toFloat() / total)
+                            }
                         }
+                        if (total != null && done < total) throw java.io.IOException("Загрузка оборвалась")
                     }
                 }
+                part.renameTo(target)
             } finally {
                 connection.disconnect()
+                part.delete()
             }
             target
         }
+
+    fun canInstall(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
     /**
      * Hands the APK to the system installer. Returns false when the user first has to allow
      * installs from this app; the settings screen for that is opened instead.
      */
     fun install(context: Context, apk: File): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        if (!canInstall(context)) {
             context.startActivity(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

@@ -38,11 +38,11 @@ sealed interface SyncStatus {
 }
 
 /** Яндекс Диск or any WebDAV server: one small JSON file in the root. */
-class WebDav(private val url: String, private val login: String, private val password: String) {
+class WebDav(private val url: String, private val login: String, private val password: String) : SyncDisk {
     private val file = url.trimEnd('/') + "/" + FILE
     private val auth = "Basic " + Base64.encode("$login:$password".toByteArray())
 
-    suspend fun read(): String? = withContext(Dispatchers.IO) {
+    override suspend fun read(): String? = withContext(Dispatchers.IO) {
         val c = open("GET")
         try {
             when (val code = c.responseCode) {
@@ -55,7 +55,7 @@ class WebDav(private val url: String, private val login: String, private val pas
         }
     }
 
-    suspend fun write(text: String) = withContext(Dispatchers.IO) {
+    override suspend fun write(text: String) = withContext(Dispatchers.IO) {
         val c = open("PUT")
         try {
             c.doOutput = true
@@ -88,6 +88,9 @@ class WebDav(private val url: String, private val login: String, private val pas
     companion object {
         const val FILE = "couchy-sync.json"
         const val YANDEX = "https://webdav.yandex.ru"
+        /** Stand-ins for the address when the account is Google's or Yandex's own sign-in. */
+        const val GOOGLE_ACCOUNT = "google:drive"
+        const val YANDEX_ACCOUNT = "yandex:oauth"
     }
 }
 
@@ -116,10 +119,21 @@ class Sync(
 
     /** Checks an account with a real sync and keeps it only if that works. */
     suspend fun connect(url: String, login: String, password: String) {
-        val disk = WebDav(url, login, password)
         withContext(Dispatchers.IO) { baseFile.delete() }
-        run(disk)
+        run(disk(url, login, password))
         settings.setSyncAccount(url, login, password)
+    }
+
+    /** After the person agreed on Google's screen. */
+    suspend fun connectGoogle() = connect(WebDav.GOOGLE_ACCOUNT, "Google", "")
+
+    /** With the token the Yandex account on the device gave. */
+    suspend fun connectYandex(token: String) = connect(WebDav.YANDEX_ACCOUNT, YandexDisk(token).login(), token)
+
+    private fun disk(url: String, login: String, password: String): SyncDisk = when (url) {
+        WebDav.GOOGLE_ACCOUNT -> GoogleDrive { GoogleAuth.token(context) }
+        WebDav.YANDEX_ACCOUNT -> YandexDisk(password)
+        else -> WebDav(url, login, password)
     }
 
     suspend fun disconnect() {
@@ -134,10 +148,10 @@ class Sync(
             _status.value = SyncStatus.Off
             return
         }
-        run(WebDav(p.syncUrl, p.syncLogin, p.syncPassword))
+        run(disk(p.syncUrl, p.syncLogin, p.syncPassword))
     }
 
-    private suspend fun run(disk: WebDav) = lock.withLock {
+    private suspend fun run(disk: SyncDisk) = lock.withLock {
         _status.value = SyncStatus.Running
         try {
             val prefs = settings.prefs.first()

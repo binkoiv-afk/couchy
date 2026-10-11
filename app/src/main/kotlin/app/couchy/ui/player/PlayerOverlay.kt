@@ -194,6 +194,7 @@ private fun NextCard(seconds: Int, controls: PlayerControls, modifier: Modifier)
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
     val playFocus = remember { FocusRequester() }
     Box(

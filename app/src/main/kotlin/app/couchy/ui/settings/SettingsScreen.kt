@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.couchy.core.Kids
 import app.couchy.core.bypass.BypassKind
 import app.couchy.core.bypass.BypassMode
@@ -103,6 +105,10 @@ data class BypassUi(val status: String = "Не запущен", val available: B
 
 /** The settings, each group on its own page, like on a phone's system settings. */
 enum class SettingsPage(val title: String, val icon: ImageVector, val hint: String) {
+    PROFILES(
+        "Профили", Icons.Rounded.People,
+        "У каждого в семье своя история, места остановки, «Смотреть позже», «Любимое» и подписки YouTube. Настройки, плейлисты и загрузки общие.",
+    ),
     APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
     SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочее зеркало HDrezka, например https://hdrezka.me, если основной адрес не открывается."),
     TORRENTS(
@@ -144,8 +150,11 @@ fun SettingsContent(
     val form = LocalFormFactor.current
     val side = if (form.wide) 32.dp else 18.dp
     val pages = SettingsPage.entries.filter { it != SettingsPage.CAST || castInfo != null }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val profileName = remember { runCatching { app.couchy.data.Profiles.current(context).name }.getOrDefault("Основной") }
     var page by rememberSaveable { mutableStateOf(initialPage) }
     fun summary(p: SettingsPage): String = when (p) {
+        SettingsPage.PROFILES -> profileName
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
         SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
@@ -205,6 +214,7 @@ fun SettingsContent(
                     )
                 }
             }
+            SettingsPage.PROFILES -> ProfilesSettings()
             SettingsPage.TORRENTS -> TorrSettings(prefs, actions)
             SettingsPage.BYPASS -> BypassSettings(prefs, bypass, actions)
             SettingsPage.SYNC -> SyncSettings(sync, actions)
@@ -346,6 +356,78 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
                 result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfilesSettings() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var all by remember { mutableStateOf(app.couchy.data.Profiles.list(context)) }
+    val current = remember { app.couchy.data.Profiles.currentId(context) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var renaming by rememberSaveable { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        all.forEach { p ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileAvatar(p, 40.dp)
+                Text(
+                    p.name + if (p.id == current) " · сейчас" else "",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                if (p.id != current) SecondaryButton("Включить", null, onClick = { (context as? android.app.Activity)?.let { app.couchy.data.Profiles.switch(it, p.id) } })
+                SecondaryButton("Имя", null, onClick = { renaming = p.id; name = p.name })
+                if (p.id != current && p.id != app.couchy.data.Profiles.MAIN) SecondaryButton("Удалить", null, onClick = {
+                    app.couchy.data.Profiles.remove(context, p.id)
+                    all = app.couchy.data.Profiles.list(context)
+                })
+            }
+        }
+        OutlinedTextField(
+            name,
+            { name = it.take(24) },
+            label = { Text(if (renaming != null) "Новое имя" else "Имя нового профиля") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Choices {
+            if (renaming != null) {
+                SecondaryButton("Сохранить имя", null, onClick = {
+                    app.couchy.data.Profiles.rename(context, renaming!!, name)
+                    all = app.couchy.data.Profiles.list(context)
+                    renaming = null
+                    name = ""
+                })
+                SecondaryButton("Отмена", null, onClick = { renaming = null; name = "" })
+            } else if (name.isNotBlank()) {
+                SecondaryButton("Добавить профиль", null, onClick = {
+                    app.couchy.data.Profiles.add(context, name)
+                    all = app.couchy.data.Profiles.list(context)
+                    name = ""
+                })
+            }
+        }
+        Text(
+            "Когда профилей больше одного, Couchy при запуске спрашивает, кто смотрит. Детский режим с PIN работает в любом профиле.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A coloured circle with the first letter of the name. */
+@Composable
+fun ProfileAvatar(p: app.couchy.data.Profile, size: androidx.compose.ui.unit.Dp) {
+    Box(
+        Modifier.size(size).background(androidx.compose.ui.graphics.Color(p.color), androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            p.name.take(1).uppercase(),
+            color = androidx.compose.ui.graphics.Color.White,
+            fontSize = (size.value / 2.3f).sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
     }
 }
 

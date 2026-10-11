@@ -74,7 +74,7 @@ abstract class CouchyDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): CouchyDatabase =
-            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy.db").addMigrations(KIDS).build()
+            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy${Profiles.suffix(context)}.db").addMigrations(KIDS).build()
 
         private val KIDS = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {

@@ -86,7 +86,8 @@ class WebDav(private val url: String, private val login: String, private val pas
     )
 
     companion object {
-        const val FILE = "couchy-sync.json"
+        /** One file per profile, set at start. */
+        @Volatile var FILE = "couchy-sync.json"
         const val YANDEX = "https://webdav.yandex.ru"
         /** Stand-ins for the address when the account is Google's or Yandex's own sign-in. */
         const val GOOGLE_ACCOUNT = "google:drive"

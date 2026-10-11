@@ -14,7 +14,7 @@ import org.json.JSONObject
  * channels followed. Each entry is a key ("later|…", "loved|…", "yt|…") and its data as JSON.
  */
 class Marks(context: Context) {
-    private val prefs = context.getSharedPreferences("marks", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("marks${Profiles.suffix(context)}", Context.MODE_PRIVATE)
     private val _all = MutableStateFlow(load())
     val all: StateFlow<Map<String, String>> = _all.asStateFlow()
 

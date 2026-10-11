@@ -1,5 +1,11 @@
 package app.couchy
 
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.shape.RoundedCornerShape
+import app.couchy.ui.components.couchyClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
@@ -245,6 +251,20 @@ private fun MainScreen(
     val sync = (LocalContext.current.applicationContext as CouchyApp).sync
     val downloads = (LocalContext.current.applicationContext as CouchyApp).downloads
     val offline by downloads.items.collectAsStateWithLifecycle()
+    // "Кто смотрит?" once per launch when the family has several profiles.
+    val activityContext = LocalContext.current
+    var askProfile by rememberSaveable { mutableStateOf(app.couchy.data.Profiles.shouldAsk(activityContext)) }
+    if (askProfile) {
+        WhoIsWatching(
+            onPick = { p ->
+                askProfile = false
+                if (p.id != app.couchy.data.Profiles.currentId(activityContext)) {
+                    (activityContext as? android.app.Activity)?.let { app.couchy.data.Profiles.switch(it, p.id) }
+                }
+            },
+        )
+        return
+    }
     val syncStatus by sync.status.collectAsStateWithLifecycle()
     // Leaving the player and every few minutes on a TV box that stays open: positions travel.
     LaunchedEffect(playback == null) { if (playback == null) sync.syncSoon() }
@@ -835,4 +855,38 @@ private fun liveUi(tv: TvState, channelId: Long, title: String): LiveUi {
         nowMs = tv.nowMs,
         favorite = item?.channel?.favorite == true,
     )
+}
+
+/** Netflix-style profile choice on launch. */
+@Composable
+private fun WhoIsWatching(onPick: (app.couchy.data.Profile) -> Unit) {
+    val context = LocalContext.current
+    val profiles = remember { app.couchy.data.Profiles.list(context) }
+    val first = remember { androidx.compose.ui.focus.FocusRequester() }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterVertically),
+    ) {
+        Text("Кто смотрит?", style = MaterialTheme.typography.headlineMedium)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            profiles.forEachIndexed { i, p ->
+                Column(
+                    Modifier
+                        .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
+                        .couchyClickable(RoundedCornerShape(18.dp)) { onPick(p) }
+                        .padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    app.couchy.ui.settings.ProfileAvatar(p, 88.dp)
+                    Text(p.name, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }

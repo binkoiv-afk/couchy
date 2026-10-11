@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [.github/probe-urls.txt]
+    paths: [.github/probe.py]
 
 permissions:
   contents: write
@@ -18,16 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Fetch
         run: |
-          mkdir -p out
-          UA="Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
-          while IFS='|' read -r name url; do
-            [ -z "$name" ] && continue
-            case "$name" in \#*) continue;; esac
-            code=$(curl -sS -L -m 25 -A "$UA" -o "out/$name.body" -w "%{http_code} %{url_effective} %{content_type}" "$url" 2>"out/$name.err") || true
-            echo "$name $code" | tee -a out/summary.txt
-            head -c 60000 "out/$name.body" > "out/$name.txt" 2>/dev/null || true
-            cat "out/$name.err" >> out/summary.txt
-          done < .github/probe-urls.txt
+          python3 .github/probe.py || true
+          cat out/summary.txt
           cd out && tar czf ../probe-sources.tgz *.txt
       - name: Publish
         env:

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Поиск по сайту</title>
+<meta name="charset" content="utf-8">
+<meta name="title" content="Поиск по сайту">
+<meta name="description" content="Большая коллекция фильмов в хорошем качестве Baskino.me, смотреть онлайн бесплатно.">
+<meta name="keywords" content="Смотреть фильмы и сериалы онлайн в хорошем качестве на БасКино">
+<link rel="search" type="application/opensearchdescription+xml" title="Baskino - Смотреть фильмы онлайн в хорошем качестве бесплатно" href="https://baskino.me/index.php?do=opensearch">
+<meta property="twitter:card" content="summary">
+<meta property="twitter:title" content="Поиск по сайту">
+<meta property="twitter:description" content="Большая коллекция фильмов в хорошем качестве Baskino.me, смотреть онлайн бесплатно.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Baskino - Смотреть фильмы онлайн в хорошем качестве бесплатно">
+<meta property="og:title" content="Поиск по сайту">
+<meta property="og:description" content="Большая коллекция фильмов в хорошем качестве Baskino.me, смотреть онлайн бесплатно.">
+
+<script src="/engine/classes/min/index.php?g=general&amp;v=ebd3b"></script>
+<script src="/engine/classes/min/index.php?f=engine/classes/js/jqueryui.js,engine/classes/js/dle_js.js,engine/classes/js/lazyload.js&amp;v=ebd3b" defer></script>
+
+<link rel="stylesheet" href="/templates/Baskino/css/style.css?v=153" type="text/css" media="all">
+<link rel="stylesheet" href="/templates/Baskino/css/adpt.css?v=31" type="text/css" media="all">
+<link rel="icon" href="/templates/Baskino/images/favicon.png" type="image/x-icon" />
+
+<meta name="theme-color" content="#404040">
+
+<script type="text/javascript">
+$(function(){
+    //carousel
+    $(".carousel").jCarouselLite({
+        btnNext: ".next",
+        btnPrev: ".prev",
+        scroll: 3,
+        visible: 8
+    });
+
+    $('#listposts .shortpost:nth-child(3n)').addClass('postlastrow');
+    $('#dle-comments-list .comment:odd').addClass('comment_odd');
+    $('.sidebar_list_top a:last').addClass('last');
+
+    /* resize sidebar */
+    var contH = $('.alpha').innerHeight();
+    var sideH = $('.omega').innerHeight();
+
+    //if (contH > sideH) $('.omega').css({'height': contH+'px', 'overflow': 'hidden'});
+});
+</script>
+<style>
+.sf-menu li a span em {
+    padding: 14px 25px 27px!important;
+}
+.sf-menu li:hover ul {
+ 	top: 65px!important;   
+}
+body.branding {
+    /*background: #000 url/templates/Baskino/images/brand-starwars-bg.jpg) no-repeat 50% 0;*/
+    /*background-color: #000 !important;*/
+    padding-top: 250px !important;
+}
+
+body.branding.active-native-holder {
+    padding-top: 250px !important;
+}
+@media(max-width: 992px){
+    body.branding,
+    body.branding.active-native-holder {
+        padding-top: 100px!important;
+    }
+}
+body.branding .brand-main-link {
+    height: 100%;
+    min-height: 785px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 0;
+}
+
+body.branding .brand-main-link i {
+    -webkit-transition: background-color 0.2s linear;
+    -moz-transition: background-color 0.2s linear;
+    -ms-transition: background-color 0.2s linear;
+    -o-transition: background-color 0.2s linear;
+    transition: background-color 0.2s linear;
+
+    background-color: rgba(0, 0, 0, 0.3);
+    display: block;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 0;
+}
+div[id*="epom-"] {
+    text-align: center;   
+}
+div[id*="epom-"] > img {
+    margin-bottom: 20px!important;
+    margin-top: 10px!important;
+}
+body.branding .brand-main-link:hover i {
+    background-color: transparent;
+}
+
+body.branding div:first-child {
+    z-index: 0 !important;
+}
+
+body.branding #right-bg {
+    z-index: 0 !important;
+}
+
+/*body.branding > div {
+position: relative;
+margin: 0 auto;
+z-index: 3;
+}*/
+</style>
+<style>
+@media (max-width: 960px) {    
+    ins[data-key="11a282ad7ff3acafdd59e7101c77d0df"] > ins > div {
+        top: 35px!important;
+    }
+}
+</style>
+<!--[if lt IE 7]>
+<script type="text/javascript" src="/templates/Baskino/js/ie6_script_other.js"></script>
+<![endif]-->
+        <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LT0KF37V58"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-LT0KF37V58');
+</script>
+    </head>
+    <body class="branding active-native-holder -b-christmas">
+        <ins class="604c7625" data-key="11a282ad7ff3acafdd59e7101c77d0df" data-cp-host="16c82241510910ee434239df9f87d3b3|1|baskino.film"></ins>
+        <div id="left-bg"></div>
+
+        <div id="right-bg" style="z-index: 1!important;position: relative;">
+            <div class="top-bg ">
+                <div class="container">
+                    <!-- header -->
+                    <header>
+                        <span class="logo"><a title="Онлайн фильмы в HD качестве" href="/">Онлайн фильмы в хорошем HD качестве бесплатно и без регистрации</a></span>
+                        <div class="header-slogan"><div class="header-slogan-inner"></div></div>
+                        <a href="/" class="header-logo-misc"></a>
+                        <ul class="user">
+                            
+                            <li><a href="/index.php?do=register">Регистрация</a></li>
+                            <li><a id="login_button" href="#profile_dialog">Вход</a></li>
+                            
+                            
+                            <li><a href="/help.html">Помощь</a></li>
+                        </ul>
+                        <form id="search" name="searchform" method="post" action="">
+                            <fieldset id="find">
+                                <div>
+                                    <span class="bg">
+                                        <input class="find" id="story" name="story" type="text" value="Чего будете искать?" onFocus="if(this.value=='Чего будете искать?'){this.value=''}" onBlur="if(this.value==''){this.value='Чего будете искать?'}"/>
+                                    </span> <a class="find-button" onClick="document.getElementById('search').submit()" href="#">Поиск</a>
+                                </div>
+                            </fieldset>
+                            <input type="hidden" name="do" value="search" />
+                            <input type="hidden" name="subaction" value="search" />
+                        </form>
+                        <nav><!--[if lt IE 9]><div class="ie_nav"><![endif]-->
+    <ul class="sf-menu">
+        <li class="first"><a href="/"><span><em>Фильмы</em></span></a>
+            <ul>
+                <li><a href="/announcement/">Анонсы<!-- <sup>new</sup>--></a></li>
+                                    <li><a href="/films/boevie-iskustva/">Боевые искусства</a></li>
+                                    <li><a href="/films/biograficheskie/">Биографические</a></li>
+                                    <li><a href="/films/boeviki/">Боевики</a></li>
+                                    <li><a href="/films/vesterny/">Вестерны</a></li>
+                                    <li><a href="/films/voennye/">Военные</a></li>
+                                    <li><a href="/films/detektivy/">Детективы</a></li>
+                                    <li><a href="/films/dramy/">Драмы</a></li>
+                                    <li><a href="/films/istoricheskie/">Исторические</a></li>
+                                    <li><a href="/films/komedii/">Комедии</a></li>
+                                    <li><a href="/films/kriminalnye/">Криминальные</a></li>
+                                    <li><a href="/films/melodramy/">Мелодрамы</a></li>
+                                    <li><a href="/films/multfilmy/">Мультфильмы</a></li>
+                                    <li><a href="/films/myuzikly/">Мюзиклы</a></li>
+                                    <li><a href="/films/priklyuchencheskie/">Приключенческие</a></li>
+                                    <li><a href="/films/russkie/">Русские</a></li>
+                                    <li><a href="/films/semeynye/">Семейные</a></li>
+                                    <li><a href="/films/sportivnye/">Спортивные</a></li>
+                                    <li><a href="/films/trillery/">Триллеры</a></li>
+                                    <li><a href="/films/uzhasy/">Ужасы</a></li>
+                                    <li><a href="/films/fantasticheskie/">Фантастические</a></li>
+                            </ul>
+        </li>
+        <li><a href="/new/"><span><em>Новинки</em></span></a></li>
+        <li class="last"><a href="/top/"><span><em>ТОП-250</em></span></a></li>
+        <li class="tv"><a href="/serial/"><span><em>Сериалы</em></span></a></li>
+    </ul>
+</nav><!--[if lt IE 9]></div><![endif]-->
+                        <button type="button" class="menu__toggle adpt-show" aria-label="Меню">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="menu__toggle-open" viewBox="0 0 16 16" style="display: block;">
+                                <path fill-rule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z"></path>
+                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="menu__toggle-close" viewBox="0 0 16 16" style="display: none;">
+                                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"></path>
+                            </svg>
+                        </button>
+                        <button type="button" class="topsearch__toggle adpt-show" aria-label="Поиск">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="23" height="23" fill="currentColor" class="topsearch__toggle-open" viewBox="0 0 16 16">
+                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"></path>
+                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" class="topsearch__toggle-close" viewBox="0 0 16 16" style="display: none;">
+                                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"></path>
+                            </svg>
+                        </button>
+                    </header>
+                    <div class="container_24">
+                        <!-- content -->
+                        <section id="content">
+                            <article>
+                                <div class="inside">
+                                    
+                                    <div class="bottom">
+                                        <div class="col-1 grid_18 alpha">
+                                            
+                                            
+
+                                            
+
+                                    
+                                            
+                                            <div id="sorts" class="head">
+                                                <div class="title">
+                                                    <table class="title_sort">
+                                                        <tr>
+                                                            <td class="htitlen">
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                
+                                                                <h1>Поиск по сайту</h1>
+                                                                
+                                                                
+
+                                                                
+                                                            </td>
+                                                            <td class="sort">
+                                                                
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            
+											
+                                            
+                                            <div class="inner">
+                                                <div class="box wrapper">
+                                                    <div class="border-right">
+                                                        <div class="border-bot">
+                                                            <div class="border-left">
+                                                                <div class="right-bot-corner">
+                                                                    <div class="left-bot-corner">
+                                                                        <div id="listposts" class="listposts">
+                                                                            
+                                                                            
+                                                                            
+
+                                                                            <div id='dle-content'>
+                                                                                
+                                                                                
+                                                                                <form name="fullsearch" id="fullsearch" action="https://baskino.me/index.php?do=search" method="post">
+<input type="hidden" name="do" id="do" value="search" />
+<input type="hidden" name="subaction" id="subaction" value="search" />
+<input type="hidden" name="search_start" id="search_start" value="0" />
+<input type="hidden" name="full_search" id="full_search" value="0" />
+<input type="hidden" name="result_from" id="result_from" value="1" />
+		<div id="searchtable" name="searchtable" class="searchtable">
+
+<table style="width:100%;">
+  <tr>
+    <td class="search">
+      <div style="margin:10px;">
+                <input type="text" name="story" id="searchinput" value="дюна" onchange="document.getElementById('result_from').value = 1"><br /><br />
+                <input type="button" class="bbcodes" name="dosearch" id="dosearch" value="Найти" onclick="javascript:list_submit(-1); return false;">
+                <input type="button" class="bbcodes" name="dofullsearch" id="dofullsearch" value="Расширенный поиск" onclick="javascript:full_submit(1); return false;">
+            </div>
+
+        </td>
+    </tr>
+</table>
+
+
+		</div>
+		<div class="search_result_num grey">По Вашему запросу найдено 11 ответов (Результаты запроса 1 - 11) :</div><script>
+<!--
+function clearform(frmname){
+  var frm = document.getElementById(frmname);
+  for (var i=0;i<frm.length;i++) {
+    var el=frm.elements[i];
+    if (el.type=="checkbox" || el.type=="radio") {
+    	if (el.name=='showposts') {document.getElementById('rb_showposts_0').checked=1; } else {el.checked=0; }
+    }
+    if ((el.type=="text") || (el.type=="textarea") || (el.type == "password")) { el.value=""; continue; }
+    if ((el.type=="select-one") || (el.type=="select-multiple")) { el.selectedIndex=0; }
+  }
+  
+  if( document.getElementById('replylimit') ) {
+  	document.getElementById('replylimit').value = 0;
+  }
+  
+  document.getElementById('search_start').value = 0;
+  document.getElementById('result_from').value = 1;
+}
+function list_submit(prm){
+  var frm = document.getElementById('fullsearch');
+	if (prm == -1) {
+		prm=0;
+		frm.result_from.value=1;
+	} else {
+		frm.result_from.value=(prm-1) * 12 + 1;
+	}
+	frm.search_start.value=prm;
+
+  frm.submit();
+  return false;
+}
+function full_submit(prm){
+    document.getElementById('fullsearch').full_search.value=prm;
+    list_submit(-1);
+}
+//-->
+</script>
+</form>
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/films/41164-djuna-chast-vtoraja.html">
+			<img title="Дюна: Часть вторая" src="/uploads/posts/2024-01/1706701737-2135458294.jpg" height="324" width="216" alt="Дюна: Часть вторая" />
+            <span class="quality_type" style="height:20px!important;background: #49515b!important;color: #fff;width: 52px!important;text-align: center;padding: 5px 5px 2px 5px;">WEB-DL</span>
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/films/41164-djuna-chast-vtoraja.html">Дюна: Часть вторая</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-41164'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 5.56">
+		<li class="current-rating" style="width:55.6%;">55.6</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '41164'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '41164'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '41164'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '41164'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '41164'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '41164'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" onclick="doRate('7', '41164'); return false;">7</a></li>
+		<li><a href="#" title="8" class="r8-unit" onclick="doRate('8', '41164'); return false;">8</a></li>
+		<li><a href="#" title="9" class="r9-unit" onclick="doRate('9', '41164'); return false;">9</a></li>
+		<li><a href="#" title="10" class="r10-unit" onclick="doRate('10', '41164'); return false;">10</a></li>
+		</ul>
+	</div>
+</div>
+	</div>
+	<div class="postdata">
+		<!-- <div class="linline">Комментариев: 8</div> -->
+        <div class="linline">3-06-2024</div>
+		<div class="rinline">
+            
+             
+                Год выпуска: 2024
+            
+        </div>
+	</div>
+</div>
+	
+	
+
+
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/films/42989-zolotaja-djuna.html">
+			<img title="Золотая дюна" src="/uploads/posts/2024-05/1716491899-444075355.jpg" height="324" width="216" alt="Золотая дюна" />
+            <span class="quality_type" style="height:20px!important;background: #49515b!important;color: #fff;width: 52px!important;text-align: center;padding: 5px 5px 2px 5px;">WEB-DL</span>
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/films/42989-zolotaja-djuna.html">Золотая дюна</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-42989'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 8.96">
+		<li class="current-rating" style="width:89.6%;">89.6</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '42989'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '42989'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '42989'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '42989'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '42989'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '42989'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" onclick="doRate('7', '42989'); return false;">7</a></li>
+		<li><a href="#" title="8" class="r8-unit" onclick="doRate('8', '42989'); return false;">8</a></li>
+		<li><a href="#" title="9" class="r9-unit" onclick="doRate('9', '42989'); return false;">9</a></li>
+		<li><a href="#" title="10" class="r10-unit" onclick="doRate('10', '42989'); return false;">10</a></li>
+		</ul>
+	</div>
+</div>
+	</div>
+	<div class="postdata">
+		<!-- <div class="linline">Комментариев: 0</div> -->
+        <div class="linline">23-05-2024</div>
+		<div class="rinline">
+            
+             
+                Год выпуска: 2021
+            
+        </div>
+	</div>
+</div>
+	
+	
+
+
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/new/43205-djuna-prorochestvo.html">
+			<img title="Дюна: Пророчество" src="/uploads/posts/2024-06/2063067.jpg" height="324" width="216" alt="Дюна: Пророчество" />
+            
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/new/43205-djuna-prorochestvo.html">Сериал "Дюна: Пророчество"</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-43205'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 4.02">
+		<li class="current-rating" style="width:40.2%;">40.2</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '43205'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '43205'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '43205'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '43205'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '43205'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '43205'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" onclick="doRate('7', '43205'); return false;">7</a></li>
+		<li><a href="#" title="8" class="r8-unit" onclick="doRate('8', '43205'); return false;">8</a></li>
+		<li><a href="#" title="9" class="r9-unit" onclick="doRate('9', '43205'); return false;">9</a></li>
+		<li><a href="#" title="10" class="r10-unit" onclick="doRate('10', '43205'); return false;">10</a></li>
+		</ul>
+	</div>
+</div>
+	</div>
+	<div class="postdata">
+		<!-- <div class="linline">Комментариев: 0</div> -->
+        <div class="linline">4-05-2024</div>
+		<div class="rinline">
+            
+             
+                Год выпуска: 2024
+            
+        </div>
+	</div>
+</div>
+	
+	
+
+
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/films/trillery/40367-obnazhennyy-stra.html">
+			<img title="Обнаженный страх" src="/uploads/images/2023/487/tnsl365.jpg" height="324" width="216" alt="Обнаженный страх" />
+            <span class="quality_type" style="height:20px!important;background: #49515b!important;color: #fff;width: 52px!important;text-align: center;padding: 5px 5px 2px 5px;">hd</span>
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/films/trillery/40367-obnazhennyy-stra.html">Обнаженный страх</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-40367'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 5.4">
+		<li class="current-rating" style="width:54%;">54</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '40367'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '40367'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '40367'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '40367'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '40367'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '40367'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" onclick="doRate('7', '40367'); return false;">7</a></li>
+		<li><a href="#" title="8" class="r8-unit" onclick="doRate('8', '40367'); return false;">8</a></li>
+		<li><a href="#" title="9" class="r9-unit" onclick="doRate('9', '40367'); return false;">9</a></li>
+		<li><a href="#" title="10" class="r10-unit" onclick="doRate('10', '40367'); return false;">10</a></li>
+		</ul>
+	</div>
+</div>
+	</div>
+	<div class="postdata">
+		<!-- <div class="linline">Комментариев: 0</div> -->
+        <div class="linline">23-11-2023</div>
+		<div class="rinline">
+            
+             
+                Год выпуска: 2007
+            
+        </div>
+	</div>
+</div>
+	
+	
+
+
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/films/dramy/38131-to-samoe-leto.html">
+			<img title="То самое лето" src="/uploads/images/2023/724/poor520.jpg" height="324" width="216" alt="То самое лето" />
+            <span class="quality_type" style="height:20px!important;background: #49515b!important;color: #fff;width: 52px!important;text-align: center;padding: 5px 5px 2px 5px;">WEB-DL</span>
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/films/dramy/38131-to-samoe-leto.html">То самое лето</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-38131'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 6">
+		<li class="current-rating" style="width:60%;">60</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '38131'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '38131'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '38131'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '38131'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '38131'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '38131'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" onclick="doRate('7', '38131'); return false;">7</a></li>
+		<li><a href="#" title="8" class="r8-unit" onclick="doRate('8', '38131'); return false;">8</a></li>
+		<li><a href="#" title="9" class="r9-unit" onclick="doRate('9', '38131'); return false;">9</a></li>
+		<li><a href="#" title="10" class="r10-unit" onclick="doRate('10', '38131'); return false;">10</a></li>
+		</ul>
+	</div>
+</div>
+	</div>
+	<div class="postdata">
+		<!-- <div class="linline">Комментариев: 0</div> -->
+        <div class="linline">26-04-2023</div>
+		<div class="rinline">
+            
+             
+                Год выпуска: 2022
+            
+        </div>
+	</div>
+</div>
+	
+	
+
+
+	
+		<div class="shortpost">
+	<div class="postcover">
+		<a href="https://baskino.me/films/boeviki/30574-trener.html">
+			<img title="Тренер" src="/uploads/images/2021/608/ifus921.jpg" height="324" width="216" alt="Тренер" />
+            <span class="quality_type" style="height:20px!important;background: #49515b!important;color: #fff;width: 52px!important;text-align: center;padding: 5px 5px 2px 5px;">WEB-DL</span>
+            
+		</a>
+	</div>
+	<div class="posttitle">
+		<a href="https://baskino.me/films/boeviki/30574-trener.html">Тренер</a>
+	</div>
+	<div class="postrate">
+        <div id='ratig-layer-30574'>
+	<div class="rating" style="float:left;">
+		<ul class="unit-rating" style="--var-rating_width: 5.43">
+		<li class="current-rating" style="width:54.3%;">54.3</li>
+		<li><a href="#" title="1" class="r1-unit" onclick="doRate('1', '30574'); return false;">1</a></li>
+		<li><a href="#" title="2" class="r2-unit" onclick="doRate('2', '30574'); return false;">2</a></li>
+		<li><a href="#" title="3" class="r3-unit" onclick="doRate('3', '30574'); return false;">3</a></li>
+		<li><a href="#" title="4" class="r4-unit" onclick="doRate('4', '30574'); return false;">4</a></li>
+		<li><a href="#" title="5" class="r5-unit" onclick="doRate('5', '30574'); return false;">5</a></li>
+		<li><a href="#" title="6" class="r6-unit" onclick="doRate('6', '30574'); return false;">6</a></li>
+		<li><a href="#" title="7" class="r7-unit" 

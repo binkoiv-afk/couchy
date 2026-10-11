@@ -38,6 +38,8 @@ import app.couchy.ui.open.OpenDialog
 import app.couchy.torrent.TorrentViewModel
 import app.couchy.sources.SearchViewModel
 import app.couchy.ui.search.ChallengeDialog
+import app.couchy.ui.search.SiteWindowDialog
+import app.couchy.core.sources.SiteRef
 import app.couchy.ui.search.SearchActions
 import app.couchy.ui.search.SearchContent
 import app.couchy.ui.search.TitleActions
@@ -168,6 +170,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val sourceAutoPlay by searchVm.autoPlay.collectAsStateWithLifecycle()
     val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
+    val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
     val pendingSource by vm.pendingSource.collectAsStateWithLifecycle()
     LaunchedEffect(freshStart) {
         if (freshStart > 0) {
@@ -177,7 +180,10 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         }
     }
     LaunchedEffect(pendingSource) {
-        pendingSource?.let { ref -> searchVm.playRef(ref); vm.sourceHandled() }
+        pendingSource?.let { ref ->
+            if (SiteRef.isRef(ref)) searchVm.openSiteRef(ref) else searchVm.playRef(ref)
+            vm.sourceHandled()
+        }
     }
     LaunchedEffect(sourceAutoPlay) {
         sourceAutoPlay?.let { vm.playDirect(it); searchVm.autoPlayHandled() }
@@ -224,6 +230,14 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         ChallengeDialog(url, searchVm.userAgent, onPassed = searchVm::challengePassed, onDismiss = searchVm::challengeDismissed)
     }
     sourceError?.let { text -> NoticeDialog(text, searchVm::dismissError) }
+    siteWindow?.let { w ->
+        SiteWindowDialog(
+            w,
+            searchVm.userAgent,
+            onVideo = { url, headers, pageUrl -> scope.launch { vm.playDirect(searchVm.siteCaught(w, url, headers, pageUrl)) } },
+            onDismiss = searchVm::closeSite,
+        )
+    }
 
     val current = playback
     if (current != null) {
@@ -283,6 +297,8 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onChallenge = searchVm::retryRezka,
                     onRetryRezka = searchVm::retryRezka,
                     onTorrent = { hit -> torrentVm.open(hit.magnet) },
+                    onSite = searchVm::openSite,
+                    onSearchSite = searchVm::searchOnSite,
                 ),
             )
             if (sourceBusy) {

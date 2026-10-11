@@ -177,7 +177,7 @@ private val PosterShape = RoundedCornerShape(12.dp)
 
 /** A 2:3 poster with the name under it; the gradient artwork stands in until the image loads. */
 @Composable
-fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier, caption: Boolean = true) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
             Modifier
@@ -230,6 +230,7 @@ fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier)
                 )
             }
         }
+        if (!caption) return@Column
         Text(title.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 2, overflow = TextOverflow.Ellipsis)
         val sub = listOfNotNull(title.year?.toString(), title.original?.takeIf { it != title.name }).joinToString(" · ")
         if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

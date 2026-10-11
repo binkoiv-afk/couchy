@@ -9,12 +9,16 @@ import app.couchy.core.Progress
 import app.couchy.core.sources.EpisodeRef
 import app.couchy.core.sources.Rezka
 import app.couchy.core.sources.RezkaPage
+import app.couchy.core.sources.Site
+import app.couchy.core.sources.SiteHit
+import app.couchy.core.sources.SiteRef
 import app.couchy.core.sources.Title
 import app.couchy.core.sources.TitleKind
 import app.couchy.core.sources.TitleMerge
 import app.couchy.core.sources.TorrentGroup
 import app.couchy.core.sources.TorrentHits
 import app.couchy.core.sources.Translator
+import app.couchy.core.sources.Sites
 import app.couchy.data.MediaEntity
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -62,9 +66,26 @@ data class TitleUi(
     val rezka: RezkaUi = RezkaUi(),
     val torrents: List<TorrentGroup> = emptyList(),
     val torrentsLoading: Boolean = true,
+    /** The same title on other online cinemas, played through their own players. */
+    val sites: List<SiteHit> = emptyList(),
+    val sitesLoading: Boolean = true,
     /** Progress per library key, for episode marks. */
     val progress: Map<String, Float> = emptyMap(),
     val watched: Set<String> = emptySet(),
+)
+
+/**
+ * A site page open in Couchy's window: its player runs there with ads cut out, and the
+ * first video it starts is handed to Couchy's player.
+ */
+data class SiteWindow(
+    val url: String,
+    val site: Site?,
+    /** Shown in the player and the library. */
+    val title: String,
+    val series: Boolean = false,
+    /** Library key for resuming; null while the person still has to find the film on the site. */
+    val key: String? = null,
 )
 
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
@@ -74,6 +95,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     val userAgent: String get() = web.userAgent
     private var host = Rezka.DEFAULT_HOST
     private val catalog = Catalog(web, RezkaClient(web) { host })
+    private val siteClient = SiteClient(web)
+
+    private val _siteWindow = MutableStateFlow<SiteWindow?>(null)
+    val siteWindow: StateFlow<SiteWindow?> = _siteWindow.asStateFlow()
 
     private val _search = MutableStateFlow(SearchState())
     val search: StateFlow<SearchState> = _search.asStateFlow()
@@ -160,6 +185,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         titleJob = viewModelScope.launch {
             launch { loadTorrents(title) }
             launch { loadRezka(title) }
+            launch { loadSites(title) }
         }
     }
 
@@ -173,6 +199,55 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         if (title.imdbId == null) catalog.findImdb(title)?.let { id -> title = title.copy(imdbId = id); patch { it.copy(title = it.title.copy(imdbId = id)) } }
         val hits = runCatching { catalog.torrents(title) }.getOrDefault(emptyList())
         patch { it.copy(torrents = TorrentHits.group(hits), torrentsLoading = false) }
+    }
+
+    private suspend fun loadSites(title: Title) {
+        val hits = runCatching { siteClient.find(title) }.getOrDefault(emptyList())
+        patch { it.copy(sites = hits, sitesLoading = false, title = it.title.copy(poster = it.title.poster ?: hits.firstNotNullOfOrNull { h -> h.poster })) }
+    }
+
+    // ---- Site windows ----
+
+    /** The film's page on a site, found by Couchy. */
+    fun openSite(hit: SiteHit) {
+        val t = _title.value?.title
+        val site = Sites.all.firstOrNull { it.id == hit.site }
+        _siteWindow.value = SiteWindow(hit.url, site, t?.name ?: hit.name, t?.kind == TitleKind.SERIES, SiteRef.of(hit.url, hit.site))
+    }
+
+    /** A site whose search runs only in the browser: the person picks the film there. */
+    fun searchOnSite(site: Site) {
+        val t = _title.value?.title
+        _siteWindow.value = SiteWindow(site.searchUrl(t?.name ?: _search.value.query), site, t?.name ?: site.name, t?.kind == TitleKind.SERIES)
+    }
+
+    /** Reopens a site film saved in the library. */
+    fun openSiteRef(ref: String) {
+        val (url, id) = SiteRef.parse(ref) ?: return
+        viewModelScope.launch {
+            val entry = library.get(ref)
+            _siteWindow.value = SiteWindow(url, Sites.all.firstOrNull { it.id == id }, entry?.title ?: url, key = ref)
+        }
+    }
+
+    fun closeSite() { _siteWindow.value = null }
+
+    /** The site's player started [video]; it continues in Couchy's player with the same headers. */
+    suspend fun siteCaught(window: SiteWindow, video: String, headers: Map<String, String>, pageUrl: String): Playback {
+        _siteWindow.value = null
+        val key = window.key ?: SiteRef.siteOf(pageUrl)?.let { SiteRef.of(pageUrl, it.id) } ?: SiteRef.of(pageUrl, window.site?.id ?: "web")
+        val entry = library.open(key, window.title)
+        // A series page plays whichever episode was picked in the site's player, so it starts where the site does.
+        val start = if (window.series) 0L else Progress.resumeFrom(entry.positionMs, entry.durationMs)
+        return Playback(
+            uri = video,
+            title = entry.title,
+            startMs = start,
+            audioLanguage = entry.audioLanguage,
+            subtitleLanguage = entry.subtitleLanguage,
+            key = key,
+            headers = headers,
+        )
     }
 
     private suspend fun loadRezka(title: Title) {

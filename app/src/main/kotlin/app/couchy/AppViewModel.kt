@@ -134,7 +134,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
-        if (Rezka.isRef(link)) {
+        if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link)) {
             _pendingSource.value = link
             return
         }

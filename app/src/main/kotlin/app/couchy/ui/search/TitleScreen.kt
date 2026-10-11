@@ -44,6 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.couchy.core.sources.Site
+import app.couchy.core.sources.SiteHit
+import app.couchy.core.sources.SiteSearch
+import app.couchy.core.sources.Sites
 import app.couchy.core.sources.TitleKind
 import app.couchy.core.sources.TorrentHit
 import app.couchy.sources.RezkaUi
@@ -63,6 +67,8 @@ class TitleActions(
     val onChallenge: () -> Unit,
     val onRetryRezka: () -> Unit,
     val onTorrent: (TorrentHit) -> Unit,
+    val onSite: (SiteHit) -> Unit = {},
+    val onSearchSite: (Site) -> Unit = {},
 )
 
 /** A film or series with every way to watch it: online sources first, then torrents by quality. */
@@ -81,7 +87,7 @@ fun TitleContent(state: TitleUi, actions: TitleActions, modifier: Modifier = Mod
             Row(Modifier.fillMaxSize().padding(horizontal = side, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                 Column(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     SecondaryButton("Назад", Icons.AutoMirrored.Rounded.ArrowBack, onClick = actions.onBack)
-                    PosterCard(state.title.copy(rating = state.title.rating), onClick = {}, modifier = Modifier.fillMaxWidth())
+                    PosterCard(state.title, onClick = {}, modifier = Modifier.fillMaxWidth(), caption = false)
                 }
                 Sections(state, actions, Modifier.weight(1f).widthIn(max = 1000.dp), PaddingValues(bottom = 32.dp))
             }
@@ -103,7 +109,7 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                         Spacer(Modifier.weight(1f))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        PosterCard(t.copy(name = ""), onClick = {}, modifier = Modifier.width(112.dp))
+                        PosterCard(t, onClick = {}, modifier = Modifier.width(112.dp), caption = false)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) { Heading(state) }
                     }
                 } else {
@@ -202,7 +208,44 @@ private fun Online(state: TitleUi, actions: TitleActions) {
             }
             SourceStatus.READY -> Ready(state, r, actions)
         }
+        OtherSites(state, actions)
     }
+}
+
+/** The same title on other cinemas: found ones play in a tap, the rest open their own search. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OtherSites(state: TitleUi, actions: TitleActions) {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Другие сайты", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.sitesLoading) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+    }
+    val found = state.sites.map { it.site }.toSet()
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.sites.forEach { hit ->
+            val name = Sites.all.firstOrNull { it.id == hit.site }?.name ?: hit.site
+            SiteButton("▶  $name", primary = true) { actions.onSite(hit) }
+        }
+        // Sites that cannot be searched from here, and parsed ones that did not find the title by name.
+        Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }.forEach { site ->
+            SiteButton("${site.name} ↗", primary = false) { actions.onSearchSite(site) }
+        }
+    }
+}
+
+@Composable
+private fun SiteButton(text: String, primary: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (primary) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .couchyClickable(shape, onClick = onClick)
+            .background(if (primary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

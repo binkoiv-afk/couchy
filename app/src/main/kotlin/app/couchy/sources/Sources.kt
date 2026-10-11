@@ -5,6 +5,9 @@ import app.couchy.core.sources.Imdb
 import app.couchy.core.sources.Rezka
 import app.couchy.core.sources.RezkaPage
 import app.couchy.core.sources.RezkaStream
+import app.couchy.core.sources.SiteHit
+import app.couchy.core.sources.SiteSearch
+import app.couchy.core.sources.Sites
 import app.couchy.core.sources.Title
 import app.couchy.core.sources.TitleKind
 import app.couchy.core.sources.TitleMerge
@@ -120,3 +123,18 @@ class Catalog(private val web: Web, val rezka: RezkaClient) {
 }
 
 data class SearchResult(val titles: List<Title>, val challengeUrl: String?)
+
+/** Online cinemas with plain search pages: each one is asked for the title by its Russian and original names. */
+class SiteClient(private val web: Web) {
+    suspend fun find(title: Title): List<SiteHit> = coroutineScope {
+        val names = (listOf(title.name) + listOfNotNull(title.original) + title.altNames).distinct()
+        Sites.all.filter { it.id in SiteSearch.parsed }.map { site ->
+            async {
+                runCatching {
+                    val hits = SiteSearch.parse(site.id, web.get(site.searchUrl(title.name)), site.home)
+                    SiteSearch.match(hits, names, title.year)
+                }.getOrNull()
+            }
+        }.mapNotNull { it.await() }
+    }
+}

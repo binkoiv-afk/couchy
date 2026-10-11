@@ -279,6 +279,11 @@ class ScreensTest {
         torrentsLoading = false,
         progress = mapOf("1:3" to 0.4f),
         watched = setOf("1:1", "1:2"),
+        sites = listOf(
+            app.couchy.core.sources.SiteHit("kinokrad", "Дюна: Пророчество", 2024, "https://kinokrad.cc/473232-dune-the-prophecy-2024.html", null),
+            app.couchy.core.sources.SiteHit("seasonvar", "Дюна: Пророчество", null, "https://seasonvar.ru/serial-40000-Dyuna_Prorochestvo.html", null),
+        ),
+        sitesLoading = false,
     )
     private val titleActions = TitleActions({}, {}, {}, { _, _, _ -> }, {}, {}, {})
 
@@ -290,7 +295,7 @@ class ScreensTest {
     @Test fun tvTitle() = snap("tv_title", tv, FormFactor.TV) { TitleContent(titleUi, titleActions) }
     @Test fun phoneTitle() = snap("phone_title", phone, FormFactor.PHONE) { TitleContent(titleUi, titleActions) }
     @Test fun phoneTitleBlocked() = snap("phone_title_blocked", phone, FormFactor.PHONE) {
-        TitleContent(titleUi.copy(title = found[0], rezka = RezkaUi(SourceStatus.BLOCKED), torrentsLoading = true, torrents = emptyList()), titleActions)
+        TitleContent(titleUi.copy(title = found[0], rezka = RezkaUi(SourceStatus.BLOCKED), sites = emptyList(), sitesLoading = true, torrentsLoading = true, torrents = emptyList()), titleActions)
     }
 
     @Test fun tvPlayer() = snap("tv_player", tv, FormFactor.TV) { player(touch = false) }

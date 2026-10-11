@@ -155,6 +155,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
+            // A channel list behind a bare address or a .m3u8 name goes to TV, not to the player.
+            if ((kind == LinkKind.UNKNOWN || kind == LinkKind.HLS) && link.trim().startsWith("http", ignoreCase = true) &&
+                library.get(link) == null && sniff(link.trim()) == LinkKind.PLAYLIST
+            ) {
+                _pendingPlaylist.value = link.trim()
+                return@launch
+            }
             val entry = library.open(link, title)
             if (fromStart) library.clearProgress(entry.uri)
             _playback.value = Playback(
@@ -165,6 +172,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 subtitleLanguage = entry.subtitleLanguage,
             )
         }
+    }
+
+    /** The first few kilobytes of a link, read to tell an IPTV list from a stream; null when unreachable. */
+    private suspend fun sniff(link: String): LinkKind? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val c = java.net.URL(link).openConnection() as java.net.HttpURLConnection
+            try {
+                c.connectTimeout = 8_000
+                c.readTimeout = 8_000
+                c.setRequestProperty("Range", "bytes=0-8191")
+                c.setRequestProperty("User-Agent", "Couchy/1.0 (Android)")
+                if (c.responseCode !in 200..299) return@runCatching null
+                val type = c.contentType.orEmpty().lowercase()
+                if (type.startsWith("video/")) return@runCatching LinkKind.VIDEO
+                val buffer = ByteArray(8192)
+                var read = 0
+                c.inputStream.use { input ->
+                    while (read < buffer.size) {
+                        val n = input.read(buffer, read, buffer.size - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                }
+                Links.sniff(String(buffer, 0, read, Charsets.UTF_8))
+            } finally {
+                c.disconnect()
+            }
+        }.getOrNull()
     }
 
     fun play(item: MediaEntity, fromStart: Boolean = false) = open(item.uri, item.title, fromStart)

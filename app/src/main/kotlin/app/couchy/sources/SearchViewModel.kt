@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class SearchMode(val label: String) { ALL("Всё"), TORRENTS("Только торренты") }
+enum class SearchMode(val label: String) { ALL("Фильмы и сериалы"), TORRENTS("Торренты") }
 
 data class SearchState(
     val query: String = "",

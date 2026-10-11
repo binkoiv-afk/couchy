@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.map
 enum class ThemeMode(val label: String) { DARK("Тёмная"), LIGHT("Светлая"), SYSTEM("Как в системе") }
 
 /** How the interface is laid out: picked from the device, or forced by the user. */
-enum class UiMode(val label: String) { AUTO("Автоматически"), TV("Для пульта"), TOUCH("Для сенсора") }
+enum class UiMode(val label: String) { AUTO("Авто"), TV("Пульт"), TOUCH("Сенсор") }
 
 /** Which TorrServer plays torrents: the one inside Couchy, or one running elsewhere in the home network. */
 enum class TorrEngineMode(val label: String) { BUILT_IN("Встроенный"), REMOTE("TorrServe в сети") }

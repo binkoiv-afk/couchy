@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -74,7 +78,7 @@ class SearchActions(
  * a page with every way to watch it. "Только торренты" searches trackers directly.
  */
 @Composable
-fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier = Modifier) {
+fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier = Modifier, focusKey: Int = 0) {
     val form = LocalFormFactor.current
     val side = if (form.wide) 32.dp else 18.dp
     val cell = when (form) {
@@ -89,7 +93,7 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
         horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 18.dp else 12.dp),
         verticalArrangement = Arrangement.spacedBy(if (form.isTv) 20.dp else 14.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { Header(state, actions) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Header(state, actions, focusKey) }
 
         if (state.loading) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -99,6 +103,12 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
             }
         } else if (!state.searched || state.query.isBlank()) {
             if (state.history.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { History(state.history, actions) }
+            else item(span = { GridItemSpan(maxLineSpan) }) {
+                Hint(
+                    if (state.mode == SearchMode.TORRENTS) "Ищу раздачи на rutracker, rutor, kinozal и других трекерах."
+                    else "Ищу сразу на HDrezka, в онлайн-кинотеатрах и на торрент-трекерах. Откройте фильм, и все способы посмотреть его будут на одной странице.",
+                )
+            }
         } else if (state.error != null) {
             item(span = { GridItemSpan(maxLineSpan) }) { Hint(state.error) }
         } else if (state.mode == SearchMode.TORRENTS) {
@@ -120,19 +130,25 @@ fun SearchContent(state: SearchState, actions: SearchActions, modifier: Modifier
 }
 
 @Composable
-private fun Header(state: SearchState, actions: SearchActions) {
+private fun Header(state: SearchState, actions: SearchActions, focusKey: Int) {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Coming from the search bar on Home: the field is ready to type into.
+    LaunchedEffect(focusKey) {
+        if (focusKey > 0) runCatching { focus.requestFocus(); keyboard?.show() }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 state.query,
                 actions.onQuery,
-                placeholder = { Text("Фильм, сериал, мультфильм…") },
+                placeholder = { Text("Фильм, сериал или мультфильм") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { actions.onSubmit(state.query) }),
-                modifier = Modifier.weight(1f),
+                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); actions.onSubmit(state.query) }),
+                modifier = Modifier.weight(1f).focusRequester(focus),
             )
             actions.onVoice?.let { SecondaryButton(null, Icons.Rounded.Mic, onClick = it) }
             SecondaryButton(null, Icons.Rounded.AddLink, onClick = actions.onOpenLink)

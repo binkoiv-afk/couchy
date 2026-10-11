@@ -33,7 +33,7 @@ fun PrimaryButton(text: String, icon: ImageVector?, onClick: () -> Unit, modifie
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (icon != null) Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary, maxLines = 1)
     }
 }
 
@@ -59,7 +59,7 @@ fun SecondaryButton(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (icon != null) Icon(icon, null, tint = content, modifier = Modifier.size(20.dp))
-        if (text != null) Text(text, style = MaterialTheme.typography.labelLarge, color = content)
+        if (text != null) Text(text, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
     }
 }
 
@@ -79,6 +79,6 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifie
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (icon != null) Icon(icon, null, tint = fg, modifier = Modifier.size(16.dp))
-        Text(text, style = MaterialTheme.typography.labelMedium, color = fg)
+        Text(text, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1, softWrap = false)
     }
 }

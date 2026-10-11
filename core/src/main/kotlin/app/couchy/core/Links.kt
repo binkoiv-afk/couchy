@@ -29,6 +29,7 @@ object Links {
         if (lower.startsWith("magnet:")) return LinkKind.TORRENT
         val host = hostOf(lower)
         if (host != null && (host == "youtu.be" || host.endsWith("youtube.com"))) return LinkKind.YOUTUBE
+        if (isPlaylistQuery(lower)) return LinkKind.PLAYLIST
         return when (extensionOf(lower)) {
             "m3u8" -> LinkKind.HLS
             "mpd" -> LinkKind.DASH
@@ -37,6 +38,42 @@ object Links {
             in videoExtensions -> LinkKind.VIDEO
             else -> LinkKind.UNKNOWN
         }
+    }
+
+    /** IPTV panels hand out playlists as get.php?username=…&type=m3u_plus, with no .m3u at the end. */
+    private fun isPlaylistQuery(lower: String): Boolean {
+        val path = lower.substringBefore('?').substringBefore('#')
+        val query = lower.substringAfter('?', "")
+        return path.endsWith("/get.php") || Regex("(^|&)type=m3u").containsMatchIn(query)
+    }
+
+    /**
+     * Looks at the first bytes a link returns, for links whose name says nothing or says the
+     * wrong thing: an IPTV list is often served as .m3u8 or from a bare address. Null when
+     * the text is not an m3u at all.
+     */
+    fun sniff(head: String): LinkKind? {
+        val text = head.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+        if (!text.startsWith("#EXTM3U")) return null
+        // HLS describes segments and variants; a channel list names channels.
+        if (Regex("#EXT-X-(TARGETDURATION|STREAM-INF|MEDIA-SEQUENCE|MEDIA:|KEY|MAP|VERSION)").containsMatchIn(text)) return LinkKind.HLS
+        val entries = Regex("#EXTINF").findAll(text).count()
+        val iptv = Regex("(tvg-|group-title|url-tvg|x-tvg-url|catchup)", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        return if (iptv || entries > 1) LinkKind.PLAYLIST else LinkKind.HLS
+    }
+
+    /** Server, login and password from an Xtream Codes playlist link, to fill the form for the person. */
+    fun xtream(link: String): Triple<String, String, String>? {
+        val t = link.trim()
+        val path = t.substringBefore('?')
+        if (!path.lowercase().endsWith("/get.php")) return null
+        val params = t.substringAfter('?', "").split('&').mapNotNull {
+            val k = it.substringBefore('=', "")
+            if (k.isEmpty()) null else k.lowercase() to decode(it.substringAfter('='))
+        }.toMap()
+        val user = params["username"]?.takeIf { it.isNotBlank() } ?: return null
+        val password = params["password"]?.takeIf { it.isNotBlank() } ?: return null
+        return Triple(path.substringBeforeLast('/'), user, password)
     }
 
     /** Whether the built-in player can be handed this link as is. */

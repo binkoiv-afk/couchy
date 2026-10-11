@@ -36,6 +36,8 @@ import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.rememberFormFactor
 import app.couchy.ui.home.HomeActions
 import app.couchy.ui.home.HomeContent
+import app.couchy.ui.home.Shortcut
+import app.couchy.sources.SearchMode
 import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
 import app.couchy.ui.open.OpenDialog
@@ -171,6 +173,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val notice by vm.notice.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var showOpen by rememberSaveable { mutableStateOf(false) }
+    var searchFocus by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
     val tv by tvVm.state.collectAsStateWithLifecycle()
     val schedule by tvVm.schedule.collectAsStateWithLifecycle()
@@ -254,6 +257,10 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     LaunchedEffect(torrentAutoPlay) {
         torrentAutoPlay?.let { vm.playDirect(it); torrentVm.autoPlayHandled() }
     }
+    val tvProblem by tvVm.problem.collectAsStateWithLifecycle()
+    LaunchedEffect(tvProblem) {
+        tvProblem?.let { vm.showNotice(it); tvVm.problemShown() }
+    }
     LaunchedEffect(pendingPlaylist) {
         pendingPlaylist?.let { link ->
             destination = Destination.TV
@@ -272,7 +279,10 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         if (uri != null) { showOpen = false; vm.open(uri.toString()) }
     }
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { searchVm.submit(it) }
+        result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let {
+            destination = Destination.SEARCH
+            searchVm.submit(it)
+        }
     }
     val voiceIntent = remember {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -304,6 +314,16 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 vm.showNotice("Отправил на ${device.name}.")
             },
             onDismiss = { castRequest = null },
+        )
+    }
+
+    // Shown over whatever is open: a playlist link can arrive while something plays.
+    addPlaylist?.let { initial ->
+        AddPlaylistDialog(
+            initialUrl = initial,
+            onM3u = { name, url, epg -> tvVm.addM3u(name, url, epg) },
+            onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
+            onDismiss = { addPlaylist = null },
         )
     }
 
@@ -416,12 +436,27 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                     onMore = { if (!kids) actionsFor = it },
                     onFavorite = vm::toggleFavorite,
                     onOpen = { showOpen = true },
+                    onSearch = { destination = Destination.SEARCH; searchFocus += 1 },
+                    onQuery = { q -> destination = Destination.SEARCH; searchVm.submit(q) },
+                    onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
+                    onShortcut = { s ->
+                        when (s) {
+                            Shortcut.HISTORY -> { vm.setFilter(LibraryFilter.ALL); destination = Destination.LIBRARY }
+                            Shortcut.FAVORITES -> { vm.setFilter(LibraryFilter.FAVORITES); destination = Destination.LIBRARY }
+                            Shortcut.TV -> { destination = Destination.TV }
+                            Shortcut.TORRENTS -> { searchVm.setMode(SearchMode.TORRENTS); destination = Destination.SEARCH; searchFocus += 1 }
+                            Shortcut.LINK -> { showOpen = true }
+                            Shortcut.SETTINGS -> { if (kids) askPin = true else destination = Destination.SETTINGS }
+                        }
+                    },
                 ),
+                searches = search.history,
             )
             Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
             Destination.SEARCH -> SearchContent(
-                search,
-                SearchActions(
+                focusKey = searchFocus,
+                state = search,
+                actions = SearchActions(
                     onQuery = searchVm::setQuery,
                     onSubmit = { searchVm.submit(it) },
                     onMode = searchVm::setMode,
@@ -565,14 +600,6 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     }
 
 
-    addPlaylist?.let { initial ->
-        AddPlaylistDialog(
-            initialUrl = initial,
-            onM3u = { name, url, epg -> tvVm.addM3u(name, url, epg) },
-            onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
-            onDismiss = { addPlaylist = null },
-        )
-    }
 
     if (showPlaylists) {
         PlaylistsDialog(

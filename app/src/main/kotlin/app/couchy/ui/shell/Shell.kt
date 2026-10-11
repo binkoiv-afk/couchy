@@ -62,7 +62,8 @@ fun Shell(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () ->
     val form = LocalFormFactor.current
     if (form.wide) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Rail(current, onNavigate, onOpen, compact = form == FormFactor.TV)
+            // Labels stay on TV too: icons alone left people guessing where search is.
+            Rail(current, onNavigate, onOpen, compact = false)
             Box(Modifier.fillMaxSize().statusBarsPadding()) { Themed(content) }
         }
     } else {

@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,13 +46,15 @@ fun AddPlaylistDialog(
     onXtream: (name: String, server: String, user: String, password: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var xtream by rememberSaveable { mutableStateOf(false) }
+    // An Xtream panel link fills the login form; it keeps working when the panel changes the list.
+    val panel = remember(initialUrl) { Links.xtream(initialUrl) }
+    var xtream by rememberSaveable { mutableStateOf(panel != null) }
     var name by rememberSaveable { mutableStateOf("") }
     var url by rememberSaveable { mutableStateOf(initialUrl) }
     var epg by rememberSaveable { mutableStateOf("") }
-    var server by rememberSaveable { mutableStateOf("") }
-    var user by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var server by rememberSaveable { mutableStateOf(panel?.first.orEmpty()) }
+    var user by rememberSaveable { mutableStateOf(panel?.second.orEmpty()) }
+    var password by rememberSaveable { mutableStateOf(panel?.third.orEmpty()) }
     val valid = if (xtream) server.isNotBlank() && user.isNotBlank() && password.isNotBlank() else Links.looksLikeLink(url)
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -131,7 +131,11 @@ fun CouchyTheme(mode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Uni
         isDark = dark,
     )
     CompositionLocalProvider(LocalCouchyColors provides extra) {
-        MaterialTheme(colorScheme = scheme, typography = CouchyTypography, shapes = CouchyShapes, content = content)
+        MaterialTheme(colorScheme = scheme, typography = CouchyTypography, shapes = CouchyShapes) {
+            // Text with no color of its own follows the theme everywhere, also outside the main frame
+            // (title page, torrent page, site window), instead of falling back to black.
+            CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides scheme.onBackground, content = content)
+        }
     }
 }
 

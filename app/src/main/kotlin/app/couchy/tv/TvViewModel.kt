@@ -107,9 +107,20 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleFavorite(channel: ChannelEntity) = viewModelScope.launch { repo.setFavorite(channel, !channel.favorite) }
 
-    fun addM3u(name: String, url: String, epg: String?) = busy { repo.addM3u(name, url, epg) }
+    fun addM3u(name: String, url: String, epg: String?) = busy { report(repo.addM3u(name, url, epg)) }
 
-    fun addXtream(name: String, server: String, user: String, password: String) = busy { repo.addXtream(name, server, user, password) }
+    fun addXtream(name: String, server: String, user: String, password: String) = busy { report(repo.addXtream(name, server, user, password)) }
+
+    private val _problem = MutableStateFlow<String?>(null)
+    /** Why a playlist just added did not load, for the person to see right away. */
+    val problem: StateFlow<String?> = _problem
+
+    fun problemShown() { _problem.value = null }
+
+    private suspend fun report(id: Long) {
+        val error = repo.allPlaylists().firstOrNull { it.id == id }?.lastError ?: return
+        _problem.value = "Плейлист добавлен, но каналы не загрузились: $error. Проверьте ссылку или откройте её в браузере."
+    }
 
     fun refreshAll() = busy { state.value.playlists.forEach { repo.refresh(it.id) } }
 

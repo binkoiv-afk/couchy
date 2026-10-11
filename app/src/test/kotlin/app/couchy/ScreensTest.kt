@@ -127,7 +127,7 @@ class ScreensTest {
 
     @Composable
     private fun home(state: HomeState = homeState()) =
-        Shell(Destination.HOME, {}, {}) { HomeContent(state, homeActions) }
+        Shell(Destination.HOME, {}, {}) { HomeContent(state, homeActions, searches = listOf("дюна", "во все тяжкие", "оппенгеймер")) }
 
     @Composable
     private fun library() = Shell(Destination.LIBRARY, {}, {}) {
@@ -143,18 +143,37 @@ class ScreensTest {
             SettingsContent(Prefs(), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}))
         }
     }
-    @Test fun phoneSettingsBypass() = snap("phone_settings_bypass", phone.copy(screenHeight = 5200), FormFactor.PHONE) {
+    @Test fun phoneSettingsBypass() = snap("phone_settings_bypass", phone, FormFactor.PHONE) {
         Shell(Destination.SETTINGS, {}, {}) {
             SettingsContent(
                 Prefs(bypassHosts = setOf("rezka.ag", "kinozal.tv")), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}),
                 bypass = app.couchy.ui.settings.BypassUi("Подключён: WARP"),
                 castInfo = "Это устройство: Xiaomi Mi Box S, адрес 192.168.1.20",
                 sync = app.couchy.ui.settings.SyncUi(true, "https://webdav.yandex.ru", "igor@yandex.ru", "Синхронизировано в 10:40"),
+                initialPage = app.couchy.ui.settings.SettingsPage.BYPASS,
             )
         }
     }
     @Test fun phoneKids() = snap("phone_kids", phone, FormFactor.PHONE) {
         androidx.compose.runtime.CompositionLocalProvider(app.couchy.ui.shell.LocalKidsMode provides true) { home() }
+    }
+    @Test fun phoneSettingsLook() = snap("phone_settings_look", phone, FormFactor.PHONE) {
+        Shell(Destination.SETTINGS, {}, {}) {
+            SettingsContent(Prefs(), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}), initialPage = app.couchy.ui.settings.SettingsPage.APPEARANCE)
+        }
+    }
+    @Test fun tvSettings() = snap("tv_settings", tv, FormFactor.TV) {
+        Shell(Destination.SETTINGS, {}, {}) {
+            SettingsContent(Prefs(), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}), castInfo = "Это устройство: Mi Box S, адрес 192.168.1.20")
+        }
+    }
+    @Test fun phoneSearchEmpty() = snap("phone_search_empty", phone, FormFactor.PHONE) {
+        Shell(Destination.SEARCH, {}, {}) { SearchContent(SearchState(), searchActions) }
+    }
+    @Test fun phoneSettingsLight() = snap("phone_settings_light", phone, FormFactor.PHONE, ThemeMode.LIGHT) {
+        Shell(Destination.SETTINGS, {}, {}) {
+            SettingsContent(Prefs(), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}), initialPage = app.couchy.ui.settings.SettingsPage.APPEARANCE)
+        }
     }
     @Test fun tvKids() = snap("tv_kids", tv, FormFactor.TV) {
         androidx.compose.runtime.CompositionLocalProvider(app.couchy.ui.shell.LocalKidsMode provides true) { home() }

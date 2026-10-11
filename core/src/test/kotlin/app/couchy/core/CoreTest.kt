@@ -6,6 +6,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinksTest {
+    @Test fun findsIptvPlaylistsWithoutM3uName() {
+        assertEquals(LinkKind.PLAYLIST, Links.classify("http://panel.example:8080/get.php?username=u&password=p&type=m3u_plus&output=ts"))
+        assertEquals(LinkKind.PLAYLIST, Links.classify("https://x.org/playlist?type=m3u"))
+        val iptv = "#EXTM3U url-tvg=\"http://e/epg.xml\"\n#EXTINF:-1 tvg-id=\"1\" group-title=\"Новости\",Первый\nhttp://s/1.m3u8\n"
+        assertEquals(LinkKind.PLAYLIST, Links.sniff(iptv))
+        assertEquals(LinkKind.PLAYLIST, Links.sniff("\uFEFF#EXTM3U\n#EXTINF:-1,A\nhttp://a\n#EXTINF:-1,B\nhttp://b\n"))
+        assertEquals(LinkKind.HLS, Links.sniff("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nlow.m3u8\n"))
+        assertEquals(LinkKind.HLS, Links.sniff("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\na.ts\n#EXTINF:6,\nb.ts\n"))
+        assertEquals(null, Links.sniff("<html>"))
+        assertEquals(
+            Triple("http://panel.example:8080", "u", "p 1"),
+            Links.xtream("http://panel.example:8080/get.php?username=u&password=p%201&type=m3u_plus"),
+        )
+        assertEquals(null, Links.xtream("http://iptv.example/list.m3u"))
+    }
+
     @Test fun classifiesCommonLinks() {
         assertEquals(LinkKind.HLS, Links.classify("https://cdn.example.com/hls/master.m3u8?token=1"))
         assertEquals(LinkKind.DASH, Links.classify("https://x.org/a/manifest.mpd"))

@@ -1,6 +1,30 @@
 package app.couchy.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.ChildCare
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.VpnLock
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import app.couchy.ui.components.couchyClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,6 +97,33 @@ data class SyncUi(val connected: Boolean = false, val url: String = "", val logi
 /** The bypass as the settings screen shows it. */
 data class BypassUi(val status: String = "Не запущен", val available: Boolean = true)
 
+/** The settings, each group on its own page, like on a phone's system settings. */
+enum class SettingsPage(val title: String, val icon: ImageVector, val hint: String) {
+    APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
+    SOURCES("Онлайн-источники", Icons.Rounded.Language, "Если HDrezka не открывается, укажите рабочее зеркало, например https://hdrezka.me"),
+    TORRENTS(
+        "Торренты", Icons.Rounded.CloudDownload,
+        "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
+    ),
+    BYPASS(
+        "Обход блокировок", Icons.Rounded.VpnLock,
+        "Авто: Couchy сам включает обход только для заблокированных сайтов. Всегда: весь интернет Couchy идёт через обход.",
+    ),
+    SYNC(
+        "Синхронизация", Icons.Rounded.Sync,
+        "История, места остановки, избранное, плейлисты ТВ и список заблокированных сайтов одинаковые на всех устройствах. Хранится в одном файле на вашем диске.",
+    ),
+    KIDS(
+        "Детский режим", Icons.Rounded.ChildCare,
+        "Ребёнок видит только то, что вы отметили в медиатеке (долгое нажатие → «Показывать детям»), и детские ТВ-каналы. Поиска и ссылок нет, выйти можно только по PIN.",
+    ),
+    CAST(
+        "Смотреть на ТВ", Icons.Rounded.Cast,
+        "На телефоне нажмите кнопку ТВ в плеере или «Смотреть на ТВ» в медиатеке, и видео продолжится здесь с того же места. Couchy на приставке должен быть открыт.",
+    ),
+    ABOUT("О приложении", Icons.Rounded.Info, "Версия и обновления."),
+}
+
 @Composable
 fun SettingsContent(
     prefs: Prefs,
@@ -84,75 +135,52 @@ fun SettingsContent(
     sync: SyncUi = SyncUi(),
     /** How this device is seen in the home network, for "watch on TV". */
     castInfo: String? = null,
+    initialPage: SettingsPage? = null,
 ) {
-    val side = if (LocalFormFactor.current.wide) 32.dp else 18.dp
-    Column(
-        modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = side, vertical = 20.dp)
-            .widthIn(max = 720.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium)
-        Section("Тема", "Тёмная как в кинотеатре или светлая.") {
-            ThemeMode.entries.forEach { Chip(it.label, it == prefs.theme, onClick = { actions.onTheme(it) }) }
-        }
-        Section("Интерфейс", "Для пульта: крупные карточки и рамка фокуса. Для сенсора: жесты и нижнее меню.") {
-            UiMode.entries.forEach { Chip(it.label, it == prefs.uiMode, onClick = { actions.onUiMode(it) }) }
-        }
-        Section(
-            "Торренты",
-            "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
-            row = false,
-        ) {
-            TorrSettings(prefs, actions)
-        }
-        Section("Онлайн-источники", "Если HDrezka не открывается, укажите рабочее зеркало, например https://hdrezka.me", row = false) {
-            var host by rememberSaveable(prefs.rezkaHost) { mutableStateOf(prefs.rezkaHost) }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    host, { host = it },
-                    label = { Text("Адрес HDrezka") },
-                    placeholder = { Text("https://rezka.ag") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
+    val form = LocalFormFactor.current
+    val side = if (form.wide) 32.dp else 18.dp
+    val pages = SettingsPage.entries.filter { it != SettingsPage.CAST || castInfo != null }
+    var page by rememberSaveable { mutableStateOf(initialPage) }
+    fun summary(p: SettingsPage): String = when (p) {
+        SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
+        SettingsPage.SOURCES -> "HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
+        SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
+        SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
+        SettingsPage.SYNC -> sync.status
+        SettingsPage.KIDS -> if (prefs.kidsPin.isEmpty()) "Не настроен" else "PIN задан"
+        SettingsPage.CAST -> castInfo.orEmpty()
+        SettingsPage.ABOUT -> "Couchy $version"
+    }
+
+    @Composable
+    fun Body(p: SettingsPage) {
+        when (p) {
+            SettingsPage.APPEARANCE -> Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Group("Тема") { ThemeMode.entries.forEach { Chip(it.label, it == prefs.theme, onClick = { actions.onTheme(it) }) } }
+                Group("Управление", "Пульт: крупные карточки и рамка фокуса. Сенсор: жесты и нижнее меню. Авто: по устройству.") {
+                    UiMode.entries.forEach { Chip(it.label, it == prefs.uiMode, onClick = { actions.onUiMode(it) }) }
+                }
             }
-        }
-        Section(
-            "Детский режим",
-            "Ребёнок видит только то, что вы отметили в медиатеке (долгое нажатие → «Показывать детям»), и детские ТВ-каналы. Поиска и ссылок нет, выйти можно только по PIN.",
-            row = false,
-        ) {
-            KidsSettings(prefs, actions)
-        }
-        Section(
-            "Синхронизация",
-            "История, места остановки, избранное, плейлисты ТВ и список заблокированных сайтов одинаковые на всех устройствах. Хранится в одном файле на вашем диске.",
-            row = false,
-        ) {
-            SyncSettings(sync, actions)
-        }
-        Section(
-            "Обход блокировок",
-            "Авто: Couchy сам включает обход только для заблокированных сайтов и выключает, когда он не нужен. Всегда: весь интернет Couchy идёт через обход.",
-            row = false,
-        ) {
-            BypassSettings(prefs, bypass, actions)
-        }
-        castInfo?.let { info ->
-            Section(
-                "Смотреть на ТВ",
-                "На телефоне нажмите кнопку ТВ в плеере или «Смотреть на ТВ» в медиатеке, и видео продолжится здесь с того же места. Couchy на приставке должен быть открыт.",
-            ) {
-                Text(info, style = MaterialTheme.typography.bodyMedium)
+            SettingsPage.SOURCES -> {
+                var host by rememberSaveable(prefs.rezkaHost) { mutableStateOf(prefs.rezkaHost) }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        host, { host = it },
+                        label = { Text("Адрес HDrezka") },
+                        placeholder = { Text("https://rezka.ag") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
+                }
             }
-        }
-        Section("О приложении", "Couchy $version") {
-            when (update) {
+            SettingsPage.TORRENTS -> TorrSettings(prefs, actions)
+            SettingsPage.BYPASS -> BypassSettings(prefs, bypass, actions)
+            SettingsPage.SYNC -> SyncSettings(sync, actions)
+            SettingsPage.KIDS -> KidsSettings(prefs, actions)
+            SettingsPage.CAST -> Text(castInfo.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+            SettingsPage.ABOUT -> when (update) {
                 UpdateState.Idle -> SecondaryButton("Проверить обновления", null, onClick = actions.onCheckUpdate)
                 UpdateState.Checking -> Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)
                 UpdateState.UpToDate -> Text("Установлена последняя версия", style = MaterialTheme.typography.bodyMedium)
@@ -165,21 +193,95 @@ fun SettingsContent(
             }
         }
     }
+
+    @Composable
+    fun PageView(p: SettingsPage, onBack: (() -> Unit)?, pageModifier: Modifier) {
+        Column(
+            pageModifier.verticalScroll(rememberScrollState()).padding(horizontal = side, vertical = 20.dp).widthIn(max = 720.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (onBack != null) SecondaryButton(null, Icons.AutoMirrored.Rounded.ArrowBack, onClick = onBack)
+                Text(p.title, style = MaterialTheme.typography.headlineSmall)
+            }
+            Text(p.hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(18.dp)).padding(18.dp),
+            ) { Body(p) }
+        }
+    }
+
+    @Composable
+    fun ListView(selected: SettingsPage?, listModifier: Modifier) {
+        Column(
+            listModifier.verticalScroll(rememberScrollState()).padding(horizontal = side, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Настройки", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 10.dp))
+            pages.forEach { p -> PageRow(p, summary(p), p == selected) { page = p } }
+        }
+    }
+
+    if (form.wide) {
+        // Remote and big screens: the list stays on the left, the open page on the right.
+        val open = page ?: SettingsPage.APPEARANCE
+        Row(modifier.fillMaxSize()) {
+            ListView(open, Modifier.width(if (form.isTv) 380.dp else 340.dp).fillMaxHeight())
+            PageView(open, null, Modifier.weight(1f).fillMaxHeight())
+        }
+    } else {
+        val open = page
+        if (open == null) {
+            ListView(null, modifier.fillMaxSize())
+        } else {
+            if (LocalOnBackPressedDispatcherOwner.current != null) BackHandler { page = null }
+            PageView(open, { page = null }, modifier.fillMaxSize())
+        }
+    }
 }
 
 @Composable
-private fun Section(title: String, hint: String, row: Boolean = true, content: @Composable () -> Unit) {
-    Column(
+private fun PageRow(page: SettingsPage, summary: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
         Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(18.dp))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .couchyClickable(shape, focusScale = 1.02f, onClick = onClick)
+            .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer, shape)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (row) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() } else content()
+        Box(
+            Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(page.icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(page.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** A labelled set of choices that wraps onto the next line when it does not fit. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Group(title: String, hint: String? = null, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
+}
+
+/** Choices in a row that wrap instead of running off the screen. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Choices(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
 }
 
 @Composable
@@ -187,7 +289,7 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
     var address by rememberSaveable(prefs.torrAddress) { mutableStateOf(prefs.torrAddress) }
     var result by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Choices {
             TorrEngineMode.entries.forEach { mode ->
                 Chip(mode.label, mode == prefs.torrEngine, onClick = { actions.onTorrEngine(mode, address) })
             }
@@ -234,7 +336,7 @@ private fun KidsSettings(prefs: Prefs, actions: SettingsActions) {
                 pin = ""
             })
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Choices {
                 SecondaryButton("Включить детский режим", null, onClick = actions.onEnterKids)
                 SecondaryButton("Сменить PIN", null, onClick = { changing = true })
             }
@@ -252,7 +354,7 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(sync.status, style = MaterialTheme.typography.bodySmall, color = muted)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Choices {
                 SecondaryButton("Синхронизировать", null, onClick = actions.onSyncNow)
                 SecondaryButton("Отключить", null, onClick = actions.onSyncDisconnect)
             }
@@ -263,7 +365,7 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
         var login by rememberSaveable { mutableStateOf("") }
         var password by rememberSaveable { mutableStateOf("") }
         var result by remember { mutableStateOf<String?>(null) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Choices {
             Chip("Яндекс Диск", yandex, onClick = { yandex = true })
             Chip("Другой WebDAV", !yandex, onClick = { yandex = false })
         }
@@ -325,11 +427,11 @@ private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActi
             Text("На этом процессоре обход не работает.", style = MaterialTheme.typography.bodyMedium, color = muted)
             return@Column
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Choices {
             BypassMode.entries.forEach { mode -> Chip(mode.label, mode == prefs.bypassMode, onClick = { actions.onBypass(mode, prefs.bypassKind) }) }
         }
         if (prefs.bypassMode == BypassMode.OFF) return@Column
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Choices {
             BypassKind.entries.forEach { kind -> Chip(kind.label, kind == prefs.bypassKind, onClick = { actions.onBypass(prefs.bypassMode, kind) }) }
         }
         if (prefs.bypassKind == BypassKind.WARP) {

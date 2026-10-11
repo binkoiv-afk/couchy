@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Settings
@@ -46,6 +47,11 @@ enum class Destination(val label: String, val icon: ImageVector) {
     LIBRARY("Медиатека", Icons.Rounded.GridView),
     SETTINGS("Настройки", Icons.Rounded.Settings),
 }
+
+/** Kids mode: no search, no links, and the settings place becomes "Выйти" behind the PIN. */
+val LocalKidsMode = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+private val kidsSections = listOf(Destination.HOME, Destination.TV, Destination.LIBRARY)
 
 /**
  * The frame around every screen: a side rail on TV and tablets, a bottom bar on phones.
@@ -92,13 +98,19 @@ private fun Rail(current: Destination, onNavigate: (Destination) -> Unit, onOpen
     ) {
         if (compact) CouchMark(36.dp) else CouchyLogo(30.dp, Modifier.padding(start = 10.dp))
         Spacer(Modifier.height(22.dp))
-        Destination.entries.filter { it != Destination.SETTINGS }.forEach { d ->
+        val kids = LocalKidsMode.current
+        val sections = if (kids) kidsSections else Destination.entries.filter { it != Destination.SETTINGS }
+        sections.forEach { d ->
             RailItem(d.icon, d.label, d == current, compact) { onNavigate(d) }
         }
-        RailItem(Icons.Rounded.AddCircle, "Открыть", false, compact, onClick = onOpen)
+        if (!kids) RailItem(Icons.Rounded.AddCircle, "Открыть", false, compact, onClick = onOpen)
         Spacer(Modifier.weight(1f))
-        RailItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS, compact) {
-            onNavigate(Destination.SETTINGS)
+        if (kids) {
+            RailItem(Icons.Rounded.Lock, "Выйти", false, compact) { onNavigate(Destination.SETTINGS) }
+        } else {
+            RailItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS, compact) {
+                onNavigate(Destination.SETTINGS)
+            }
         }
     }
 }
@@ -132,6 +144,11 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
         horizontalArrangement = Arrangement.SpaceAround,
     ) {
         val item = Modifier.weight(1f)
+        if (LocalKidsMode.current) {
+            kidsSections.forEach { d -> BarItem(d.icon, d.label, current == d, item) { onNavigate(d) } }
+            BarItem(Icons.Rounded.Lock, "Выйти", false, item) { onNavigate(Destination.SETTINGS) }
+            return@Row
+        }
         BarItem(Destination.HOME.icon, Destination.HOME.label, current == Destination.HOME, item) { onNavigate(Destination.HOME) }
         BarItem(Destination.SEARCH.icon, Destination.SEARCH.label, current == Destination.SEARCH, item) { onNavigate(Destination.SEARCH) }
         BarItem(Destination.TV.icon, Destination.TV.label, current == Destination.TV, item) { onNavigate(Destination.TV) }

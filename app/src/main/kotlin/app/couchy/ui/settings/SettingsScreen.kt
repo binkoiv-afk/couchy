@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.couchy.core.Kids
 import app.couchy.core.bypass.BypassKind
 import app.couchy.core.bypass.BypassMode
 import app.couchy.core.bypass.TunnelConfig
@@ -58,7 +59,16 @@ class SettingsActions(
     /** Checks the bypass end to end and reports the answer as a line of text. */
     val onCheckBypass: ((String) -> Unit) -> Unit = {},
     val onForgetBypassHosts: () -> Unit = {},
+    /** Connects a WebDAV account; the callback gets an error, or null when it worked. */
+    val onSyncConnect: (url: String, login: String, password: String, (String?) -> Unit) -> Unit = { _, _, _, _ -> },
+    val onSyncNow: () -> Unit = {},
+    val onSyncDisconnect: () -> Unit = {},
+    val onKidsPin: (String) -> Unit = {},
+    val onEnterKids: () -> Unit = {},
 )
+
+/** Sync as the settings screen shows it. */
+data class SyncUi(val connected: Boolean = false, val url: String = "", val login: String = "", val status: String = "Не подключено")
 
 /** The bypass as the settings screen shows it. */
 data class BypassUi(val status: String = "Не запущен", val available: Boolean = true)
@@ -71,6 +81,7 @@ fun SettingsContent(
     actions: SettingsActions,
     modifier: Modifier = Modifier,
     bypass: BypassUi = BypassUi(),
+    sync: SyncUi = SyncUi(),
     /** How this device is seen in the home network, for "watch on TV". */
     castInfo: String? = null,
 ) {
@@ -110,6 +121,20 @@ fun SettingsContent(
                 )
                 if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
             }
+        }
+        Section(
+            "Детский режим",
+            "Ребёнок видит только то, что вы отметили в медиатеке (долгое нажатие → «Показывать детям»), и детские ТВ-каналы. Поиска и ссылок нет, выйти можно только по PIN.",
+            row = false,
+        ) {
+            KidsSettings(prefs, actions)
+        }
+        Section(
+            "Синхронизация",
+            "История, места остановки, избранное, плейлисты ТВ и список заблокированных сайтов одинаковые на всех устройствах. Хранится в одном файле на вашем диске.",
+            row = false,
+        ) {
+            SyncSettings(sync, actions)
         }
         Section(
             "Обход блокировок",
@@ -188,6 +213,107 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
         }
     }
 }
+
+@Composable
+private fun KidsSettings(prefs: Prefs, actions: SettingsActions) {
+    var changing by rememberSaveable { mutableStateOf(false) }
+    var pin by rememberSaveable { mutableStateOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (prefs.kidsPin.isEmpty() || changing) {
+            OutlinedTextField(
+                pin,
+                { pin = it.filter(Char::isDigit).take(4) },
+                label = { Text("Придумайте PIN из 4 цифр") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (Kids.validPin(pin)) SecondaryButton("Сохранить PIN", null, onClick = {
+                actions.onKidsPin(pin)
+                changing = false
+                pin = ""
+            })
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton("Включить детский режим", null, onClick = actions.onEnterKids)
+                SecondaryButton("Сменить PIN", null, onClick = { changing = true })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (sync.connected) {
+            Text(
+                (if (sync.url.trimEnd('/') == YANDEX_DAV) "Яндекс Диск" else sync.url) + " · " + sync.login,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(sync.status, style = MaterialTheme.typography.bodySmall, color = muted)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton("Синхронизировать", null, onClick = actions.onSyncNow)
+                SecondaryButton("Отключить", null, onClick = actions.onSyncDisconnect)
+            }
+            return@Column
+        }
+        var yandex by rememberSaveable { mutableStateOf(true) }
+        var url by rememberSaveable { mutableStateOf("") }
+        var login by rememberSaveable { mutableStateOf("") }
+        var password by rememberSaveable { mutableStateOf("") }
+        var result by remember { mutableStateOf<String?>(null) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Яндекс Диск", yandex, onClick = { yandex = true })
+            Chip("Другой WebDAV", !yandex, onClick = { yandex = false })
+        }
+        if (yandex) {
+            Text(
+                "Нужен пароль приложения: id.yandex.ru → Безопасность → Пароли приложений → Файлы (WebDAV).",
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+            )
+        } else {
+            OutlinedTextField(
+                url, { url = it; result = null },
+                label = { Text("Адрес WebDAV") },
+                placeholder = { Text("https://cloud.example.com/remote.php/dav/files/me") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        OutlinedTextField(
+            login, { login = it; result = null },
+            label = { Text(if (yandex) "Логин Яндекса" else "Логин") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            password, { password = it; result = null },
+            label = { Text(if (yandex) "Пароль приложения" else "Пароль") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            SecondaryButton("Подключить", null, onClick = {
+                val address = if (yandex) YANDEX_DAV else normalizeHost(url)
+                if (login.isBlank() || password.isBlank() || address.isBlank()) {
+                    result = "Заполните все поля."
+                    return@SecondaryButton
+                }
+                result = "Подключаю…"
+                actions.onSyncConnect(address, login, password) { error -> result = error }
+            })
+            result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.weight(1f)) }
+        }
+    }
+}
+
+private const val YANDEX_DAV = "https://webdav.yandex.ru"
 
 @Composable
 private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActions) {

@@ -42,6 +42,8 @@ class TvRepository(private val dao: TvDao) {
 
     suspend fun delete(id: Long) = dao.deletePlaylist(id)
 
+    suspend fun allPlaylists(): List<PlaylistEntity> = dao.playlists()
+
     /** Refreshes every playlist whose channels or guide are older than [maxAgeMs]. */
     suspend fun refreshStale(maxAgeMs: Long = 12 * HOUR) {
         val now = System.currentTimeMillis()

@@ -31,12 +31,17 @@ data class MediaEntity(
     val audioLanguage: String? = null,
     /** Language of the subtitles picked last time; empty string means subtitles were turned off. */
     val subtitleLanguage: String? = null,
+    /** A parent allowed it in kids mode. */
+    val kids: Boolean = false,
 ) : Sortable
 
 @Dao
 interface MediaDao {
     @Query("SELECT * FROM media")
     fun observeAll(): Flow<List<MediaEntity>>
+
+    @Query("SELECT * FROM media")
+    suspend fun all(): List<MediaEntity>
 
     @Query("SELECT * FROM media WHERE uri = :uri")
     suspend fun get(uri: String): MediaEntity?
@@ -56,16 +61,25 @@ interface MediaDao {
     @Query("UPDATE media SET positionMs = 0, lastWatchedAt = 0 WHERE uri = :uri")
     suspend fun clearProgress(uri: String)
 
+    @Query("UPDATE media SET kids = :kids WHERE uri = :uri")
+    suspend fun setKids(uri: String, kids: Boolean)
+
     @Query("DELETE FROM media WHERE uri = :uri")
     suspend fun delete(uri: String)
 }
 
-@Database(entities = [MediaEntity::class], version = 1, exportSchema = true)
+@Database(entities = [MediaEntity::class], version = 2, exportSchema = true)
 abstract class CouchyDatabase : RoomDatabase() {
     abstract fun media(): MediaDao
 
     companion object {
         fun create(context: Context): CouchyDatabase =
-            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy.db").build()
+            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy.db").addMigrations(KIDS).build()
+
+        private val KIDS = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media ADD COLUMN kids INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }

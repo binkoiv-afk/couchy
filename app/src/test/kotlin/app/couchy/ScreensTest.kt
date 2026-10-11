@@ -149,8 +149,15 @@ class ScreensTest {
                 Prefs(bypassHosts = setOf("rezka.ag", "kinozal.tv")), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}),
                 bypass = app.couchy.ui.settings.BypassUi("Подключён: WARP"),
                 castInfo = "Это устройство: Xiaomi Mi Box S, адрес 192.168.1.20",
+                sync = app.couchy.ui.settings.SyncUi(true, "https://webdav.yandex.ru", "igor@yandex.ru", "Синхронизировано в 10:40"),
             )
         }
+    }
+    @Test fun phoneKids() = snap("phone_kids", phone, FormFactor.PHONE) {
+        androidx.compose.runtime.CompositionLocalProvider(app.couchy.ui.shell.LocalKidsMode provides true) { home() }
+    }
+    @Test fun tvKids() = snap("tv_kids", tv, FormFactor.TV) {
+        androidx.compose.runtime.CompositionLocalProvider(app.couchy.ui.shell.LocalKidsMode provides true) { home() }
     }
     @Test fun tvHome() = snap("tv_home", tv, FormFactor.TV) { home() }
     @Test fun tvHomeLight() = snap("tv_home_light", tv, FormFactor.TV, ThemeMode.LIGHT) { home() }

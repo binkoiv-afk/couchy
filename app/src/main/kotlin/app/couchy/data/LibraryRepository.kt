@@ -13,6 +13,12 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
 
     suspend fun get(uri: String): MediaEntity? = dao.get(uri)
 
+    /** Every entry, for sync. */
+    suspend fun snapshot(): List<MediaEntity> = dao.all()
+
+    /** Writes an entry as sync merged it. */
+    suspend fun put(entity: MediaEntity) = dao.upsert(entity)
+
     /**
      * Finds the entry for [link] or adds a new one. A known link keeps its history; a fresh
      * one gets a title from [title], the file's display name, or the link itself.
@@ -50,6 +56,7 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
     suspend fun clearProgress(uri: String) = dao.clearProgress(uri)
 
     suspend fun delete(uri: String) = dao.delete(uri)
+    suspend fun setKids(uri: String, kids: Boolean) = dao.setKids(uri, kids)
 
     /** Files picked through the system picker stay readable after a restart. */
     private fun keepAccess(uri: Uri) {

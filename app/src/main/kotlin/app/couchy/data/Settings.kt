@@ -36,6 +36,13 @@ data class Prefs(
     val warpAccount: String = "",
     /** Sites Couchy found blocked and now opens through the bypass. */
     val bypassHosts: Set<String> = emptySet(),
+    /** WebDAV account for sync; empty url means sync is off. */
+    val syncUrl: String = "",
+    val syncLogin: String = "",
+    val syncPassword: String = "",
+    /** Four digits that let you out of kids mode; empty until a parent sets it. */
+    val kidsPin: String = "",
+    val kidsMode: Boolean = false,
 )
 
 private val Context.store by preferencesDataStore("settings")
@@ -53,6 +60,11 @@ class Settings(private val context: Context) {
     private val bypassConfig = stringPreferencesKey("bypass_config")
     private val warpAccount = stringPreferencesKey("warp_account")
     private val bypassHosts = stringPreferencesKey("bypass_hosts")
+    private val syncUrl = stringPreferencesKey("sync_url")
+    private val syncLogin = stringPreferencesKey("sync_login")
+    private val syncPassword = stringPreferencesKey("sync_password")
+    private val kidsPin = stringPreferencesKey("kids_pin")
+    private val kidsMode = stringPreferencesKey("kids_mode")
 
     val prefs: Flow<Prefs> = context.store.data.map { p ->
         Prefs(
@@ -68,6 +80,11 @@ class Settings(private val context: Context) {
             bypassConfig = p[bypassConfig].orEmpty(),
             warpAccount = p[warpAccount].orEmpty(),
             bypassHosts = p[bypassHosts]?.split('\n')?.filter { it.isNotBlank() }?.toSet().orEmpty(),
+            syncUrl = p[syncUrl].orEmpty(),
+            syncLogin = p[syncLogin].orEmpty(),
+            syncPassword = p[syncPassword].orEmpty(),
+            kidsPin = p[kidsPin].orEmpty(),
+            kidsMode = p[kidsMode] == "1",
         )
     }
 
@@ -95,6 +112,16 @@ class Settings(private val context: Context) {
     }
 
     suspend fun clearBypassHosts() = context.store.edit { it.remove(bypassHosts) }
+    suspend fun setBypassHosts(hosts: Set<String>) = context.store.edit { it[bypassHosts] = hosts.sorted().joinToString("\n") }
+
+    suspend fun setKidsPin(pin: String) = context.store.edit { it[kidsPin] = pin }
+    suspend fun setKidsMode(on: Boolean) = context.store.edit { it[kidsMode] = if (on) "1" else "0" }
+
+    suspend fun setSyncAccount(url: String, login: String, password: String) = context.store.edit {
+        it[syncUrl] = url.trim()
+        it[syncLogin] = login.trim()
+        it[syncPassword] = password
+    }
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =
         name?.let { runCatching { enumValueOf<T>(it) }.getOrNull() } ?: default

@@ -29,6 +29,8 @@ import app.couchy.core.Links
 import app.couchy.data.MediaEntity
 import app.couchy.ui.components.ItemActionsDialog
 import app.couchy.ui.components.CastDialog
+import app.couchy.ui.components.PinDialog
+import app.couchy.ui.shell.LocalKidsMode
 import app.couchy.core.cast.CastRequest
 import app.couchy.ui.components.LocalFormFactor
 import app.couchy.ui.components.rememberFormFactor
@@ -70,6 +72,9 @@ import app.couchy.ui.tv.TvContent
 import app.couchy.ui.settings.SettingsActions
 import app.couchy.ui.settings.SettingsContent
 import app.couchy.ui.settings.BypassUi
+import app.couchy.ui.settings.SyncUi
+import app.couchy.sync.SyncStatus
+import androidx.lifecycle.repeatOnLifecycle
 import app.couchy.bypass.BypassStatus
 import app.couchy.ui.settings.UpdateState
 import app.couchy.ui.shell.Destination
@@ -100,7 +105,7 @@ class MainActivity : ComponentActivity() {
             val prefs by vm.prefs.collectAsStateWithLifecycle()
             val loaded = prefs ?: return@setContent
             CouchyTheme(loaded.theme) {
-                CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode)) {
+                CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
                     MainScreen(vm, tvVm, torrentVm, searchVm, fresh)
                 }
@@ -127,11 +132,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // What was just watched reaches the other devices.
+        (application as CouchyApp).sync.syncSoon()
         stoppedAt = SystemClock.elapsedRealtime()
     }
 
     override fun onStart() {
         super.onStart()
+        (application as CouchyApp).sync.syncSoon()
         // Hours in the background on a TV box: come back to a fresh Home, not a stale screen.
         if (stoppedAt > 0 && SystemClock.elapsedRealtime() - stoppedAt > STALE_AFTER_MS && vm.playback.value == null) {
             freshStart.value += 1
@@ -184,7 +192,30 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val bypassEngine = (LocalContext.current.applicationContext as CouchyApp).bypass
     val cast = (LocalContext.current.applicationContext as CouchyApp).cast
     var castRequest by remember { mutableStateOf<CastRequest?>(null) }
+    val kids = LocalKidsMode.current
+    var askPin by remember { mutableStateOf(false) }
+    LaunchedEffect(kids) {
+        if (kids) {
+            destination = Destination.HOME
+            searchVm.closeTitle()
+            torrentVm.close()
+        }
+    }
+    if (askPin) PinDialog(check = vm::exitKids, onDismiss = { askPin = false })
     LaunchedEffect(cast) { cast.incoming.collect { vm.openCast(it) } }
+    val sync = (LocalContext.current.applicationContext as CouchyApp).sync
+    val syncStatus by sync.status.collectAsStateWithLifecycle()
+    // Leaving the player and every few minutes on a TV box that stays open: positions travel.
+    LaunchedEffect(playback == null) { if (playback == null) sync.syncSoon() }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) {
+                kotlinx.coroutines.delay(5 * 60_000L)
+                sync.syncSoon()
+            }
+        }
+    }
     val bypassStatus by bypassEngine.status.collectAsStateWithLifecycle()
     val bypassUi = BypassUi(
         status = when (val st = bypassStatus) {
@@ -372,13 +403,17 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
         onPlaylists = { showPlaylists = true },
     )
 
-    Shell(destination, onNavigate = { destination = it }, onOpen = { showOpen = true }) {
+    Shell(
+        destination,
+        onNavigate = { if (kids && it == Destination.SETTINGS) askPin = true else destination = it },
+        onOpen = { showOpen = true },
+    ) {
         when (destination) {
             Destination.HOME -> HomeContent(
                 home,
                 HomeActions(
                     onPlay = { vm.play(it) },
-                    onMore = { actionsFor = it },
+                    onMore = { if (!kids) actionsFor = it },
                     onFavorite = vm::toggleFavorite,
                     onOpen = { showOpen = true },
                 ),
@@ -401,7 +436,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                 library,
                 LibraryActions(
                     onPlay = { vm.play(it) },
-                    onMore = { actionsFor = it },
+                    onMore = { if (!kids) actionsFor = it },
                     onFilter = vm::setFilter,
                     onSort = { vm.setSort(it) },
                 ),
@@ -429,6 +464,22 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                         onBypass = { mode, kind -> vm.setBypass(mode, kind) },
                         onBypassConfig = { vm.setBypassConfig(it) },
                         onForgetBypassHosts = { vm.forgetBypassHosts() },
+                        onSyncConnect = { url, login, password, report ->
+                            scope.launch {
+                                report(
+                                    try {
+                                        sync.connect(url, login, password)
+                                        null
+                                    } catch (e: Exception) {
+                                        e.message ?: "Не удалось подключиться."
+                                    },
+                                )
+                            }
+                        },
+                        onSyncNow = { sync.syncSoon() },
+                        onKidsPin = { vm.setKidsPin(it) },
+                        onEnterKids = { vm.enterKids() },
+                        onSyncDisconnect = { scope.launch { sync.disconnect() } },
                         onCheckBypass = { report ->
                             scope.launch {
                                 report(
@@ -465,6 +516,17 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                         },
                     ),
                     bypass = bypassUi,
+                    sync = SyncUi(
+                        connected = p.syncUrl.isNotBlank(),
+                        url = p.syncUrl,
+                        login = p.syncLogin,
+                        status = when (val st = syncStatus) {
+                            SyncStatus.Off -> if (p.syncUrl.isBlank()) "Не подключено" else "Подключено"
+                            SyncStatus.Running -> "Синхронизирую…"
+                            is SyncStatus.Done -> "Синхронизировано в " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(st.at))
+                            is SyncStatus.Failed -> st.message
+                        },
+                    ),
                     castInfo = "Это устройство: ${cast.deviceName}" + (cast.address()?.let { ", адрес $it" } ?: ""),
                 )
             }
@@ -495,6 +557,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
             onUnwatched = { vm.markUnwatched(item) },
             onRemove = { vm.remove(item) },
             onDismiss = { actionsFor = null },
+            onKids = { vm.toggleKids(item) },
             onCast = if (CastRequest.isLocalOnly(item.uri)) null else ({
                 castRequest = CastRequest(item.uri, item.title, item.positionMs, item.durationMs)
             }),

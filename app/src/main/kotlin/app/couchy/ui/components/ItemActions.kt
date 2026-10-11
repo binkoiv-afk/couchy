@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -44,6 +45,8 @@ fun ItemActionsDialog(
     onDismiss: () -> Unit,
     /** "Watch on TV"; null when the item only exists on this device. */
     onCast: (() -> Unit)? = null,
+    /** Allows or hides the title in kids mode. */
+    onKids: (() -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
     AlertDialog(
@@ -64,6 +67,9 @@ fun ItemActionsDialog(
                     if (item.favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                     if (item.favorite) "Убрать из избранного" else "В избранное",
                 ) { onDismiss(); onFavorite() }
+                onKids?.let { kids ->
+                    ActionRow(Icons.Rounded.ChildCare, if (item.kids) "Не показывать детям" else "Показывать детям") { onDismiss(); kids() }
+                }
                 if (item.positionMs > 0) ActionRow(Icons.Rounded.VisibilityOff, "Отметить непросмотренным") { onDismiss(); onUnwatched() }
                 ActionRow(Icons.Rounded.Delete, "Удалить из медиатеки") { onDismiss(); onRemove() }
             }

@@ -18,6 +18,7 @@ class CouchyApp : Application() {
     val torrEngine by lazy { TorrEngine(this) }
     val bypass by lazy { Bypass(this, settings) }
     val cast by lazy { app.couchy.cast.Cast(this) }
+    val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv) }
 
     override fun onCreate() {
         super.onCreate()

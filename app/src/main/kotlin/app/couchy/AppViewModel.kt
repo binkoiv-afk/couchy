@@ -83,7 +83,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val prefs: StateFlow<Prefs?> = settings.prefs.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val home: StateFlow<HomeState> = library.all.map { all ->
+    /** The library as the current mode shows it: in kids mode only what a parent allowed. */
+    private val visible = combine(library.all, settings.prefs) { all, p -> if (p.kidsMode) all.filter { it.kids } else all }
+
+    val home: StateFlow<HomeState> = visible.map { all ->
         HomeState(
             continueWatching = LibrarySort.continueWatching(all).take(12),
             favorites = all.filter { it.favorite }.sortedByDescending { it.lastWatchedAt.coerceAtLeast(it.addedAt) },
@@ -94,7 +97,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val filter = MutableStateFlow(LibraryFilter.ALL)
 
-    val libraryState: StateFlow<LibraryState> = combine(library.all, filter, settings.prefs) { all, f, p ->
+    val libraryState: StateFlow<LibraryState> = combine(visible, filter, settings.prefs) { all, f, p ->
         val filtered = when (f) {
             LibraryFilter.ALL -> all
             LibraryFilter.UNFINISHED -> LibrarySort.continueWatching(all)
@@ -197,6 +200,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun markUnwatched(item: MediaEntity) {
         viewModelScope.launch { library.clearProgress(item.uri) }
+    }
+
+    fun toggleKids(item: MediaEntity) {
+        viewModelScope.launch { library.setKids(item.uri, !item.kids) }
+    }
+
+    fun setKidsPin(pin: String) = viewModelScope.launch { settings.setKidsPin(pin) }
+    fun enterKids() = viewModelScope.launch { settings.setKidsMode(true) }
+
+    /** Leaves kids mode when [pin] is right. */
+    fun exitKids(pin: String): Boolean {
+        val p = prefs.value ?: return false
+        if (pin != p.kidsPin) return false
+        viewModelScope.launch { settings.setKidsMode(false) }
+        return true
     }
 
     fun remove(item: MediaEntity) {

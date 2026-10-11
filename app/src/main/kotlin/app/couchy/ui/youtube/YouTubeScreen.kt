@@ -131,7 +131,7 @@ private fun VideoGrid(
     LazyVerticalGrid(
         GridCells.Adaptive(
             when (form) {
-                FormFactor.TV -> 300.dp
+                FormFactor.TV -> 250.dp
                 FormFactor.TABLET -> 260.dp
                 FormFactor.PHONE -> 320.dp
             },

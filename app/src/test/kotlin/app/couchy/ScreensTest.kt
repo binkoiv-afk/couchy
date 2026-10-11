@@ -22,7 +22,17 @@ import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
 import app.couchy.ui.player.PlayerControls
 import app.couchy.ui.player.PlayerOverlay
+import app.couchy.ui.player.LiveUi
 import app.couchy.ui.player.PlayerUi
+import app.couchy.tv.ChannelEntity
+import app.couchy.tv.ChannelNow
+import app.couchy.tv.GROUP_ALL
+import app.couchy.tv.GROUP_FAVORITES
+import app.couchy.tv.PlaylistEntity
+import app.couchy.tv.ProgramEntity
+import app.couchy.tv.TvState
+import app.couchy.ui.tv.TvActions
+import app.couchy.ui.tv.TvContent
 import app.couchy.ui.settings.SettingsActions
 import app.couchy.ui.settings.SettingsContent
 import app.couchy.ui.settings.UpdateState
@@ -118,6 +128,58 @@ class ScreensTest {
     @Test fun tvLibrary() = snap("tv_library", tv, FormFactor.TV) { library() }
     @Test fun tabletHome() = snap("tablet_home", tablet, FormFactor.TABLET) { home() }
 
+    // 20:40 local-ish fixed time so the guide looks the same on every run.
+    private val now = 1_760_000_000_000L - 1_760_000_000_000L % (30 * minute) + 10 * minute
+    private val channelNames = listOf(
+        "Первый" to "Общие", "Россия 1" to "Общие", "Матч ТВ" to "Спорт", "НТВ" to "Общие", "Пятница!" to "Развлечения",
+        "Discovery" to "Познавательные", "Кинохит" to "Кино", "Мульт" to "Детские", "Euronews" to "Новости", "Матч! Футбол 1" to "Спорт",
+    )
+    private val shows = listOf("Вечерние новости", "Время покажет", "Футбол. Лига чемпионов", "Следствие вели", "Орёл и решка",
+        "Как это устроено", "Ледокол «Ноябрь»", "Фиксики", "Мир сегодня", "Обзор тура")
+    private val tvChannels = channelNames.mapIndexed { i, (name, group) ->
+        val channel = ChannelEntity(
+            id = i + 1L, playlistId = 1, position = i, name = name, groupName = group, logo = null,
+            url = "http://iptv.example/$i.m3u8", tvgId = "c$i", tvgName = null, epgId = "c$i",
+            catchupType = if (i % 3 == 2) null else "SHIFT", catchupSource = null, catchupDays = 3,
+            userAgent = null, referrer = null, favorite = i in setOf(0, 2, 6),
+        )
+        val start = now - (10 + i * 7) * minute
+        val current = ProgramEntity(i * 10L, "c$i", start, start + (40 + i * 9) * minute, shows[i], null)
+        val next = ProgramEntity(i * 10L + 1, "c$i", current.stop, current.stop + 50 * minute, shows[(i + 3) % shows.size], null)
+        ChannelNow(channel, current, next, i + 1)
+    }
+    private val tvState = TvState(
+        playlists = listOf(PlaylistEntity(id = 1, name = "Домашний", kind = "M3U", url = "http://iptv.example/list.m3u", channelCount = 10)),
+        groups = listOf(GROUP_FAVORITES, GROUP_ALL, "Общие", "Спорт", "Кино", "Детские", "Новости", "Познавательные", "Развлечения"),
+        group = GROUP_ALL,
+        channels = tvChannels,
+        favorites = tvChannels.filter { it.channel.favorite },
+        loaded = true,
+        nowMs = now,
+    )
+    private val tvSchedule = (-4..5).map { k ->
+        val start = now - 10 * minute + k * 45 * minute
+        ProgramEntity(100L + k, "c0", start, start + 45 * minute, listOf("Новости", "Доброе утро", "Жить здорово!", "Модный приговор", "Время покажет", "Вечерние новости", "Поле чудес", "Голос", "Вечерний Ургант", "Познер")[k + 4], null)
+    }
+    private val tvActions = TvActions({}, {}, {}, {}, { _, _ -> }, {}, {}, {})
+
+    @Test fun tvTv() = snap("tv_tv", tv, FormFactor.TV) {
+        Shell(Destination.TV, {}, {}) { TvContent(tvState, tvChannels[0].channel, tvSchedule, tvActions) }
+    }
+    @Test fun phoneTv() = snap("phone_tv", phone, FormFactor.PHONE) {
+        Shell(Destination.TV, {}, {}) { TvContent(tvState, null, emptyList(), tvActions) }
+    }
+    @Test fun tabletTv() = snap("tablet_tv", tablet, FormFactor.TABLET) {
+        Shell(Destination.TV, {}, {}) { TvContent(tvState, tvChannels[2].channel, tvSchedule, tvActions) }
+    }
+    @Test fun phoneTvEmpty() = snap("phone_tv_empty", phone, FormFactor.PHONE) {
+        Shell(Destination.TV, {}, {}) { TvContent(TvState(loaded = true), null, emptyList(), tvActions) }
+    }
+    @Test fun tvPlayerLive() = snap("tv_player_live", tv, FormFactor.TV) {
+        val c = tvChannels[2]
+        player(touch = false, live = LiveUi(c.channel.name, c.number, c.now?.title, c.now!!.start, c.now!!.stop, c.next?.title, c.next!!.start, now))
+    }
+
     @Test fun tvPlayer() = snap("tv_player", tv, FormFactor.TV) { player(touch = false) }
     @Test fun phonePlayer() = snap(
         "phone_player",
@@ -126,7 +188,7 @@ class ScreensTest {
     ) { player(touch = true) }
 
     @Composable
-    private fun player(touch: Boolean) {
+    private fun player(touch: Boolean, live: LiveUi? = null) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1D2B4F), Color(0xFF0A0F1F))))) {
             PlayerOverlay(
                 PlayerUi(
@@ -136,6 +198,7 @@ class ScreensTest {
                     playing = true,
                     buffering = false,
                     qualityLabel = "Авто · 1080p",
+                    live = live,
                 ),
                 visible = true,
                 controls = PlayerControls({}, {}, {}, {}, {}, {}, {}, {}, {}, {}),

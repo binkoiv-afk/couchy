@@ -11,6 +11,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -62,6 +63,7 @@ import app.couchy.core.LinkKind
 import app.couchy.core.Links
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.abs
 
 private val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
@@ -85,6 +87,10 @@ fun PlayerScreen(
     onProgress: (positionMs: Long, durationMs: Long) -> Unit,
     onTracksChosen: (audio: String?, subtitles: String?) -> Unit,
     onExit: () -> Unit,
+    /** Programme info for a live channel; null for videos and archive recordings. */
+    live: LiveUi? = null,
+    /** Switches to the neighbouring channel; null when there is nothing to zap through. */
+    onZap: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri) { buildPlayer(context, playback) }
@@ -101,6 +107,7 @@ fun PlayerScreen(
     fun poke() { lastTouch = System.currentTimeMillis(); overlay = true }
 
     fun save() {
+        if (playback.live != null) return
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
         if (player.currentPosition > 0) onProgress(player.currentPosition, duration)
     }
@@ -117,7 +124,9 @@ fun PlayerScreen(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
+                if (state == Player.STATE_ENDED && playback.live != null) {
+                    onExit()
+                } else if (state == Player.STATE_ENDED) {
                     val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
                     onProgress(duration, duration)
                     onExit()
@@ -180,6 +189,8 @@ fun PlayerScreen(
         }
     }
     LaunchedEffect(overlay) { if (!overlay) runCatching { rootFocus.requestFocus() } }
+    // A new channel shows its name and programme for a moment.
+    LaunchedEffect(playback.uri) { if (playback.live != null) poke() }
 
     BackHandler {
         when {
@@ -224,6 +235,8 @@ fun PlayerScreen(
                     Key.MediaPause -> { player.pause(); poke(); true }
                     Key.MediaFastForward -> { controls.onSeekBy(30_000); true }
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
+                    Key.ChannelUp -> { onZap?.invoke(1); onZap != null }
+                    Key.ChannelDown -> { onZap?.invoke(-1); onZap != null }
                     else -> false
                 }
             }
@@ -235,7 +248,9 @@ fun PlayerScreen(
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { controls.onTogglePlay(); true }
                     Key.DirectionLeft -> { controls.onSeekBy(-10_000); true }
                     Key.DirectionRight -> { controls.onSeekBy(10_000); true }
-                    Key.DirectionUp, Key.DirectionDown, Key.Menu -> { poke(); true }
+                    Key.DirectionUp -> { if (onZap != null) onZap(-1) else poke(); true }
+                    Key.DirectionDown -> { if (onZap != null) onZap(1) else poke(); true }
+                    Key.Menu -> { poke(); true }
                     else -> false
                 }
             }
@@ -250,6 +265,16 @@ fun PlayerScreen(
                             else -> controls.onTogglePlay()
                         }
                     },
+                )
+            }
+            // On a touch screen a vertical swipe switches channels.
+            .pointerInput(onZap != null) {
+                if (onZap == null) return@pointerInput
+                var dragged = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dragged = 0f },
+                    onVerticalDrag = { _, dy -> dragged += dy },
+                    onDragEnd = { if (abs(dragged) > size.height / 6f) onZap(if (dragged < 0) 1 else -1) },
                 )
             },
     ) {
@@ -269,7 +294,7 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
-        PlayerOverlay(ui, overlay, controls, touch)
+        PlayerOverlay(ui.copy(live = live), overlay, controls, touch)
     }
 
     when (sheet) {
@@ -314,8 +339,10 @@ fun PlayerScreen(
 
 @OptIn(UnstableApi::class)
 private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
+    val agent = playback.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
     val http = DefaultHttpDataSource.Factory()
-        .setUserAgent("Couchy/${BuildConfig.VERSION_NAME} (Android)")
+        .setUserAgent(agent ?: "Couchy/${BuildConfig.VERSION_NAME} (Android)")
+        .setDefaultRequestProperties(playback.headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) })
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(20_000)

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import app.couchy.ui.components.couchyClickable
 
 enum class Destination(val label: String, val icon: ImageVector) {
     HOME("Главная", Icons.Rounded.Home),
+    TV("ТВ", Icons.Rounded.LiveTv),
     LIBRARY("Медиатека", Icons.Rounded.GridView),
     SETTINGS("Настройки", Icons.Rounded.Settings),
 }
@@ -120,28 +122,30 @@ private fun BottomBar(current: Destination, onNavigate: (Destination) -> Unit, o
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceAround,
     ) {
-        BarItem(Destination.HOME.icon, Destination.HOME.label, current == Destination.HOME) { onNavigate(Destination.HOME) }
-        BarItem(Icons.Rounded.AddCircle, "Открыть", false, onClick = onOpen)
-        BarItem(Destination.LIBRARY.icon, Destination.LIBRARY.label, current == Destination.LIBRARY) { onNavigate(Destination.LIBRARY) }
-        BarItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS) { onNavigate(Destination.SETTINGS) }
+        val item = Modifier.weight(1f)
+        BarItem(Destination.HOME.icon, Destination.HOME.label, current == Destination.HOME, item) { onNavigate(Destination.HOME) }
+        BarItem(Destination.TV.icon, Destination.TV.label, current == Destination.TV, item) { onNavigate(Destination.TV) }
+        BarItem(Icons.Rounded.AddCircle, "Открыть", false, item, onClick = onOpen)
+        BarItem(Destination.LIBRARY.icon, Destination.LIBRARY.label, current == Destination.LIBRARY, item) { onNavigate(Destination.LIBRARY) }
+        BarItem(Destination.SETTINGS.icon, Destination.SETTINGS.label, current == Destination.SETTINGS, item) { onNavigate(Destination.SETTINGS) }
     }
 }
 
 @Composable
-private fun BarItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun BarItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val fg = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
-        Modifier.width(84.dp).couchyClickable(RoundedCornerShape(14.dp), focusScale = 1f, onClick = onClick).padding(vertical = 4.dp),
+        modifier.padding(horizontal = 2.dp).couchyClickable(RoundedCornerShape(14.dp), focusScale = 1f, onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(
             Modifier
                 .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(999.dp))
-                .padding(horizontal = 18.dp, vertical = 4.dp),
+                .padding(horizontal = 14.dp, vertical = 4.dp),
         ) {
             Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.primary else fg, modifier = Modifier.size(24.dp))
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = fg)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1)
     }
 }

@@ -28,6 +28,19 @@ data class Playback(
     val startMs: Long,
     val audioLanguage: String? = null,
     val subtitleLanguage: String? = null,
+    /** HTTP headers some IPTV streams need (User-Agent, Referer). */
+    val headers: Map<String, String> = emptyMap(),
+    /** Set for TV channels and their archive: no position is saved, ▲ ▼ switch channels. */
+    val live: LiveChannel? = null,
+)
+
+data class LiveChannel(
+    val channelId: Long,
+    val epgId: String?,
+    /** Channel ids in the order ▲ ▼ go through. */
+    val zapOrder: List<Long>,
+    /** Start of the archived programme being watched, or null for the live broadcast. */
+    val archiveOf: Long? = null,
 )
 
 data class HomeState(
@@ -89,9 +102,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun showNotice(text: String) { _notice.value = Notice(text) }
 
+    /** A playlist link opened from anywhere; the TV section offers to add it. */
+    private val _pendingPlaylist = MutableStateFlow<String?>(null)
+    val pendingPlaylist: StateFlow<String?> = _pendingPlaylist.asStateFlow()
+
+    fun playlistHandled() { _pendingPlaylist.value = null }
+
     /** Adds the link to the library if it is new and plays it, resuming where it stopped. */
     fun open(link: String, title: String? = null, fromStart: Boolean = false) {
         val kind = Links.classify(link)
+        if (kind == LinkKind.PLAYLIST) {
+            _pendingPlaylist.value = link
+            return
+        }
         if (!Links.isPlayable(kind)) {
             _notice.value = Notice(unsupportedText(kind))
             return
@@ -112,6 +135,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun play(item: MediaEntity, fromStart: Boolean = false) = open(item.uri, item.title, fromStart)
 
     fun closePlayer() { _playback.value = null }
+
+    fun playDirect(playback: Playback) { _playback.value = playback }
 
     fun saveProgress(uri: String, positionMs: Long, durationMs: Long) {
         viewModelScope.launch { library.saveProgress(uri, positionMs, durationMs) }
@@ -140,7 +165,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun unsupportedText(kind: LinkKind) = when (kind) {
         LinkKind.TORRENT -> "Торренты появятся в одной из следующих сборок: встроенный движок и TorrServe."
-        LinkKind.PLAYLIST -> "Плейлисты IPTV появятся в разделе «ТВ» в следующих сборках."
         LinkKind.YOUTUBE -> "YouTube появится отдельным разделом в следующих сборках."
         else -> "Эту ссылку пока не получается открыть."
     }

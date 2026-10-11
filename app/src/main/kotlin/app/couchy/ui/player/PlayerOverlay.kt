@@ -68,6 +68,20 @@ data class PlayerUi(
     val speedLabel: String = "1×",
     val qualityLabel: String = "Авто",
     val resizeLabel: String = "Вписать",
+    /** Set while watching a TV channel live; null for videos and archive recordings. */
+    val live: LiveUi? = null,
+)
+
+/** What a live channel shows instead of a timeline: the programme now and the next one. */
+data class LiveUi(
+    val channel: String,
+    val number: Int?,
+    val nowTitle: String?,
+    val nowStart: Long = 0,
+    val nowStop: Long = 0,
+    val nextTitle: String? = null,
+    val nextStart: Long = 0,
+    val nowMs: Long = System.currentTimeMillis(),
 )
 
 class PlayerControls(
@@ -139,7 +153,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (ui.durationMs > 0) {
+            if (ui.durationMs > 0 && ui.live == null) {
                 val endsAt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                     .format(java.util.Date(System.currentTimeMillis() + ui.durationMs - ui.positionMs))
                 Text("Закончится в $endsAt", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
@@ -159,7 +173,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
         }
 
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp)) {
-            Timeline(ui, controls)
+            if (ui.live != null) LiveInfo(ui.live, touch) else Timeline(ui, controls)
             Row(
                 Modifier.fillMaxWidth().padding(top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -168,7 +182,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 if (!touch) {
                     Pill(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.focusRequester(playFocus), highlighted = true, onClick = controls.onTogglePlay)
                 }
-                Text(
+                if (ui.live == null) Text(
                     "${Time.clock(ui.positionMs)} / ${if (ui.durationMs > 0) Time.clock(ui.durationMs) else "--:--"}",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 14.sp,
@@ -178,12 +192,55 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 Spacer(Modifier.weight(1f))
                 Pill(Icons.Rounded.Subtitles, "Озвучка и субтитры", onClick = controls.onTracks)
                 Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
-                Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
+                if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
                 Pill(Icons.Rounded.AspectRatio, ui.resizeLabel, onClick = controls.onResize)
             }
         }
     }
     LaunchedEffect(Unit) { if (!touch) runCatching { playFocus.requestFocus() } }
+}
+
+@Composable
+private fun LiveInfo(live: LiveUi, touch: Boolean) {
+    val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "● ПРЯМОЙ ЭФИР",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.background(Color(0xFFE5484D), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+            Text(
+                listOfNotNull(live.number?.toString(), live.channel).joinToString("  "),
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(if (touch) "Свайп ▲ ▼ — каналы" else "▲ ▼ каналы", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp)
+        }
+        if (live.nowTitle != null) {
+            Text(live.nowTitle, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(time.format(java.util.Date(live.nowStart)), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+                val fraction = ((live.nowMs - live.nowStart).toFloat() / (live.nowStop - live.nowStart).coerceAtLeast(1)).coerceIn(0f, 1f)
+                Box(Modifier.weight(1f).height(5.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(3.dp))) {
+                    Box(Modifier.fillMaxWidth(fraction).height(5.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)))
+                }
+                Text(time.format(java.util.Date(live.nowStop)), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            }
+            if (live.nextTitle != null) {
+                Text(
+                    "Далее в ${time.format(java.util.Date(live.nextStart))}: ${live.nextTitle}",
+                    color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            Text(live.channel, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 @Composable

@@ -35,7 +35,16 @@ import app.couchy.ui.home.HomeContent
 import app.couchy.ui.library.LibraryActions
 import app.couchy.ui.library.LibraryContent
 import app.couchy.ui.open.OpenDialog
+import app.couchy.tv.ChannelNow
+import app.couchy.tv.TvState
+import app.couchy.tv.TvViewModel
+import app.couchy.ui.player.LiveUi
 import app.couchy.ui.player.PlayerScreen
+import app.couchy.ui.tv.AddPlaylistDialog
+import app.couchy.ui.tv.ChannelDialog
+import app.couchy.ui.tv.PlaylistsDialog
+import app.couchy.ui.tv.TvActions
+import app.couchy.ui.tv.TvContent
 import app.couchy.ui.settings.SettingsActions
 import app.couchy.ui.settings.SettingsContent
 import app.couchy.ui.settings.UpdateState
@@ -49,6 +58,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
+    private val tvVm: TvViewModel by viewModels()
 
     /** Bumped when the app comes back after a long time away, to start fresh on Home. */
     private val freshStart = MutableStateFlow(0)
@@ -64,7 +74,7 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode)) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, fresh)
+                    MainScreen(vm, tvVm, fresh)
                 }
             }
         }
@@ -106,7 +116,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MainScreen(vm: AppViewModel, freshStart: Int) {
+private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, freshStart: Int) {
     val form = LocalFormFactor.current
     val playback by vm.playback.collectAsStateWithLifecycle()
     val home by vm.home.collectAsStateWithLifecycle()
@@ -116,7 +126,24 @@ private fun MainScreen(vm: AppViewModel, freshStart: Int) {
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var showOpen by rememberSaveable { mutableStateOf(false) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
-    LaunchedEffect(freshStart) { if (freshStart > 0) { destination = Destination.HOME; showOpen = false; actionsFor = null } }
+    val tv by tvVm.state.collectAsStateWithLifecycle()
+    val schedule by tvVm.schedule.collectAsStateWithLifecycle()
+    val focusedChannel by tvVm.focusedChannel.collectAsStateWithLifecycle()
+    val pendingPlaylist by vm.pendingPlaylist.collectAsStateWithLifecycle()
+    var addPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
+    var showPlaylists by rememberSaveable { mutableStateOf(false) }
+    var channelFor by remember { mutableStateOf<ChannelNow?>(null) }
+    LaunchedEffect(freshStart) {
+        if (freshStart > 0) { destination = Destination.HOME; showOpen = false; actionsFor = null; channelFor = null; showPlaylists = false }
+    }
+    LaunchedEffect(pendingPlaylist) {
+        pendingPlaylist?.let { link ->
+            destination = Destination.TV
+            showOpen = false
+            addPlaylist = link
+            vm.playlistHandled()
+        }
+    }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -129,15 +156,38 @@ private fun MainScreen(vm: AppViewModel, freshStart: Int) {
 
     val current = playback
     if (current != null) {
+        val live = current.live
         PlayerScreen(
             playback = current,
             touch = !form.isTv,
             onProgress = { pos, dur -> vm.saveProgress(current.uri, pos, dur) },
             onTracksChosen = { audio, subs -> vm.saveTracks(current.uri, audio, subs) },
             onExit = vm::closePlayer,
+            live = live?.takeIf { it.archiveOf == null }?.let { l -> liveUi(tv, l.channelId, current.title) },
+            onZap = live?.takeIf { it.archiveOf == null && it.zapOrder.size > 1 }?.let { l ->
+                { delta: Int -> scope.launch { tvVm.zap(l, delta)?.let(vm::playDirect) }; Unit }
+            },
         )
         return
     }
+
+    val tvActions = TvActions(
+        onGroup = tvVm::selectGroup,
+        onPlay = { item -> vm.playDirect(tvVm.live(item.channel, tv.channels.map { it.channel })) },
+        onFocus = { tvVm.focus(it) },
+        onMore = { item ->
+            // On a TV the guide already sits next to the list, so the menu key just stars the channel.
+            if (form.isTv) tvVm.toggleFavorite(item.channel) else { tvVm.focus(item.channel); channelFor = item }
+        },
+        onArchive = { channel, program ->
+            val archived = tvVm.archive(channel, program)
+            if (archived != null) { channelFor = null; vm.playDirect(archived) }
+            else vm.showNotice("Архив этого канала не доходит до этой передачи.")
+        },
+        onAdd = { addPlaylist = "" },
+        onRefresh = tvVm::refreshAll,
+        onPlaylists = { showPlaylists = true },
+    )
 
     Shell(destination, onNavigate = { destination = it }, onOpen = { showOpen = true }) {
         when (destination) {
@@ -150,6 +200,7 @@ private fun MainScreen(vm: AppViewModel, freshStart: Int) {
                     onOpen = { showOpen = true },
                 ),
             )
+            Destination.TV -> TvContent(tv, focusedChannel, schedule, tvActions)
             Destination.LIBRARY -> LibraryContent(
                 library,
                 LibraryActions(
@@ -222,6 +273,36 @@ private fun MainScreen(vm: AppViewModel, freshStart: Int) {
         )
     }
 
+    addPlaylist?.let { initial ->
+        AddPlaylistDialog(
+            initialUrl = initial,
+            onM3u = { name, url, epg -> tvVm.addM3u(name, url, epg) },
+            onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
+            onDismiss = { addPlaylist = null },
+        )
+    }
+
+    if (showPlaylists) {
+        PlaylistsDialog(
+            tv.playlists,
+            onDelete = tvVm::delete,
+            onAdd = { showPlaylists = false; addPlaylist = "" },
+            onDismiss = { showPlaylists = false },
+        )
+    }
+
+    channelFor?.let { item ->
+        val fresh = tv.channels.firstOrNull { it.channel.id == item.channel.id } ?: item
+        ChannelDialog(
+            fresh,
+            schedule,
+            tv.nowMs,
+            tvActions,
+            onFavorite = { tvVm.toggleFavorite(fresh.channel) },
+            onDismiss = { channelFor = null },
+        )
+    }
+
     notice?.let { n ->
         AlertDialog(
             onDismissRequest = vm::dismissNotice,
@@ -229,4 +310,19 @@ private fun MainScreen(vm: AppViewModel, freshStart: Int) {
             text = { Text(n.text, style = MaterialTheme.typography.bodyLarge) },
         )
     }
+}
+
+/** Name, number and programme of the channel on air, from the guide already loaded for the TV screen. */
+private fun liveUi(tv: TvState, channelId: Long, title: String): LiveUi {
+    val item = tv.channels.firstOrNull { it.channel.id == channelId } ?: tv.favorites.firstOrNull { it.channel.id == channelId }
+    return LiveUi(
+        channel = item?.channel?.name ?: title,
+        number = item?.number,
+        nowTitle = item?.now?.title,
+        nowStart = item?.now?.start ?: 0,
+        nowStop = item?.now?.stop ?: 0,
+        nextTitle = item?.next?.title,
+        nextStart = item?.next?.start ?: 0,
+        nowMs = tv.nowMs,
+    )
 }

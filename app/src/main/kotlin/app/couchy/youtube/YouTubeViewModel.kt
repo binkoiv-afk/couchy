@@ -1,6 +1,7 @@
 package app.couchy.youtube
 
 import app.couchy.data.Marks
+import app.couchy.data.Profiles
 import app.couchy.data.SavedTitles
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -55,7 +56,7 @@ data class YouTubeUi(
 
 class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     private val library = (app as CouchyApp).library
-    private val store = app.getSharedPreferences("youtube${app.couchy.data.Profiles.suffix(app)}", android.content.Context.MODE_PRIVATE)
+    private val store = app.getSharedPreferences("youtube${Profiles.suffix(app)}", android.content.Context.MODE_PRIVATE)
     private val marks = (app as CouchyApp).marks
 
     private val _state = MutableStateFlow(YouTubeUi(subscriptions = loadSubs(), history = loadHistory()))

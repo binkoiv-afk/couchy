@@ -1,6 +1,7 @@
 package app.couchy
 
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import app.couchy.ui.components.couchyClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -859,6 +860,7 @@ private fun liveUi(tv: TvState, channelId: Long, title: String): LiveUi {
 
 /** Netflix-style profile choice on launch. */
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun WhoIsWatching(onPick: (app.couchy.data.Profile) -> Unit) {
     val context = LocalContext.current
     val profiles = remember { app.couchy.data.Profiles.list(context) }

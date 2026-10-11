@@ -143,6 +143,14 @@ class ScreensTest {
             SettingsContent(Prefs(), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}))
         }
     }
+    @Test fun phoneSettingsBypass() = snap("phone_settings_bypass", phone.copy(screenHeight = 5200), FormFactor.PHONE) {
+        Shell(Destination.SETTINGS, {}, {}) {
+            SettingsContent(
+                Prefs(bypassHosts = setOf("rezka.ag", "kinozal.tv")), "0.1.1", UpdateState.Idle, SettingsActions({}, {}, {}, {}),
+                bypass = app.couchy.ui.settings.BypassUi("Подключён: WARP"),
+            )
+        }
+    }
     @Test fun tvHome() = snap("tv_home", tv, FormFactor.TV) { home() }
     @Test fun tvHomeLight() = snap("tv_home_light", tv, FormFactor.TV, ThemeMode.LIGHT) { home() }
     @Test fun tvWelcome() = snap("tv_welcome", tv, FormFactor.TV) { home(HomeState(loaded = true)) }

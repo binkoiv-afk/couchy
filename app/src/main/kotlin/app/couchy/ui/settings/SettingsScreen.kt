@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.couchy.core.bypass.BypassKind
+import app.couchy.core.bypass.BypassMode
+import app.couchy.core.bypass.TunnelConfig
 import app.couchy.data.Prefs
 import app.couchy.data.ThemeMode
 import app.couchy.data.TorrEngineMode
@@ -50,10 +53,18 @@ class SettingsActions(
     /** Checks a TorrServe address and reports the answer as a line of text. */
     val onCheckTorr: (String, (String) -> Unit) -> Unit = { _, _ -> },
     val onRezkaHost: (String) -> Unit = {},
+    val onBypass: (BypassMode, BypassKind) -> Unit = { _, _ -> },
+    val onBypassConfig: (String) -> Unit = {},
+    /** Checks the bypass end to end and reports the answer as a line of text. */
+    val onCheckBypass: ((String) -> Unit) -> Unit = {},
+    val onForgetBypassHosts: () -> Unit = {},
 )
 
+/** The bypass as the settings screen shows it. */
+data class BypassUi(val status: String = "Не запущен", val available: Boolean = true)
+
 @Composable
-fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions: SettingsActions, modifier: Modifier = Modifier) {
+fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions: SettingsActions, modifier: Modifier = Modifier, bypass: BypassUi = BypassUi()) {
     val side = if (LocalFormFactor.current.wide) 32.dp else 18.dp
     Column(
         modifier
@@ -90,6 +101,13 @@ fun SettingsContent(prefs: Prefs, version: String, update: UpdateState, actions:
                 )
                 if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
             }
+        }
+        Section(
+            "Обход блокировок",
+            "Авто: Couchy сам включает обход только для заблокированных сайтов и выключает, когда он не нужен. Всегда: весь интернет Couchy идёт через обход.",
+            row = false,
+        ) {
+            BypassSettings(prefs, bypass, actions)
         }
         Section("О приложении", "Couchy $version") {
             when (update) {
@@ -150,6 +168,59 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
                 })
                 result?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
+        }
+    }
+}
+
+@Composable
+private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActions) {
+    var config by rememberSaveable(prefs.bypassConfig) { mutableStateOf(prefs.bypassConfig) }
+    var result by remember { mutableStateOf<String?>(null) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!bypass.available) {
+            Text("На этом процессоре обход не работает.", style = MaterialTheme.typography.bodyMedium, color = muted)
+            return@Column
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BypassMode.entries.forEach { mode -> Chip(mode.label, mode == prefs.bypassMode, onClick = { actions.onBypass(mode, prefs.bypassKind) }) }
+        }
+        if (prefs.bypassMode == BypassMode.OFF) return@Column
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BypassKind.entries.forEach { kind -> Chip(kind.label, kind == prefs.bypassKind, onClick = { actions.onBypass(prefs.bypassMode, kind) }) }
+        }
+        if (prefs.bypassKind == BypassKind.WARP) {
+            Text("Бесплатный WARP от Cloudflare, ключи Couchy получит сам. Пакеты маскируются, чтобы провайдер не узнал WireGuard.", style = MaterialTheme.typography.bodySmall, color = muted)
+        } else {
+            OutlinedTextField(
+                config,
+                { config = it; result = null },
+                label = { Text("Конфиг WireGuard или AmneziaWG") },
+                placeholder = { Text("[Interface]\nPrivateKey = …\n\n[Peer]\nEndpoint = …") },
+                minLines = 4,
+                maxLines = 10,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (config.trim() != prefs.bypassConfig) {
+                val problem = TunnelConfig.problem(config)
+                if (problem != null && config.isNotBlank()) Text(problem, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                else if (problem == null) SecondaryButton("Сохранить конфиг", null, onClick = { actions.onBypassConfig(config) })
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            SecondaryButton("Проверить", null, onClick = {
+                result = "Подключаю…"
+                actions.onCheckBypass { result = it }
+            })
+            Text(result ?: bypass.status, style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.weight(1f))
+        }
+        if (prefs.bypassMode == BypassMode.AUTO && prefs.bypassHosts.isNotEmpty()) {
+            Text(
+                "Найдены заблокированными: " + prefs.bypassHosts.sorted().joinToString(", "),
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+            )
+            SecondaryButton("Забыть этот список", null, onClick = actions.onForgetBypassHosts)
         }
     }
 }

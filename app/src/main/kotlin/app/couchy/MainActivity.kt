@@ -67,6 +67,8 @@ import app.couchy.ui.tv.TvActions
 import app.couchy.ui.tv.TvContent
 import app.couchy.ui.settings.SettingsActions
 import app.couchy.ui.settings.SettingsContent
+import app.couchy.ui.settings.BypassUi
+import app.couchy.bypass.BypassStatus
 import app.couchy.ui.settings.UpdateState
 import app.couchy.ui.shell.Destination
 import app.couchy.ui.shell.Shell
@@ -112,7 +114,10 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         // Leaving Couchy for good stops the built-in torrent engine; a rotation does not.
-        if (isFinishing) (application as CouchyApp).torrEngine.stop()
+        if (isFinishing) {
+            (application as CouchyApp).torrEngine.stop()
+            (application as CouchyApp).bypass.stop()
+        }
     }
 
     override fun onStop() {
@@ -171,6 +176,17 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
     val sourceBusy by searchVm.busy.collectAsStateWithLifecycle()
     val sourceError by searchVm.error.collectAsStateWithLifecycle()
     val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
+    val bypassEngine = (LocalContext.current.applicationContext as CouchyApp).bypass
+    val bypassStatus by bypassEngine.status.collectAsStateWithLifecycle()
+    val bypassUi = BypassUi(
+        status = when (val st = bypassStatus) {
+            BypassStatus.Idle -> "Не запущен, включится сам, когда понадобится"
+            BypassStatus.Starting -> "Подключаю…"
+            is BypassStatus.Ready -> "Подключён: ${st.via}"
+            is BypassStatus.Failed -> st.message
+        },
+        available = bypassEngine.available,
+    )
     val pendingSource by vm.pendingSource.collectAsStateWithLifecycle()
     LaunchedEffect(freshStart) {
         if (freshStart > 0) {
@@ -383,6 +399,20 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                         },
                         onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
                         onRezkaHost = { vm.setRezkaHost(it) },
+                        onBypass = { mode, kind -> vm.setBypass(mode, kind) },
+                        onBypassConfig = { vm.setBypassConfig(it) },
+                        onForgetBypassHosts = { vm.forgetBypassHosts() },
+                        onCheckBypass = { report ->
+                            scope.launch {
+                                report(
+                                    try {
+                                        bypassEngine.check()
+                                    } catch (e: Exception) {
+                                        e.message ?: "Не подключился."
+                                    },
+                                )
+                            }
+                        },
                         onCheckTorr = { address, report ->
                             scope.launch {
                                 report(
@@ -407,6 +437,7 @@ private fun MainScreen(vm: AppViewModel, tvVm: TvViewModel, torrentVm: TorrentVi
                             }
                         },
                     ),
+                    bypass = bypassUi,
                 )
             }
         }

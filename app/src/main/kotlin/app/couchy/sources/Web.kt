@@ -3,12 +3,18 @@ package app.couchy.sources
 import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebSettings
+import app.couchy.CouchyApp
+import app.couchy.bypass.Bypass
+import app.couchy.core.bypass.BypassRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+
+/** The provider sent its "site is blocked" page instead of the site. */
+class BlockedException : IOException("Сайт заблокирован провайдером")
 
 /** Thrown when a site wants its visitor check passed in a browser window first. */
 class ChallengeException(val url: String) : IOException("Сайт просит пройти проверку")
@@ -31,7 +37,30 @@ class Web(private val context: Context) {
     suspend fun post(url: String, form: Map<String, String>, headers: Map<String, String> = emptyMap()): String =
         request(url, form.entries.joinToString("&") { (k, v) -> enc(k) + "=" + enc(v) }, headers + ("Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"))
 
-    private suspend fun request(start: String, body: String?, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
+    private val bypass get() = (context.applicationContext as CouchyApp).bypass
+
+    /**
+     * In Auto mode a site that fails the way blocked sites do (no address, reset, timeout,
+     * the provider's block page) is remembered and asked again through the bypass.
+     */
+    private suspend fun request(start: String, body: String?, headers: Map<String, String>): String {
+        val host = Bypass.hostOf(start)
+        bypass.prepare(start)
+        return try {
+            once(start, body, headers)
+        } catch (e: IOException) {
+            if (e is ChallengeException || !bypass.canLearn(host) || !(Bypass.looksBlocked(e) || e is BlockedException)) throw e
+            bypass.learn(host!!)
+            try {
+                bypass.ensure()
+            } catch (failed: IOException) {
+                throw IOException("Сайт заблокирован, а обход не подключился: ${failed.message}", e)
+            }
+            once(start, body, headers)
+        }
+    }
+
+    private suspend fun once(start: String, body: String?, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
         var url = start
         repeat(6) {
             val c = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -53,6 +82,7 @@ class Web(private val context: Context) {
                 c.headerFields["Set-Cookie"]?.forEach { cookie -> cookies?.setCookie(url, cookie) }
                 if (code in 300..399 && body == null) {
                     url = URL(URL(url), c.getHeaderField("Location") ?: throw IOException("Пустое перенаправление")).toString()
+                    if (BypassRules.isBlockPage(url)) throw BlockedException()
                     return@repeat
                 }
                 val text = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()

@@ -1,6 +1,7 @@
 package app.couchy
 
 import android.app.Application
+import app.couchy.bypass.Bypass
 import app.couchy.data.CouchyDatabase
 import app.couchy.data.LibraryRepository
 import app.couchy.data.Settings
@@ -15,4 +16,11 @@ class CouchyApp : Application() {
     val tvDatabase by lazy { TvDatabase.create(this) }
     val tv by lazy { TvRepository(tvDatabase.tv()) }
     val torrEngine by lazy { TorrEngine(this) }
+    val bypass by lazy { Bypass(this, settings) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Every connection asks the bypass which way to go, so it is in place before anything loads.
+        bypass.install()
+    }
 }

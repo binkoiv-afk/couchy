@@ -15,12 +15,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.couchy.CouchyApp
 import app.couchy.ui.components.SecondaryButton
 
 /**
@@ -31,6 +35,11 @@ import app.couchy.ui.components.SecondaryButton
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun ChallengeDialog(url: String, userAgent: String, onPassed: () -> Unit, onDismiss: () -> Unit) {
+    val bypass = (LocalContext.current.applicationContext as CouchyApp).bypass
+    val ready by produceState(false, url) {
+        bypass.prepare(url)
+        value = true
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.fillMaxSize().padding(24.dp).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(18.dp)).padding(16.dp),
@@ -45,6 +54,7 @@ fun ChallengeDialog(url: String, userAgent: String, onPassed: () -> Unit, onDism
                 )
                 SecondaryButton("Закрыть", null, onClick = onDismiss)
             }
+            if (!ready) return@Column
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {

@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.couchy.core.SortOrder
+import app.couchy.core.bypass.BypassKind
+import app.couchy.core.bypass.BypassMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -26,6 +28,14 @@ data class Prefs(
     /** HDrezka mirror; empty means the default address. */
     val rezkaHost: String = "",
     val searchHistory: List<String> = emptyList(),
+    val bypassMode: BypassMode = BypassMode.AUTO,
+    val bypassKind: BypassKind = BypassKind.WARP,
+    /** The person's own WireGuard / AmneziaWG config text. */
+    val bypassConfig: String = "",
+    /** The registered WARP device, as JSON; empty until first needed. */
+    val warpAccount: String = "",
+    /** Sites Couchy found blocked and now opens through the bypass. */
+    val bypassHosts: Set<String> = emptySet(),
 )
 
 private val Context.store by preferencesDataStore("settings")
@@ -38,6 +48,11 @@ class Settings(private val context: Context) {
     private val torrAddress = stringPreferencesKey("torr_address")
     private val rezkaHost = stringPreferencesKey("rezka_host")
     private val searchHistory = stringPreferencesKey("search_history")
+    private val bypassMode = stringPreferencesKey("bypass_mode")
+    private val bypassKind = stringPreferencesKey("bypass_kind")
+    private val bypassConfig = stringPreferencesKey("bypass_config")
+    private val warpAccount = stringPreferencesKey("warp_account")
+    private val bypassHosts = stringPreferencesKey("bypass_hosts")
 
     val prefs: Flow<Prefs> = context.store.data.map { p ->
         Prefs(
@@ -48,6 +63,11 @@ class Settings(private val context: Context) {
             torrAddress = p[torrAddress].orEmpty(),
             rezkaHost = p[rezkaHost].orEmpty(),
             searchHistory = p[searchHistory]?.split('\n')?.filter { it.isNotBlank() }.orEmpty(),
+            bypassMode = enumOr(p[bypassMode], BypassMode.AUTO),
+            bypassKind = enumOr(p[bypassKind], BypassKind.WARP),
+            bypassConfig = p[bypassConfig].orEmpty(),
+            warpAccount = p[warpAccount].orEmpty(),
+            bypassHosts = p[bypassHosts]?.split('\n')?.filter { it.isNotBlank() }?.toSet().orEmpty(),
         )
     }
 
@@ -61,6 +81,20 @@ class Settings(private val context: Context) {
 
     suspend fun setRezkaHost(value: String) = context.store.edit { it[rezkaHost] = value.trim() }
     suspend fun setSearchHistory(value: List<String>) = context.store.edit { it[searchHistory] = value.joinToString("\n") }
+
+    suspend fun setBypass(mode: BypassMode, kind: BypassKind) = context.store.edit {
+        it[bypassMode] = mode.name
+        it[bypassKind] = kind.name
+    }
+
+    suspend fun setBypassConfig(value: String) = context.store.edit { it[bypassConfig] = value.trim() }
+    suspend fun setWarpAccount(value: String) = context.store.edit { it[warpAccount] = value }
+    suspend fun addBypassHost(host: String) = context.store.edit {
+        val now = it[bypassHosts]?.split('\n')?.filter { h -> h.isNotBlank() }.orEmpty()
+        if (host !in now) it[bypassHosts] = (now + host).joinToString("\n")
+    }
+
+    suspend fun clearBypassHosts() = context.store.edit { it.remove(bypassHosts) }
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =
         name?.let { runCatching { enumValueOf<T>(it) }.getOrNull() } ?: default

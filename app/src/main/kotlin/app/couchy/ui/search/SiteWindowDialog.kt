@@ -11,6 +11,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,20 +19,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.couchy.CouchyApp
 import app.couchy.core.sources.SiteRef
 import app.couchy.core.sources.Sites
 import app.couchy.sources.SiteWindow
@@ -55,6 +60,12 @@ fun SiteWindowDialog(
     onDismiss: () -> Unit,
 ) {
     var web by remember { mutableStateOf<WebView?>(null) }
+    val bypass = (LocalContext.current.applicationContext as CouchyApp).bypass
+    // A blocked site needs the tunnel up before the page starts loading.
+    val ready by produceState(false, window.url) {
+        bypass.prepare(window.url)
+        value = true
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false)) {
         BackHandler { web?.takeIf { it.canGoBack() }?.goBack() ?: onDismiss() }
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -79,6 +90,12 @@ fun SiteWindowDialog(
                     )
                 }
                 SecondaryButton("Закрыть", Icons.Rounded.Close, onClick = onDismiss)
+            }
+            if (!ready) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+                return@Column
             }
             AndroidView(
                 factory = { ctx ->

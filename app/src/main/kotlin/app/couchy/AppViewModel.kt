@@ -196,6 +196,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setUiMode(value: UiMode) = viewModelScope.launch { settings.setUiMode(value) }
     fun setTorrEngine(mode: TorrEngineMode, address: String) = viewModelScope.launch { settings.setTorrEngine(mode, address) }
     fun setRezkaHost(value: String) = viewModelScope.launch { settings.setRezkaHost(value) }
+    fun setBypass(mode: app.couchy.core.bypass.BypassMode, kind: app.couchy.core.bypass.BypassKind) = viewModelScope.launch { settings.setBypass(mode, kind) }
+    fun setBypassConfig(value: String) = viewModelScope.launch { settings.setBypassConfig(value) }
+    fun forgetBypassHosts() = viewModelScope.launch { settings.clearBypassHosts() }
 
     private fun unsupportedText(kind: LinkKind) = when (kind) {
         LinkKind.YOUTUBE -> "YouTube появится отдельным разделом в следующих сборках."

@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -119,6 +120,8 @@ class PlayerControls(
     /** Turns a phone between sideways and upright; null elsewhere. */
     val onRotate: (() -> Unit)? = null,
     val onSleep: () -> Unit = {},
+    /** Marks a series' opening titles; null outside series. */
+    val onIntro: (() -> Unit)? = null,
     /** Stars or unstars the live channel. */
     val onFavorite: (() -> Unit)? = null,
     /** Back to the channel watched before this one. */
@@ -269,6 +272,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                     Pill(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality)
                     if (ui.live == null) Pill(Icons.Rounded.Speed, ui.speedLabel, onClick = controls.onSpeed)
                     Pill(Icons.Rounded.AspectRatio, if (touch) null else ui.resizeLabel, onClick = controls.onResize)
+                    controls.onIntro?.let { Pill(Icons.Rounded.FastForward, if (touch) null else "Заставка", onClick = it) }
                     Pill(Icons.Rounded.Bedtime, ui.sleepLabel ?: if (touch) null else "Таймер сна", highlighted = ui.sleepLabel != null, onClick = controls.onSleep)
                     if (ui.live != null) {
                         controls.onFavorite?.let { Pill(if (ui.live.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (touch) null else "Избранное", highlighted = ui.live.favorite, onClick = it) }

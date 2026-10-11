@@ -76,7 +76,7 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO }
 
 private val sleepMinutes = listOf(15, 30, 45, 60, 90)
 
@@ -133,6 +133,12 @@ fun PlayerScreen(
     var sleepAfterEpisode by remember { mutableStateOf(false) }
     var nextCancelled by remember(playback.uri) { mutableStateOf(false) }
     val skipped = remember(playback.key) { mutableSetOf<app.couchy.Skip>() }
+    // The series' opening titles, marked once and jumped over in every episode after.
+    val marks = (context.applicationContext as app.couchy.CouchyApp).marks
+    val series = remember(playback.key) { app.couchy.data.Intros.seriesOf(playback) }
+    var intro by remember(series) { mutableStateOf(series?.let { app.couchy.data.Intros.get(marks, it) }) }
+    var introFrom by remember(playback.key) { mutableStateOf<Long?>(null) }
+    var introSkipped by remember(playback.key) { mutableStateOf(false) }
 
     fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
     LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
@@ -247,6 +253,13 @@ fun PlayerScreen(
                     player.seekTo(s.endMs)
                     flash(s.label)
                 }
+                intro?.let { i ->
+                    if (!introSkipped && at in (i.startMs - 1_500).coerceAtLeast(0) until i.endMs - 1_000) {
+                        introSkipped = true
+                        player.seekTo(i.endMs)
+                        flash("Заставка пропущена")
+                    }
+                }
             }
             // The sleep timer turns the sound down over the last ten seconds, then stops.
             sleepAt?.let { at ->
@@ -301,6 +314,7 @@ fun PlayerScreen(
         onInteract = ::poke,
         onRotate = if (phone) ({ poke(); upright = !upright }) else null,
         onSleep = { poke(); sheet = Sheet.SLEEP },
+        onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onFavorite = onFavorite?.let { f -> { poke(); f() } },
         onPrevious = onPrevious?.let { f -> { poke(); f() } },
         onNextNow = { save(); onFinished() },
@@ -531,8 +545,54 @@ fun PlayerScreen(
             ),
             onDismiss = { sheet = null },
         )
+        Sheet.INTRO -> {
+            val at = player.currentPosition
+            val from = introFrom
+            val known = intro
+            OptionsDialog(
+                "Заставка сериала",
+                listOf(
+                    OptionSection(
+                        known?.let { "ПРОПУСКАЕТСЯ: ${clock(it.startMs)} – ${clock(it.endMs)}" }
+                            ?: "Отметьте начало и конец заставки один раз, дальше Couchy будет пропускать её в каждой серии",
+                        buildList {
+                            if (from == null) {
+                                add(Option("Заставка начинается здесь · ${clock(at)}", false) { introFrom = at; flash("Начало отмечено. Перемотайте на конец заставки") })
+                            } else {
+                                add(Option("Заставка кончается здесь · ${clock(at)}", false) {
+                                    if (at > from + 5_000 && series != null) {
+                                        val marked = app.couchy.data.Intro(from, at)
+                                        app.couchy.data.Intros.set(marks, series, marked)
+                                        intro = marked
+                                        introSkipped = true
+                                        introFrom = null
+                                        flash("Заставка запомнена")
+                                    } else {
+                                        flash("Конец должен быть позже начала")
+                                    }
+                                })
+                                add(Option("Отметить начало заново", false) { introFrom = null })
+                            }
+                            if (known != null && series != null) {
+                                add(Option("Забыть заставку", false) {
+                                    app.couchy.data.Intros.set(marks, series, null)
+                                    intro = null
+                                    flash("Заставка больше не пропускается")
+                                })
+                            }
+                        },
+                    ),
+                ),
+                onDismiss = { sheet = null },
+            )
+        }
         null -> Unit
     }
+}
+
+private fun clock(ms: Long): String {
+    val s = ms / 1000
+    return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s % 3600 / 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
 }
 
 private fun digitOf(key: Key): String = when (key) {

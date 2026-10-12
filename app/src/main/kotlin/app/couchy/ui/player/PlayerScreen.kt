@@ -300,12 +300,12 @@ fun PlayerScreen(
             // Sponsor reads and the like: jump to their end once, the first time playback reaches them.
             if (player.isPlaying) {
                 val at = player.currentPosition
-                playback.skips.firstOrNull { at in it.startMs until it.endMs - 500 && it !in skipped }?.let { s ->
+                playback.skips.firstOrNull { at in it.startMs until it.endMs - 500 && it !in skipped && !(hasNext && it.label == CREDITS) }?.let { s ->
                     skipped += s
                     player.seekTo(s.endMs)
                     flash(s.label)
                 }
-                intro?.let { i ->
+                intro?.takeIf { it.hasOpening }?.let { i ->
                     if (!introSkipped && at in (i.startMs - 1_500).coerceAtLeast(0) until i.endMs - 1_000) {
                         introSkipped = true
                         player.seekTo(i.endMs)
@@ -366,9 +366,21 @@ fun PlayerScreen(
     }
 
     val remaining = ui.durationMs - ui.positionMs
-    val nextIn = if (hasNext && playback.live == null && !nextCancelled && !sleepAfterEpisode && ui.durationMs > 60_000 && remaining in 0..15_000) {
-        ((remaining + 999) / 1000).toInt()
-    } else null
+    // End credits: where the site says they start, or where the person marked them for the series.
+    val creditsAt = playback.skips.firstOrNull { it.label == CREDITS }?.startMs
+        ?: intro?.creditsMs?.takeIf { it > 0 && ui.durationMs > it * 3 }?.let { ui.durationMs - it }
+    val nextAllowed = hasNext && playback.live == null && !nextCancelled && !sleepAfterEpisode && ui.durationMs > 60_000
+    val nextIn = when {
+        !nextAllowed || remaining < 0 -> null
+        creditsAt != null && ui.positionMs >= creditsAt -> (10 - (ui.positionMs - creditsAt) / 1000).toInt().coerceAtLeast(0)
+        remaining <= 15_000 -> ((remaining + 999) / 1000).toInt()
+        else -> null
+    }
+    // On the credits the countdown runs to the next episode without waiting for the very end.
+    var wentNext by remember(playback.uri) { mutableStateOf(false) }
+    LaunchedEffect(nextIn == 0 && creditsAt != null) {
+        if (nextIn == 0 && creditsAt != null && !wentNext) { wentNext = true; save(); onFinished() }
+    }
 
     val controls = PlayerControls(
         onBack = ::exit,
@@ -674,10 +686,10 @@ fun PlayerScreen(
             val from = introFrom
             val known = intro
             OptionsDialog(
-                "Заставка сериала",
+                "Заставка и титры",
                 listOf(
                     OptionSection(
-                        known?.let { "ПРОПУСКАЕТСЯ: ${clock(it.startMs)} – ${clock(it.endMs)}" }
+                        known?.takeIf { it.hasOpening }?.let { "ПРОПУСКАЕТСЯ: ${clock(it.startMs)} – ${clock(it.endMs)}" }
                             ?: "Отметьте начало и конец заставки один раз, дальше Couchy будет пропускать её в каждой серии",
                         buildList {
                             if (from == null) {
@@ -685,7 +697,7 @@ fun PlayerScreen(
                             } else {
                                 add(Option("Заставка кончается здесь · ${clock(at)}", false) {
                                     if (at > from + 5_000 && series != null) {
-                                        val marked = app.couchy.data.Intro(from, at)
+                                        val marked = app.couchy.data.Intro(from, at, known?.creditsMs ?: 0)
                                         app.couchy.data.Intros.set(marks, series, marked)
                                         intro = marked
                                         introSkipped = true
@@ -697,11 +709,36 @@ fun PlayerScreen(
                                 })
                                 add(Option("Отметить начало заново", false) { introFrom = null })
                             }
-                            if (known != null && series != null) {
+                            if (known?.hasOpening == true && series != null) {
                                 add(Option("Забыть заставку", false) {
-                                    app.couchy.data.Intros.set(marks, series, null)
-                                    intro = null
+                                    val left = known.copy(startMs = 0, endMs = 0)
+                                    app.couchy.data.Intros.set(marks, series, left)
+                                    intro = left.takeIf { it.creditsMs > 0 }
                                     flash("Заставка больше не пропускается")
+                                })
+                            }
+                        },
+                    ),
+                    OptionSection(
+                        known?.creditsMs?.takeIf { it > 0 }?.let { "ТИТРЫ: ПОСЛЕДНИЕ ${clock(it)} СЕРИИ" }
+                            ?: "Отметьте, где начинаются финальные титры, и следующая серия будет предлагаться сразу с них",
+                        buildList {
+                            val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
+                            add(Option("Титры начинаются здесь · ${clock(at)}", false) {
+                                if (series != null && duration > 0 && at > duration / 2) {
+                                    val marked = (known ?: app.couchy.data.Intro(0, 0)).copy(creditsMs = duration - at)
+                                    app.couchy.data.Intros.set(marks, series, marked)
+                                    intro = marked
+                                    flash("Титры запомнены")
+                                } else {
+                                    flash("Перемотайте ближе к концу серии")
+                                }
+                            })
+                            if ((known?.creditsMs ?: 0) > 0 && series != null) {
+                                add(Option("Забыть титры", false) {
+                                    val left = known!!.copy(creditsMs = 0)
+                                    app.couchy.data.Intros.set(marks, series, left)
+                                    intro = left.takeIf { it.hasOpening }
                                 })
                             }
                         },
@@ -713,6 +750,9 @@ fun PlayerScreen(
         null -> Unit
     }
 }
+
+/** The label AniLibria's end credits come with: those wait for the next-episode card instead of being jumped. */
+private const val CREDITS = "Титры"
 
 private fun clock(ms: Long): String {
     val s = ms / 1000

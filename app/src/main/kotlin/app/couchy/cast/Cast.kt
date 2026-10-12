@@ -95,7 +95,12 @@ class Cast(private val context: Context) {
             r.method == "POST" && r.path == "/control" -> {
                 val command = app.couchy.core.cast.RemoteAction.parse(r.body)
                 val handler = RemoteBridge.handler
-                if (command != null && handler != null) {
+                val say = RemoteBridge.say
+                if (command?.first == app.couchy.core.cast.RemoteAction.SAY && say != null) {
+                    val text = app.couchy.core.cast.RemoteAction.text(r.body)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { say(text) }
+                    CastHttp.response(200, "{}")
+                } else if (command != null && handler != null) {
                     android.os.Handler(android.os.Looper.getMainLooper()).post { handler(command.first, command.second) }
                     CastHttp.response(200, "{}")
                 } else CastHttp.response(409, "{}")
@@ -212,7 +217,7 @@ class Cast(private val context: Context) {
     }
 
     /** Presses a remote button on [device]; false when it did not take it. */
-    suspend fun control(device: CastDevice, action: String, value: Long = 0): Boolean = withContext(Dispatchers.IO) {
+    suspend fun control(device: CastDevice, action: String, value: Long = 0, text: String = ""): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val c = URL("http://${device.host}:${device.port}/control").openConnection(Proxy.NO_PROXY) as HttpURLConnection
             try {
@@ -221,7 +226,7 @@ class Cast(private val context: Context) {
                 c.connectTimeout = 3_000
                 c.readTimeout = 3_000
                 c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                c.outputStream.use { it.write(app.couchy.core.cast.RemoteAction.json(action, value).toByteArray()) }
+                c.outputStream.use { it.write(app.couchy.core.cast.RemoteAction.json(action, value, text).toByteArray()) }
                 c.responseCode == 200
             } finally {
                 c.disconnect()
@@ -252,4 +257,6 @@ class Cast(private val context: Context) {
 object RemoteBridge {
     @Volatile var state: app.couchy.core.cast.RemoteState? = null
     @Volatile var handler: ((action: String, value: Long) -> Unit)? = null
+    /** Spoken commands from the phone, as text. */
+    @Volatile var say: ((String) -> Unit)? = null
 }

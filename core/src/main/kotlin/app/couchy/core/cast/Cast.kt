@@ -100,7 +100,11 @@ object RemoteAction {
     const val NEXT = "next"
     const val STOP = "stop"
     const val VOLUME = "volume"
+    /** A spoken command heard by the phone, carried as text: "включи субтитры". */
+    const val SAY = "say"
 
-    fun json(action: String, value: Long = 0): String = JSONObject().put("action", action).put("value", value).toString()
+    fun json(action: String, value: Long = 0, text: String = ""): String =
+        JSONObject().put("action", action).put("value", value).put("text", text).toString()
+    fun text(body: String): String = runCatching { JSONObject(body).optString("text") }.getOrDefault("")
     fun parse(text: String): Pair<String, Long>? = runCatching { JSONObject(text).let { it.getString("action") to it.optLong("value") } }.getOrNull()
 }

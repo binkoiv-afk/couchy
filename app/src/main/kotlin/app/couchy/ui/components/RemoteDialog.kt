@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Forward30
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
@@ -77,11 +78,26 @@ fun RemoteDialog(cast: Cast, device: CastDevice?, onDismiss: () -> Unit) {
             delay(1_000)
         }
     }
-    fun press(action: String, value: Long = 0) {
+    fun press(action: String, value: Long = 0, text: String = "") {
         scope.launch {
-            cast.control(t, action, value)
+            cast.control(t, action, value, text)
             state = cast.state(t)
         }
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val canListen = androidx.compose.runtime.remember { Voice.available(context) }
+    var listening by remember { mutableStateOf(false) }
+    if (listening) {
+        VoiceCapture(
+            "Скажите: «перемотай на 10 минут», «включи субтитры»",
+            onResult = { heard ->
+                listening = false
+                // The TV understands the same words as its own microphone.
+                val said = heard.firstOrNull { app.couchy.core.VoiceCommand.parse(it) != null } ?: heard.first()
+                press(RemoteAction.SAY, text = said)
+            },
+            onCancel = { listening = false },
+        )
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -128,6 +144,7 @@ fun RemoteDialog(cast: Cast, device: CastDevice?, onDismiss: () -> Unit) {
                             RemoteKey(Icons.AutoMirrored.Rounded.VolumeUp, "Громче") { press(RemoteAction.VOLUME, 1) }
                             if (s.hasNext) RemoteKey(Icons.Rounded.SkipNext, "Следующая серия") { press(RemoteAction.NEXT) }
                             RemoteKey(Icons.Rounded.Stop, "Остановить") { press(RemoteAction.STOP) }
+                            if (canListen) RemoteKey(Icons.Rounded.Mic, "Сказать команду") { listening = true }
                         }
                     }
                 }

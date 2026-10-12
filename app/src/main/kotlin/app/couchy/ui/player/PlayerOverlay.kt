@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -141,6 +142,8 @@ class PlayerControls(
     val onNextCancel: () -> Unit = {},
     /** Turns "Ночной звук" on and off; null where the device cannot. */
     val onNight: (() -> Unit)? = null,
+    /** Listens for a spoken command; null where the device cannot. */
+    val onVoice: (() -> Unit)? = null,
 )
 
 /**
@@ -230,6 +233,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
             controls.onIntro?.let { add(Tool(Icons.Rounded.FastForward, "Заставка", top = true, onClick = it)) }
             controls.onDownload?.let { add(Tool(Icons.Rounded.Download, "Скачать", top = true, onClick = it)) }
             controls.onPip?.let { add(Tool(Icons.Rounded.PictureInPictureAlt, "Окно", top = true, onClick = it)) }
+            controls.onVoice?.let { add(Tool(Icons.Rounded.Mic, "Голос", top = true, onClick = it)) }
             if (ui.live == null) controls.onNight?.let { add(Tool(Icons.Rounded.GraphicEq, "Ночь", highlighted = ui.night, top = true, onClick = it)) }
             add(Tool(Icons.Rounded.Bedtime, ui.sleepLabel ?: "Сон", highlighted = ui.sleepLabel != null, top = true, onClick = controls.onSleep))
             if (ui.live != null) {

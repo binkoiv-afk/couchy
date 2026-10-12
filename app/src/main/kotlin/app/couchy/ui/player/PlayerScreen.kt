@@ -428,6 +428,60 @@ fun PlayerScreen(
         if (nextIn == 0 && creditsAt != null && !wentNext) { wentNext = true; save(); onFinished() }
     }
 
+    // Spoken commands: from the remote's or the phone's microphone, or the Couchy remote on a phone.
+    val canListen = remember { app.couchy.ui.components.Voice.available(context) }
+    var listening by remember { mutableStateOf(false) }
+    fun obey(cmd: app.couchy.core.VoiceCommand?) {
+        poke()
+        when (cmd) {
+            null -> flash("Не понял. Скажите, например, «перемотай на 10 минут»")
+            is app.couchy.core.VoiceCommand.SeekBy -> {
+                player.seekTo((player.currentPosition + cmd.ms).coerceAtLeast(0))
+                flash((if (cmd.ms < 0) "Назад на " else "Вперёд на ") + spoken(kotlin.math.abs(cmd.ms)))
+            }
+            is app.couchy.core.VoiceCommand.SeekTo -> { player.seekTo(cmd.ms); flash("Перешёл на ${clock(cmd.ms)}") }
+            app.couchy.core.VoiceCommand.Pause -> player.pause()
+            app.couchy.core.VoiceCommand.Play -> player.play()
+            app.couchy.core.VoiceCommand.Next -> if (hasNext) { save(); onFinished() } else flash("Следующей серии нет")
+            app.couchy.core.VoiceCommand.SubtitlesOn -> {
+                if (tracks.groups.none { it.type == C.TRACK_TYPE_TEXT }) flash("Субтитров нет. «Озвучка» → «Найти в интернете…»")
+                else {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                    flash("Субтитры включены")
+                }
+            }
+            app.couchy.core.VoiceCommand.SubtitlesOff -> {
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                flash("Субтитры выключены")
+            }
+            app.couchy.core.VoiceCommand.Louder, app.couchy.core.VoiceCommand.Quieter -> {
+                val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+                audio?.adjustStreamVolume(
+                    android.media.AudioManager.STREAM_MUSIC,
+                    if (cmd == app.couchy.core.VoiceCommand.Louder) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+                    android.media.AudioManager.FLAG_SHOW_UI,
+                )
+            }
+            app.couchy.core.VoiceCommand.NightSound -> if (NightSound.supported) {
+                night = !night
+                NightSound.set(context, night)
+                flash(if (night) "Ночной звук включён" else "Обычный звук")
+            }
+            is app.couchy.core.VoiceCommand.Speed -> {
+                speed = cmd.value
+                player.setPlaybackSpeed(cmd.value)
+                ui = ui.copy(speedLabel = speedLabel(cmd.value))
+                flash("Скорость ${speedLabel(cmd.value)}")
+            }
+            app.couchy.core.VoiceCommand.Exit -> exit()
+        }
+    }
+    fun hear(heard: List<String>) = obey(heard.firstNotNullOfOrNull { app.couchy.core.VoiceCommand.parse(it) })
+    DisposableEffect(player) {
+        app.couchy.cast.RemoteBridge.say = { text -> hear(listOf(text)) }
+        onDispose { app.couchy.cast.RemoteBridge.say = null }
+    }
+
     val controls = PlayerControls(
         onBack = ::exit,
         onTogglePlay = { poke(); if (player.isPlaying) player.pause() else player.play() },
@@ -456,6 +510,7 @@ fun PlayerScreen(
         onPrevious = onPrevious?.let { f -> { poke(); f() } },
         onNextNow = { save(); onFinished() },
         onNextCancel = { nextCancelled = true; poke() },
+        onVoice = if (canListen && playback.live == null) ({ poke(); listening = true }) else null,
         onNight = if (NightSound.supported) ({
             poke()
             night = !night
@@ -482,6 +537,7 @@ fun PlayerScreen(
                 when (event.key) {
                     Key.MediaPlayPause -> { controls.onTogglePlay(); true }
                     Key.MediaPlay -> { player.play(); poke(); true }
+                    Key.Search, Key.VoiceAssist, Key.Assist -> { if (canListen && playback.live == null) { listening = true; true } else false }
                     Key.MediaPause -> { player.pause(); poke(); true }
                     Key.MediaFastForward -> { controls.onSeekBy(30_000); true }
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
@@ -604,6 +660,13 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        if (listening) {
+            app.couchy.ui.components.VoiceCapture(
+                "Скажите: «перемотай на 10 минут», «включи субтитры», «следующая серия»",
+                onResult = { heard -> listening = false; hear(heard) },
+                onCancel = { listening = false },
+            )
+        }
         recapNote?.let { note ->
             RecapCard(note, Modifier.align(Alignment.Center)) { recapNote = null; player.play(); runCatching { rootFocus.requestFocus() } }
         }
@@ -860,6 +923,17 @@ private fun RecapCard(note: app.couchy.core.sources.EpisodeNote, modifier: Modif
 
 /** The label AniLibria's end credits come with: those wait for the next-episode card instead of being jumped. */
 private const val CREDITS = "Титры"
+
+/** "10 минут", "30 секунд", "1 ч 5 мин" for what a spoken seek did. */
+private fun spoken(ms: Long): String {
+    val s = ms / 1000
+    return when {
+        s >= 3600 -> app.couchy.core.Stats.duration(ms)
+        s >= 60 && s % 60 == 0L -> "${s / 60} мин"
+        s >= 60 -> "${s / 60} мин ${s % 60} с"
+        else -> "$s с"
+    }
+}
 
 private fun clock(ms: Long): String {
     val s = ms / 1000

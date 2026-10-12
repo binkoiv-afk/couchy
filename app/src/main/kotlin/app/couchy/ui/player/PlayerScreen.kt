@@ -152,6 +152,11 @@ fun PlayerScreen(
     // The series' opening titles, marked once and jumped over in every episode after.
     val marks = (context.applicationContext as app.couchy.CouchyApp).marks
     val stats = (context.applicationContext as app.couchy.CouchyApp).stats
+    var night by remember { mutableStateOf(NightSound.isOn(context)) }
+    DisposableEffect(player, night) {
+        val effect = if (night) NightSound.attach(player.audioSessionId) else null
+        onDispose { effect?.close() }
+    }
     val series = remember(playback.key) { app.couchy.data.Intros.seriesOf(playback) }
     var intro by remember(series) { mutableStateOf(series?.let { app.couchy.data.Intros.get(marks, it) }) }
     var introFrom by remember(playback.key) { mutableStateOf<Long?>(null) }
@@ -410,6 +415,12 @@ fun PlayerScreen(
         onPrevious = onPrevious?.let { f -> { poke(); f() } },
         onNextNow = { save(); onFinished() },
         onNextCancel = { nextCancelled = true; poke() },
+        onNight = if (NightSound.supported) ({
+            poke()
+            night = !night
+            NightSound.set(context, night)
+            flash(if (night) "Ночной звук: взрывы тише, голоса громче" else "Обычный звук")
+        }) else null,
         onCast = onCast?.let { cast ->
             {
                 poke()
@@ -558,6 +569,7 @@ fun PlayerScreen(
                 status = status,
                 hint = if (boosting) "2× пока держите" else hint,
                 nextIn = nextIn,
+                night = night,
                 sleepLabel = when {
                     sleepAfterEpisode -> "До конца серии"
                     sleepAt != null -> "Сон в " + java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(sleepAt!!))

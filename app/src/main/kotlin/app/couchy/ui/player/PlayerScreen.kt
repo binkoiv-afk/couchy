@@ -134,37 +134,7 @@ fun PlayerScreen(
     onSources: (() -> Unit)? = null,
     /** Hands the video to another player app from the given position; null where it cannot. */
     onExternal: ((positionMs: Long) -> Unit)? = null,
-    /** Takes every touch while the screen is locked; a long press anywhere unlocks it. */
-@Composable
-private fun LockShield(hintAt: Long, onTap: () -> Unit, onUnlock: () -> Unit) {
-    var visible by remember { mutableStateOf(true) }
-    LaunchedEffect(hintAt) { visible = true; delay(2_500); visible = false }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } }
-            }
-            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }, onLongPress = { onUnlock() }) },
-    ) {
-        if (visible) {
-            androidx.compose.foundation.layout.Row(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 28.dp)
-                    .background(Color.Black.copy(alpha = 0.7f), androidx.compose.foundation.shape.RoundedCornerShape(999.dp))
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
-            ) {
-                androidx.compose.material3.Icon(Icons.Rounded.Lock, null, tint = Color.White)
-                Text("Экран заблокирован. Удерживайте палец, чтобы снять", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-    }
-}
-
-/** «Ранее в сериале»: the episode before, after a break; null when not wanted. */
+    /** «Ранее в сериале»: the episode before, after a break; null when not wanted. */
     recap: (suspend () -> app.couchy.core.sources.EpisodeNote?)? = null,
 ) {
     val context = LocalContext.current
@@ -950,6 +920,36 @@ private fun LockShield(hintAt: Long, onTap: () -> Unit, onUnlock: () -> Unit) {
             )
         }
         null -> Unit
+    }
+}
+
+/** Takes every touch while the screen is locked; a long press anywhere unlocks it. */
+@Composable
+private fun LockShield(hintAt: Long, onTap: () -> Unit, onUnlock: () -> Unit) {
+    var visible by remember { mutableStateOf(true) }
+    LaunchedEffect(hintAt) { visible = true; delay(2_500); visible = false }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } }
+            }
+            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }, onLongPress = { onUnlock() }) },
+    ) {
+        if (visible) {
+            androidx.compose.foundation.layout.Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 28.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), androidx.compose.foundation.shape.RoundedCornerShape(999.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+            ) {
+                androidx.compose.material3.Icon(Icons.Rounded.Lock, null, tint = Color.White)
+                Text("Экран заблокирован. Удерживайте палец, чтобы снять", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
     }
 }
 

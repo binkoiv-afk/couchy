@@ -38,6 +38,21 @@ object SubtitleFinder {
         android.net.Uri.fromFile(file).toString()
     }
 
+    /** A subtitles file, from the internet or the device, read into cues for the second line. */
+    suspend fun cues(context: Context, uri: String, headers: Map<String, String> = emptyMap()): List<app.couchy.core.sources.Cue> = withContext(Dispatchers.IO) {
+        var bytes = if (uri.startsWith("http", ignoreCase = true)) {
+            val c = URL(uri).openConnection() as HttpURLConnection
+            c.connectTimeout = 15_000
+            c.readTimeout = 20_000
+            headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            try { c.inputStream.use { it.readBytes() } } finally { c.disconnect() }
+        } else {
+            context.contentResolver.openInputStream(android.net.Uri.parse(uri))!!.use { it.readBytes() }
+        }
+        if (bytes.size > 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) bytes = GZIPInputStream(bytes.inputStream()).readBytes()
+        app.couchy.core.sources.SubCues.parse(Subtitles.decode(bytes, null))
+    }
+
     private fun fetch(url: String): ByteArray {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000

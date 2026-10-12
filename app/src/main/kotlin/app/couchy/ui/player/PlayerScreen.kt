@@ -16,6 +16,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -166,6 +171,31 @@ fun PlayerScreen(
     var subHits by remember(playback.key) { mutableStateOf<List<app.couchy.core.sources.SubHit>?>(null) }
     var subError by remember(playback.key) { mutableStateOf<String?>(null) }
     val subScope = rememberCoroutineScope()
+    // A second line of subtitles on top (say English over Russian), drawn by Couchy from a file.
+    var second by remember(playback.key) { mutableStateOf<Pair<String, List<app.couchy.core.sources.Cue>>?>(null) }
+    var secondWanted by remember { mutableStateOf<String?>(null) }
+    var secondText by remember(playback.key) { mutableStateOf<String?>(null) }
+    var findSecond by remember { mutableStateOf(false) }
+    fun loadSecond(label: String, uri: String) {
+        subScope.launch {
+            runCatching { app.couchy.sources.SubtitleFinder.cues(context, uri, playback.headers) }
+                .onSuccess { cues ->
+                    if (cues.isEmpty()) flash("В файле нет субтитров") else { second = label to cues; secondWanted = label; flash("Вторые субтитры: $label") }
+                }
+                .onFailure { flash("Не удалось загрузить субтитры") }
+        }
+    }
+    // The next episode keeps the second line in the same language when the site has it.
+    LaunchedEffect(playback.key) {
+        secondWanted?.let { w -> playback.subtitles.firstOrNull { it.first == w }?.let { (label, url) -> loadSecond(label, url) } }
+    }
+    LaunchedEffect(second) {
+        val cues = second?.second ?: run { secondText = null; return@LaunchedEffect }
+        while (true) {
+            secondText = app.couchy.core.sources.SubCues.at(cues, player.currentPosition)
+            delay(150)
+        }
+    }
     LaunchedEffect(findSubs) {
         if (!findSubs) return@LaunchedEffect
         findSubs = false
@@ -563,6 +593,21 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        secondText?.let { text ->
+            Text(
+                text,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = if (overlay) 84.dp else 28.dp, start = 48.dp, end = 48.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
         PlayerOverlay(
             ui.copy(
                 live = live,
@@ -603,8 +648,14 @@ fun PlayerScreen(
                             onTracksChosen(currentAudioLanguage(player), "")
                         },
                     ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) } +
-                        (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSubs = true }) else emptyList()),
+                        (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSecond = false; findSubs = true }) else emptyList()),
                 ),
+                if (playback.live == null) OptionSection(
+                    "ВТОРЫЕ СУБТИТРЫ · СВЕРХУ",
+                    listOf(Option("Выключены", second == null) { second = null; secondWanted = null }) +
+                        playback.subtitles.map { (label, url) -> Option(label, second?.first == label) { loadSecond(label, url) } } +
+                        listOf(Option("Найти в интернете…", false) { findSecond = true; findSubs = true }),
+                ) else null,
                 listOfNotNull(
                     onSources?.let { back -> Option("Другой источник…", false) { save(); back() } },
                     onExternal?.let { open -> Option("Открыть во внешнем плеере", false) { save(); open(player.currentPosition) } },
@@ -680,6 +731,12 @@ fun PlayerScreen(
                                     flash("Загружаю субтитры…")
                                     runCatching { app.couchy.sources.SubtitleFinder.download(context, hit) }
                                         .onSuccess { uri ->
+                                            if (findSecond) {
+                                                findSecond = false
+                                                sheet = null
+                                                loadSecond(if (hit.lang == "rus") "Русские (интернет)" else "Английские (интернет)", uri)
+                                                return@onSuccess
+                                            }
                                             save()
                                             val lang = if (hit.lang == "rus") "ru" else "en"
                                             onSubtitle?.invoke(if (lang == "ru") "Русские (интернет)" else "Английские (интернет)", uri, lang, player.currentPosition)

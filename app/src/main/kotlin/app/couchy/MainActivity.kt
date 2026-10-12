@@ -250,6 +250,8 @@ private fun MainScreen(
     val bypassEngine = (LocalContext.current.applicationContext as CouchyApp).bypass
     val cast = (LocalContext.current.applicationContext as CouchyApp).cast
     var castRequest by remember { mutableStateOf<CastRequest?>(null) }
+    // A device with an empty host means "ask which one".
+    var remoteOpen by remember { mutableStateOf<app.couchy.cast.CastDevice?>(null) }
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
     LaunchedEffect(kids) {
@@ -434,6 +436,10 @@ private fun MainScreen(
         )
     }
 
+    // The phone as the TV's remote: opened after sending a video, or from the settings with a device to pick.
+    remoteOpen?.let { device ->
+        app.couchy.ui.components.RemoteDialog(cast, device.takeIf { it.host.isNotEmpty() }, onDismiss = { remoteOpen = null })
+    }
     castRequest?.let { request ->
         CastDialog(
             cast,
@@ -441,7 +447,7 @@ private fun MainScreen(
             onSent = { device ->
                 castRequest = null
                 if (playback?.key == request.link || playback?.uri == request.link) vm.closePlayer()
-                vm.showNotice("Отправил на ${device.name}.")
+                remoteOpen = device
             },
             onDismiss = { castRequest = null },
         )
@@ -779,6 +785,7 @@ private fun MainScreen(
                         onCheckUpdate = { scope.launch { UpdateCenter.check() } },
                         onTorrEngine = { mode, address -> vm.setTorrEngine(mode, address) },
                         onRezkaHost = { vm.setRezkaHost(it) },
+                        onRemote = { remoteOpen = app.couchy.cast.CastDevice("", "", 0) },
                         onTmdbKey = { vm.setTmdbKey(it) },
                         onBypass = { mode, kind -> vm.setBypass(mode, kind) },
                         onBypassConfig = { vm.setBypassConfig(it) },

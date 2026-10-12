@@ -100,6 +100,8 @@ class SettingsActions(
     val onSyncDisconnect: () -> Unit = {},
     val onKidsPin: (String) -> Unit = {},
     val onEnterKids: () -> Unit = {},
+    /** The phone as a remote for Couchy on the TV. */
+    val onRemote: () -> Unit = {},
 )
 
 /** Sync as the settings screen shows it. */
@@ -230,7 +232,15 @@ fun SettingsContent(
             SettingsPage.BYPASS -> BypassSettings(prefs, bypass, actions)
             SettingsPage.SYNC -> SyncSettings(sync, actions)
             SettingsPage.KIDS -> KidsSettings(prefs, actions)
-            SettingsPage.CAST -> Text(castInfo.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+            SettingsPage.CAST -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(castInfo.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Пульт: пауза, перемотка, громкость и следующая серия на приставке прямо с телефона. Открывается сам после «На ТВ».",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SecondaryButton("Пульт для ТВ", Icons.Rounded.Cast, onClick = actions.onRemote)
+            }
             SettingsPage.ABOUT -> when (update) {
                 UpdateState.Idle -> SecondaryButton("Проверить обновления", null, onClick = actions.onCheckUpdate)
                 UpdateState.Checking -> Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)

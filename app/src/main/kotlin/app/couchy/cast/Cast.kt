@@ -90,6 +90,16 @@ class Cast(private val context: Context) {
         val answer = when {
             r == null -> CastHttp.response(400, "{}")
             r.method == "GET" && r.path == "/hello" -> CastHttp.response(200, "{\"name\":\"${deviceName.replace("\"", "")}\"}")
+            // The phone remote: what plays here, and its buttons.
+            r.method == "GET" && r.path == "/state" -> CastHttp.response(200, RemoteBridge.state?.toJson() ?: "{}")
+            r.method == "POST" && r.path == "/control" -> {
+                val command = app.couchy.core.cast.RemoteAction.parse(r.body)
+                val handler = RemoteBridge.handler
+                if (command != null && handler != null) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { handler(command.first, command.second) }
+                    CastHttp.response(200, "{}")
+                } else CastHttp.response(409, "{}")
+            }
             r.method == "POST" && r.path == "/play" -> {
                 val cast = CastRequest.fromJson(r.body)
                 if (cast != null && _incoming.tryEmit(cast)) CastHttp.response(200, "{}") else CastHttp.response(400, "{}")
@@ -187,6 +197,38 @@ class Cast(private val context: Context) {
         }
     }
 
+    /** What [device] is playing; null when nothing or it does not answer. */
+    suspend fun state(device: CastDevice): app.couchy.core.cast.RemoteState? = withContext(Dispatchers.IO) {
+        runCatching {
+            val c = URL("http://${device.host}:${device.port}/state").openConnection(Proxy.NO_PROXY) as HttpURLConnection
+            try {
+                c.connectTimeout = 3_000
+                c.readTimeout = 3_000
+                app.couchy.core.cast.RemoteState.fromJson(c.inputStream.bufferedReader().use { it.readText() })
+            } finally {
+                c.disconnect()
+            }
+        }.getOrNull()
+    }
+
+    /** Presses a remote button on [device]; false when it did not take it. */
+    suspend fun control(device: CastDevice, action: String, value: Long = 0): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val c = URL("http://${device.host}:${device.port}/control").openConnection(Proxy.NO_PROXY) as HttpURLConnection
+            try {
+                c.requestMethod = "POST"
+                c.doOutput = true
+                c.connectTimeout = 3_000
+                c.readTimeout = 3_000
+                c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                c.outputStream.use { it.write(app.couchy.core.cast.RemoteAction.json(action, value).toByteArray()) }
+                c.responseCode == 200
+            } finally {
+                c.disconnect()
+            }
+        }.getOrDefault(false)
+    }
+
     /** This device's address in the home network, to type on a phone that does not see it. */
     fun address(): String? = runCatching {
         java.net.NetworkInterface.getNetworkInterfaces().toList()
@@ -204,4 +246,10 @@ class Cast(private val context: Context) {
         val port = a.substringAfter(':', "").toIntOrNull() ?: CastHttp.PORT
         return CastDevice(a, host, port)
     }
+}
+
+/** The player on this device, as the phone remote sees and presses it. Set while a video plays. */
+object RemoteBridge {
+    @Volatile var state: app.couchy.core.cast.RemoteState? = null
+    @Volatile var handler: ((action: String, value: Long) -> Unit)? = null
 }

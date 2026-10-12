@@ -290,6 +290,7 @@ fun PlayerScreen(
         while (true) {
             val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
             ui = ui.copy(positionMs = player.currentPosition, durationMs = duration, bufferedMs = player.bufferedPosition)
+            app.couchy.cast.RemoteBridge.state = app.couchy.core.cast.RemoteState(playback.title, player.currentPosition, duration, player.isPlaying, hasNext)
             delay(500)
             sinceSave += 500
             if (sinceSave >= 5_000 && player.isPlaying) { save(); sinceSave = 0 }
@@ -315,6 +316,30 @@ fun PlayerScreen(
                 player.volume = (left / 10_000f).coerceIn(0f, 1f)
                 if (left <= 0) { player.volume = 1f; sleepAt = null; exit() }
             }
+        }
+    }
+
+    // The phone remote presses the same buttons as the person in front of the screen.
+    DisposableEffect(player) {
+        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+        app.couchy.cast.RemoteBridge.handler = { action, value ->
+            when (action) {
+                app.couchy.core.cast.RemoteAction.TOGGLE -> if (player.isPlaying) player.pause() else player.play()
+                app.couchy.core.cast.RemoteAction.SEEK_BY -> player.seekTo((player.currentPosition + value).coerceAtLeast(0))
+                app.couchy.core.cast.RemoteAction.SEEK_TO -> player.seekTo(value.coerceAtLeast(0))
+                app.couchy.core.cast.RemoteAction.NEXT -> if (hasNext) { save(); onFinished() }
+                app.couchy.core.cast.RemoteAction.STOP -> exit()
+                app.couchy.core.cast.RemoteAction.VOLUME -> audio?.adjustStreamVolume(
+                    android.media.AudioManager.STREAM_MUSIC,
+                    if (value > 0) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+                    android.media.AudioManager.FLAG_SHOW_UI,
+                )
+            }
+            poke()
+        }
+        onDispose {
+            app.couchy.cast.RemoteBridge.handler = null
+            app.couchy.cast.RemoteBridge.state = null
         }
     }
 

@@ -70,3 +70,37 @@ object CastHttp {
             .toByteArray() + bytes
     }
 }
+
+/** What the TV is playing, for the phone acting as its remote. */
+data class RemoteState(
+    val title: String,
+    val positionMs: Long,
+    val durationMs: Long,
+    val playing: Boolean,
+    val hasNext: Boolean,
+) {
+    fun toJson(): String = JSONObject()
+        .put("title", title).put("position", positionMs).put("duration", durationMs)
+        .put("playing", playing).put("next", hasNext).toString()
+
+    companion object {
+        fun fromJson(text: String): RemoteState? = runCatching {
+            val o = JSONObject(text)
+            if (!o.has("title")) return null
+            RemoteState(o.getString("title"), o.optLong("position"), o.optLong("duration"), o.optBoolean("playing"), o.optBoolean("next"))
+        }.getOrNull()
+    }
+}
+
+/** Buttons of the phone remote, sent as POST /control {"action": …, "value": …}. */
+object RemoteAction {
+    const val TOGGLE = "toggle"
+    const val SEEK_BY = "seekBy"
+    const val SEEK_TO = "seekTo"
+    const val NEXT = "next"
+    const val STOP = "stop"
+    const val VOLUME = "volume"
+
+    fun json(action: String, value: Long = 0): String = JSONObject().put("action", action).put("value", value).toString()
+    fun parse(text: String): Pair<String, Long>? = runCatching { JSONObject(text).let { it.getString("action") to it.optLong("value") } }.getOrNull()
+}

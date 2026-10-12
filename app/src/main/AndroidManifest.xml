@@ -132,5 +132,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
+        <!-- The TV screensaver: stills from new releases and "Хочу посмотреть". -->
+        <service
+            android:name=".dream.CouchyDream"
+            android:exported="true"
+            android:label="Couchy"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

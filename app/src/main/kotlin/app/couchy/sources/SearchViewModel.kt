@@ -350,6 +350,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 val rezka = async { runCatching { catalog.rezka.list("/new/") }.getOrDefault(emptyList()) }
                 val main = runCatching { meta.feed() }.getOrDefault(Feed(loaded = true))
                 _feed.value = main.copy(similar = _feed.value.similar, similarTo = _feed.value.similarTo)
+                // The TV screensaver shows these stills while the box rests.
+                app.couchy.dream.CouchyDream.keep(getApplication(), main.trending + main.cinema + main.best + main.bestSeries)
                 _feed.update { it.copy(rezka = rezka.await()) }
             }
             loadSimilar()

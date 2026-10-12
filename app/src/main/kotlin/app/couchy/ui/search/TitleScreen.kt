@@ -271,6 +271,10 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
                 WatchButton(state, actions)
+                Spacer(Modifier.height(4.dp))
+                // Right under the button: every other way to watch, so the choice is made here.
+                WhereToWatch(state, selected, onSelect = { selected = it }, actions)
+                Spacer(Modifier.height(4.dp))
                 Keep(state, actions)
                 state.info?.trailer?.let { id ->
                     SecondaryButton("Трейлер", Icons.Rounded.PlayArrow, onClick = { actions.onTrailer(id) }, modifier = Modifier.fillMaxWidth())
@@ -279,7 +283,6 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 Facts(state.title, details, actions)
             }
         }
-        item("services") { WhereToWatch(state, selected, onSelect = { selected = it }, actions) }
         when (val src = current) {
             Source.Rezka -> item("rezka") { Card("HDrezka") { RezkaBody(state, actions) } }
             is Source.OnSite -> item("site-${src.hit.site}") { Card(siteName(src.hit.site)) { SiteBody(state, src.hit, actions) } }

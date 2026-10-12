@@ -253,6 +253,7 @@ private fun MainScreen(
     // A device with an empty host means "ask which one".
     var remoteOpen by remember { mutableStateOf<app.couchy.cast.CastDevice?>(null) }
     var statsOpen by remember { mutableStateOf(false) }
+    var pickOpen by remember { mutableStateOf(false) }
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
     LaunchedEffect(kids) {
@@ -438,6 +439,13 @@ private fun MainScreen(
     }
 
     // The phone as the TV's remote: opened after sending a video, or from the settings with a device to pick.
+    if (pickOpen) {
+        app.couchy.ui.components.PickDialog(
+            pick = searchVm::pick,
+            onTitle = { t -> pickOpen = false; searchVm.openTitle(t) },
+            onDismiss = { pickOpen = false },
+        )
+    }
     if (statsOpen) {
         val stats = (LocalContext.current.applicationContext as CouchyApp).stats
         app.couchy.ui.components.StatsDialog(summary = stats::summary, onDismiss = { statsOpen = false })
@@ -711,6 +719,7 @@ private fun MainScreen(
                     onVoice = if (hasVoice) ({ runCatching { voice.launch(voiceIntent) }; Unit }) else null,
                     onTitle = searchVm::openTitle,
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
+                    onPick = { pickOpen = true },
                 ),
                 feed = feed,
                 saved = saved,

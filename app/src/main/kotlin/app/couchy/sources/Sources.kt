@@ -210,6 +210,22 @@ class MetaClient(private val web: Web, private val key: () -> String) {
 
     suspend fun catalog(f: app.couchy.core.sources.CatalogFilter, page: Int): List<Title> = catalogPage(f, page).first
 
+    /** «Что посмотреть?»: a random page of well-liked titles for the mood and the time there is. */
+    suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength): List<Title> {
+        val page = kotlin.random.Random.nextInt(1, app.couchy.core.sources.Pick.PAGES + 1)
+        if (tmdb) {
+            val kind = if (length.series) TitleKind.SERIES else TitleKind.MOVIE
+            suspend fun load(n: Int): List<Title> {
+                val (path, params) = app.couchy.core.sources.Pick.tmdb(mood, length, n)
+                return app.couchy.core.sources.Tmdb.parseList(tmdbGet(path, params), kind)
+            }
+            // Narrow choices have fewer pages: the first one always has something.
+            return load(page).ifEmpty { if (page > 1) load(1) else emptyList() }
+        }
+        val filter = app.couchy.core.sources.Pick.filter(mood, length)
+        return catalogPage(filter, kotlin.random.Random.nextInt(1, 4)).first.ifEmpty { catalogPage(filter, 1).first }
+    }
+
     /** One page as shown, and how many titles the page had before narrowing (zero: the end). */
     suspend fun catalogPage(f: app.couchy.core.sources.CatalogFilter, page: Int): Pair<List<Title>, Int> {
         if (tmdb) {

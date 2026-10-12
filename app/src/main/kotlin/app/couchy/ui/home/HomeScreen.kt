@@ -81,6 +81,8 @@ class HomeActions(
     val onTitle: (Title) -> Unit = {},
     /** The catalogue behind a shelf, or a genre. */
     val onCatalog: (CatalogFilter) -> Unit = {},
+    /** «Что посмотреть?»: three titles for a mood; null hides it. */
+    val onPick: (() -> Unit)? = null,
 )
 
 /**
@@ -329,6 +331,21 @@ private fun Genres(side: Dp, actions: HomeActions) {
         contentPadding = PaddingValues(start = side, end = side, top = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        actions.onPick?.let { open ->
+            item("pick") {
+                val shape = RoundedCornerShape(999.dp)
+                Text(
+                    "✦ Что посмотреть?",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.background,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .couchyClickable(shape, onClick = open)
+                        .background(MaterialTheme.colorScheme.onBackground, shape)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
         items(app.couchy.core.sources.Genres.all.take(14), key = { it.slug }) { g -> val slug = g.slug; val name = g.name
             val shape = RoundedCornerShape(999.dp)
             Text(

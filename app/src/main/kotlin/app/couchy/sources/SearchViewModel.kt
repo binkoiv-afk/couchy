@@ -359,6 +359,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** «Что посмотреть?»: three titles for the mood, skipping what was seen and what was just shown. */
+    suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength, shown: Set<String>): List<Title> {
+        val seen = (marks.titles(Marks.SEEN) + marks.titles(Marks.RATED)).map { it.key }.toSet()
+        val pool = runCatching { meta.pick(mood, length) }.getOrDefault(emptyList())
+        return app.couchy.core.sources.Pick.choose(pool, seen + shown)
+    }
+
     /**
      * "Для вас": TMDB's recommendations for what the person loved or scored 7 and up, newest
      * first, without what they have seen or kept already.

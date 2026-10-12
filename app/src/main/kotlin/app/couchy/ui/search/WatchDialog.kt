@@ -36,6 +36,8 @@ fun WatchDialog(
     onDismiss: () -> Unit,
     /** The voice-over was picked for this title before: start with the quality, offering a change. */
     voiceKnown: Boolean = false,
+    /** The video could not be had from here; by default the dialog just closes. */
+    onFailed: () -> Unit = onDismiss,
 ) {
     var voiceChosen by remember { mutableStateOf(translators.size <= 1 || voiceKnown) }
     // Set when an option moves on to the next step, so the dialog closing behind it is not a cancel.
@@ -66,7 +68,7 @@ fun WatchDialog(
         val p = load()
         loaded = true
         when {
-            p == null -> onDismiss()
+            p == null -> onFailed()
             p.variants.size <= 1 -> onPlay(p)
             else -> playback = p
         }

@@ -177,6 +177,10 @@ private data class MainAction(val label: String, val note: String?, val icon: an
 private fun mainAction(state: TitleUi, actions: TitleActions): MainAction {
     val r = state.rezka
     val page = r.page
+    // Kino.pub, with the person's subscription, has every voice-over and 4K: it goes first.
+    state.sites.firstOrNull { it.site == app.couchy.core.sources.KinoPub.ID }?.let { hit ->
+        return MainAction("Смотреть", "Kino.pub · все озвучки · до 4K", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
+    }
     if (r.status == SourceStatus.READY && page != null) {
         val voice = page.translators.firstOrNull { it.id == r.translator }?.name
         val note = listOfNotNull("HDrezka", voice, "без рекламы").joinToString(" · ")
@@ -195,11 +199,13 @@ private fun mainAction(state: TitleUi, actions: TitleActions): MainAction {
             }
         }
     }
+    // HDrezka is slow, blocked or has nothing: whatever else has the title plays instead, without waiting.
+    state.sites.firstOrNull { r.status != SourceStatus.LOADING || it.site in app.couchy.sources.NativeClient.ids }?.let { hit ->
+        val native = hit.site in app.couchy.sources.NativeClient.ids
+        return MainAction("Смотреть", "${siteName(hit.site)} · " + if (native) "прямо в Couchy" else "без рекламы", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
+    }
     if (r.status == SourceStatus.BLOCKED) return MainAction("Открыть HDrezka", "Сайт просит подтвердить, что вы не бот", Icons.Rounded.VerifiedUser, actions.onChallenge)
     if (r.status == SourceStatus.LOADING) return MainAction("Ищу, где посмотреть…", null, null, null)
-    state.sites.firstOrNull()?.let { hit ->
-        return MainAction("Смотреть на ${siteName(hit.site)}", "Плеер сайта, без рекламы", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
-    }
     val group = state.torrents.firstOrNull { it.label.contains("1080") } ?: state.torrents.firstOrNull()
     val hit = group?.hits?.maxByOrNull { it.seeds }
     if (group != null && hit != null) {

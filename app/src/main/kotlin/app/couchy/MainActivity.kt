@@ -600,6 +600,22 @@ private fun MainScreen(
                     onPlay = { p -> watchAsk = null; vm.playDirect(p) },
                     onDismiss = { watchAsk = null },
                     voiceKnown = r.voiceKnown,
+                    // HDrezka gave no video: the next source that has the title starts by itself.
+                    onFailed = {
+                        watchAsk = null
+                        val hit = page.sites.firstOrNull()
+                        val torrent = (page.torrents.firstOrNull { it.label.contains("1080") } ?: page.torrents.firstOrNull())?.hits?.maxByOrNull { it.seeds }
+                        when {
+                            hit != null -> {
+                                android.widget.Toast.makeText(context, "HDrezka не отдала видео, включаю ${app.couchy.sources.NativeClient.name(hit.site) ?: app.couchy.core.sources.Sites.all.firstOrNull { it.id == hit.site }?.name ?: hit.site}", android.widget.Toast.LENGTH_SHORT).show()
+                                searchVm.openSite(hit)
+                            }
+                            torrent != null -> {
+                                android.widget.Toast.makeText(context, "HDrezka не отдала видео, включаю торрент", android.widget.Toast.LENGTH_SHORT).show()
+                                torrentVm.open(torrent.magnet)
+                            }
+                        }
+                    },
                 )
             }
             TitleContent(

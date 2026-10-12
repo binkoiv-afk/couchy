@@ -722,6 +722,7 @@ private fun MainScreen(
                     onTitle = searchVm::openTitle,
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                     onPick = { pickOpen = true },
+                    trailer = if (kids) null else searchVm::trailerClip,
                 ),
                 feed = feed,
                 saved = saved,

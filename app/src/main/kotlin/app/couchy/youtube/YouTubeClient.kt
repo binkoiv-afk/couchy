@@ -179,6 +179,17 @@ object YouTubeClient {
         }
     }
 
+    /** A trailer's picture alone, 720p at most, for playing muted behind Home's banner: link and user agent. */
+    suspend fun clip(id: String): Pair<String, String>? = io {
+        val info = StreamInfo.getInfo(service, YouTubeLinks.watch(id))
+        val picture = info.videoOnlyStreams
+            .filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.height in 360..720 && it.codec?.startsWith("av01") != true }
+            .sortedWith(compareByDescending<org.schabi.newpipe.extractor.stream.VideoStream> { it.height }.thenByDescending { it.format?.mimeType?.contains("mp4") == true })
+            .firstOrNull()
+            ?: info.videoStreams.filter { it.isUrl && it.height <= 720 }.maxByOrNull { it.height }
+        picture?.let { it.content to agentFor(it.content) }
+    }
+
     private fun agentFor(url: String): String = when {
         YoutubeParsingHelper.isAndroidStreamingUrl(url) -> YoutubeParsingHelper.getAndroidUserAgent(null)
         YoutubeParsingHelper.isIosStreamingUrl(url) -> YoutubeParsingHelper.getIosUserAgent(null)

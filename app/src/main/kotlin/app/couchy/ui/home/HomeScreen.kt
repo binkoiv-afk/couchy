@@ -83,6 +83,8 @@ class HomeActions(
     val onCatalog: (CatalogFilter) -> Unit = {},
     /** «Что посмотреть?»: three titles for a mood; null hides it. */
     val onPick: (() -> Unit)? = null,
+    /** A muted trailer for the banner: link and user agent; null where trailers are off. */
+    val trailer: (suspend (Title) -> Pair<String, String>?)? = null,
 )
 
 /**
@@ -190,9 +192,21 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
     val form = LocalFormFactor.current
     val pager = rememberPagerState { items.size }
     var interacted by remember { mutableStateOf(false) }
-    LaunchedEffect(items, interacted) {
-        while (!interacted && items.size > 1) {
+    // After a moment on a banner its trailer plays silently; the banners wait for it to end.
+    var clip by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var clipPage by remember { mutableStateOf(-1) }
+    LaunchedEffect(pager.settledPage, items) {
+        clip = null
+        val t = items.getOrNull(pager.settledPage) ?: return@LaunchedEffect
+        delay(2_000)
+        val found = actions.trailer?.invoke(t)
+        clipPage = pager.settledPage
+        clip = found
+    }
+    LaunchedEffect(items, interacted, clip) {
+        while (!interacted && clip == null && items.size > 1) {
             delay(7_000)
+            if (clip != null) break
             pager.animateScrollToPage((pager.currentPage + 1) % items.size)
         }
     }
@@ -208,6 +222,12 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
             Box(Modifier.fillMaxSize()) {
                 Artwork(t.name, Modifier.fillMaxSize()) {
                     AsyncImage(if (form.wide) t.backdrop ?: t.poster else t.poster ?: t.backdrop, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                clip?.takeIf { page == clipPage && page == pager.settledPage }?.let { (url, agent) ->
+                    app.couchy.ui.components.TrailerVideo(url, agent, Modifier.fillMaxSize()) {
+                        clip = null
+                        if (!interacted && items.size > 1) clipPage = -1
+                    }
                 }
                 Box(
                     Modifier.fillMaxSize().background(

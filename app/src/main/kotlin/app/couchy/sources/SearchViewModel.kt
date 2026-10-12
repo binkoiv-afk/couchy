@@ -359,6 +359,20 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val clips = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+    private val noClip = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** A muted trailer for Home's banner: on Wi-Fi only, link and user agent; null when there is none. */
+    suspend fun trailerClip(t: Title): Pair<String, String>? {
+        clips[t.key]?.let { return it }
+        if (t.key in noClip) return null
+        val cm = getApplication<android.app.Application>().getSystemService(android.net.ConnectivityManager::class.java)
+        if (cm == null || cm.isActiveNetworkMetered) return null
+        val clip = runCatching { meta.info(t)?.trailer?.let { app.couchy.youtube.YouTubeClient.clip(it) } }.getOrNull()
+        if (clip == null) noClip += t.key else clips[t.key] = clip
+        return clip
+    }
+
     /**
      * «Ранее в сериале»: after a break of a few days, what happened in the episode before this one.
      * Null when there was no break, for the first episode, or when nothing is known.

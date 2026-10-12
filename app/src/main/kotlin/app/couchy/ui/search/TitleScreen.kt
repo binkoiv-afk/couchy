@@ -116,6 +116,8 @@ class TitleActions(
     val onSeen: () -> Unit = {},
     /** The person's score, 1 to 10, or null to take it away. */
     val onRate: (Int?) -> Unit = {},
+    /** Marks episodes as watched or not: season, episode, watched, and whether every one before it too. */
+    val onMarkEpisode: (season: Int, episode: Int, watched: Boolean, before: Boolean) -> Unit = { _, _, _, _ -> },
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -628,22 +630,50 @@ private fun Ready(state: TitleUi, r: RezkaUi, actions: TitleActions) {
         return
     }
     val season = r.season ?: seasons.firstOrNull() ?: return
+    // A long press on an episode: mark it, or everything up to it, as watched.
+    var menu by remember { mutableStateOf<app.couchy.core.sources.EpisodeRef?>(null) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         r.episodes.filter { it.season == season }.forEach { e ->
             val key = "${e.season}:${e.episode}"
-            EpisodeTile(e.episode, state.progress[key] ?: 0f, key in state.watched) { actions.onPlay(e.season, e.episode, false) }
+            EpisodeTile(e.episode, state.progress[key] ?: 0f, key in state.watched, onLongClick = { menu = e }) { actions.onPlay(e.season, e.episode, false) }
         }
+    }
+    Text(
+        "Удерживайте серию, чтобы отметить её просмотренной",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    menu?.let { e ->
+        val watched = "${e.season}:${e.episode}" in state.watched
+        app.couchy.ui.player.OptionsDialog(
+            "Сезон ${e.season}, серия ${e.episode}",
+            listOf(
+                app.couchy.ui.player.OptionSection(
+                    null,
+                    listOfNotNull(
+                        app.couchy.ui.player.Option(if (watched) "Снять отметку «просмотрено»" else "Отметить просмотренной", false) {
+                            actions.onMarkEpisode(e.season, e.episode, !watched, false); menu = null
+                        },
+                        app.couchy.ui.player.Option("Отметить все серии до этой", false) {
+                            actions.onMarkEpisode(e.season, e.episode, true, true); menu = null
+                        }.takeIf { e.episode > 1 },
+                        app.couchy.ui.player.Option("Смотреть с начала", false) { menu = null; actions.onPlay(e.season, e.episode, true) },
+                    ),
+                ),
+            ),
+            onDismiss = { menu = null },
+        )
     }
 }
 
 @Composable
-private fun EpisodeTile(number: Int, progress: Float, watched: Boolean, onClick: () -> Unit) {
+private fun EpisodeTile(number: Int, progress: Float, watched: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier
             .width(64.dp)
             .height(46.dp)
-            .couchyClickable(shape, onClick = onClick)
+            .couchyClickable(shape, onLongClick = onLongClick, onClick = onClick)
             .background(if (watched) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh, shape),
         contentAlignment = Alignment.Center,
     ) {

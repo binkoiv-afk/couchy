@@ -602,6 +602,7 @@ private fun MainScreen(
                     onLoved = { searchVm.toggleLoved(page.title) },
                     onFollow = { searchVm.toggleFollow(page.title) },
                     onSeen = { searchVm.toggleSeen(page.title) },
+                    onMarkEpisode = searchVm::markEpisode,
                     onRate = { searchVm.rate(page.title, it) },
                 ),
             )

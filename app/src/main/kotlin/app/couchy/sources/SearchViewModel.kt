@@ -785,6 +785,33 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectSeason(season: Int) = patchRezka { it.copy(season = season) }
 
+    /**
+     * "Просмотрено" set by hand on an episode, or on every episode of its season up to it.
+     * Unmarking clears the episode's progress in every voice-over.
+     */
+    fun markEpisode(season: Int, episode: Int, watched: Boolean, before: Boolean) {
+        val t = _title.value ?: return
+        val r = t.rezka
+        val url = r.url ?: return
+        val translator = r.translator ?: return
+        val targets = r.episodes.filter { it.season == season && (it.episode == episode || (before && it.episode < episode)) }
+        viewModelScope.launch {
+            val all = library.snapshot()
+            val prefix = url.substringBefore('#') + "#couchy-rezka="
+            targets.forEach { e ->
+                if (watched) {
+                    val key = Rezka.ref(url, translator, e.season, e.episode)
+                    library.open(key, "${t.title.name} · S${e.season}E${e.episode}")
+                    // A full mark: the episode counts as seen and is not offered to continue.
+                    library.saveProgress(key, MARKED_MS, MARKED_MS)
+                } else {
+                    all.filter { it.uri.startsWith(prefix) && it.uri.substringAfter(prefix).substringAfter(':') == "${e.season}:${e.episode}" }
+                        .forEach { library.clearProgress(it.uri) }
+                }
+            }
+        }
+    }
+
     /** Starts the film, or an episode of a series, from HDrezka. */
     suspend fun playRezka(season: Int = 0, episode: Int = 0, fromStart: Boolean = false): Playback? {
         val t = _title.value ?: return null
@@ -912,6 +939,11 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun patch(f: (TitleUi) -> TitleUi) = _title.update { it?.let(f) }
+
+    private companion object {
+        /** Length saved for an episode marked by hand, whose real length is not known. */
+        const val MARKED_MS = 60_000L
+    }
     private fun patchRezka(f: (RezkaUi) -> RezkaUi) = patch { it.copy(rezka = f(it.rezka)) }
 
     private fun TitleUi.withProgress(all: List<MediaEntity>): TitleUi {

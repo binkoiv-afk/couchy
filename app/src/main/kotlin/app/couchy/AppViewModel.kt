@@ -50,6 +50,8 @@ data class Playback(
     val skips: List<Skip> = emptyList(),
     /** IMDb id of the film or series, for looking up subtitles. */
     val imdb: String? = null,
+    /** HDrezka's voice-overs for this title (id and name), switchable in the player. */
+    val voices: List<Pair<Int, String>> = emptyList(),
 )
 
 data class Skip(val startMs: Long, val endMs: Long, val label: String)

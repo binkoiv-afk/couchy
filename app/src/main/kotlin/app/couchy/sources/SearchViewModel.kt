@@ -139,6 +139,8 @@ data class RezkaUi(
     val episodes: List<EpisodeRef> = emptyList(),
     val season: Int? = null,
     val episodesLoading: Boolean = false,
+    /** A voice-over was picked for this title before, so "Смотреть" does not ask again. */
+    val voiceKnown: Boolean = false,
 )
 
 data class TitleUi(
@@ -722,10 +724,12 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val page = catalog.rezka.page(url)
             val default = page.defaultTranslator ?: page.translators.firstOrNull()?.id
             // The voice-over picked for this title before, or else the studio picked last anywhere.
-            val remembered = voices.getInt("id:${page.id}", -1).takeIf { id -> page.translators.any { it.id == id } }
+            val own = voices.getInt("id:${page.id}", -1).takeIf { id -> page.translators.any { it.id == id } }
+            val remembered = own
                 ?: voices.getString("last", null)?.let { name -> page.translators.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id }
             val firstSeason = page.episodes.firstOrNull()?.season
-            patchRezka { RezkaUi(SourceStatus.READY, url = url, page = page, translator = default, episodes = page.episodes, season = firstSeason) }
+            voicesOf[url] = page.translators
+            patchRezka { RezkaUi(SourceStatus.READY, url = url, page = page, translator = default, episodes = page.episodes, season = firstSeason, voiceKnown = own != null) }
             patch { it.copy(description = page.description ?: it.description, title = it.title.copy(rezkaUrl = url, poster = it.title.poster ?: page.poster)) }
             if (remembered != null && remembered != default) selectTranslator(remembered, remember = false)
         } catch (e: ChallengeException) {
@@ -756,7 +760,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     fun selectTranslator(id: Int, remember: Boolean = true) {
         val r = _title.value?.rezka ?: return
         val page = r.page ?: return
-        patchRezka { it.copy(translator = id) }
+        patchRezka { it.copy(translator = id, voiceKnown = it.voiceKnown || remember) }
         if (remember) {
             voices.edit()
                 .putInt("id:${page.id}", id)
@@ -801,6 +805,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val playback = guarded({ playRef(ref) }) {
                 val series = parsed.season > 0
+                // The player offers the other voice-overs; they come from the title's page.
+                if (voicesOf[parsed.pageUrl] == null) runCatching { catalog.rezka.page(parsed.pageUrl) }.getOrNull()?.let { voicesOf[parsed.pageUrl] = it.translators }
                 val eps = if (series) runCatching { catalog.rezka.episodes(id, parsed.translator, parsed.pageUrl) }.getOrDefault(emptyList()) else emptyList()
                 val entry = library.get(ref)
                 build(parsed.pageUrl, id, series, Translator(parsed.translator, ""), parsed.season, parsed.episode, entry?.title?.substringBefore(" · ") ?: "HDrezka", eps, false)
@@ -810,6 +816,29 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun autoPlayHandled() { _autoPlay.value = null }
+
+    /** HDrezka's voice-overs by page, so the player can offer them for any episode. */
+    private val voicesOf = java.util.concurrent.ConcurrentHashMap<String, List<Translator>>()
+
+    /**
+     * Another voice-over for what is playing, from the same moment. It is remembered for the title,
+     * so the next episode and the next "Смотреть" use it too.
+     */
+    suspend fun switchVoice(key: String, translatorId: Int, positionMs: Long): Playback? {
+        val parsed = Rezka.parseRef(key) ?: return null
+        val id = Rezka.idFromUrl(parsed.pageUrl) ?: return null
+        val list = voicesOf[parsed.pageUrl].orEmpty()
+        val translator = list.firstOrNull { it.id == translatorId } ?: Translator(translatorId, "")
+        voices.edit().putInt("id:$id", translatorId).apply { translator.name.takeIf { it.isNotBlank() }?.let { putString("last", it) } }.apply()
+        if (_title.value?.rezka?.url == parsed.pageUrl) selectTranslator(translatorId, remember = false)
+        val playback = guarded({ viewModelScope.launch { switchVoice(key, translatorId, positionMs)?.let { _autoPlay.value = it } } }) {
+            val series = parsed.season > 0
+            val eps = if (series) runCatching { catalog.rezka.episodes(id, translatorId, parsed.pageUrl) }.getOrDefault(emptyList()) else emptyList()
+            val name = library.get(key)?.title?.substringBefore(" · ") ?: _title.value?.title?.name ?: "HDrezka"
+            build(parsed.pageUrl, id, series, translator, parsed.season, parsed.episode, name, eps, false)
+        }
+        return playback?.copy(startMs = positionMs)
+    }
 
     private suspend fun build(
         url: String, id: Int, series: Boolean, translator: Translator, season: Int, episode: Int,
@@ -830,6 +859,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             episodes.getOrNull(i + 1)?.takeIf { i >= 0 }?.let { Rezka.ref(url, translator.id, it.season, it.episode) }
         } else null
         return Playback(
+            voices = voicesOf[url].orEmpty().map { it.id to it.name }.filter { it.second.isNotBlank() },
             uri = best.url,
             title = entry.title,
             startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),

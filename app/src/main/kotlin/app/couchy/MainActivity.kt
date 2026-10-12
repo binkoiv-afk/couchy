@@ -487,6 +487,9 @@ private fun MainScreen(
                 )
             }),
             onVariant = { url, position -> vm.playDirect(current.copy(uri = url, startMs = position)) },
+            onVoice = { id, position -> scope.launch { searchVm.switchVoice(current.key, id, position)?.let(vm::playDirect) }; Unit },
+            // The title page is under the player: closing it shows every other way to watch.
+            onSources = if (route is app.couchy.sources.Route.TitlePage && current.live == null) vm::closePlayer else null,
             onDownload = if (current.live == null && current.uri.startsWith("http")) ({
                 downloads.start(current)
             }) else null,
@@ -568,6 +571,7 @@ private fun MainScreen(
                     load = { searchVm.playRezka(s, e, fromStart) },
                     onPlay = { p -> watchAsk = null; vm.playDirect(p) },
                     onDismiss = { watchAsk = null },
+                    voiceKnown = r.voiceKnown,
                 )
             }
             TitleContent(

@@ -34,8 +34,10 @@ fun WatchDialog(
     load: suspend () -> Playback?,
     onPlay: (Playback) -> Unit,
     onDismiss: () -> Unit,
+    /** The voice-over was picked for this title before: start with the quality, offering a change. */
+    voiceKnown: Boolean = false,
 ) {
-    var voiceChosen by remember { mutableStateOf(translators.size <= 1) }
+    var voiceChosen by remember { mutableStateOf(translators.size <= 1 || voiceKnown) }
     // Set when an option moves on to the next step, so the dialog closing behind it is not a cancel.
     var moving by remember { mutableStateOf(false) }
     if (!voiceChosen) {
@@ -86,9 +88,13 @@ fun WatchDialog(
         }
         return
     }
+    val voice = translators.firstOrNull { it.id == current }?.takeIf { translators.size > 1 }
     OptionsDialog(
         "Качество",
-        listOf(
+        listOfNotNull(
+            voice?.let { v ->
+                OptionSection("ОЗВУЧКА", listOf(Option("${v.name} · сменить", false) { moving = true; voiceChosen = false }))
+            },
             OptionSection(
                 null,
                 p.variants.map { (label, url) ->

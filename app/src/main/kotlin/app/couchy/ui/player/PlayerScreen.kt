@@ -119,6 +119,10 @@ fun PlayerScreen(
     onSubtitle: ((label: String, uri: String, language: String, positionMs: Long) -> Unit)? = null,
     /** Saves the video on the device; null where it cannot be saved. */
     onDownload: (() -> Unit)? = null,
+    /** Another of the site's voice-overs (Playback.voices), from the given position. */
+    onVoice: ((id: Int, positionMs: Long) -> Unit)? = null,
+    /** Back to the title's sources, to pick another one; null when there is no title page behind. */
+    onSources: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
@@ -525,8 +529,17 @@ fun PlayerScreen(
     when (sheet) {
         Sheet.TRACKS -> OptionsDialog(
             "Озвучка и субтитры",
-            listOf(
-                OptionSection("ОЗВУЧКА", trackOptions(player, tracks, C.TRACK_TYPE_AUDIO) { lang -> onTracksChosen(lang, currentTextLanguage(player)) }),
+            listOfNotNull(
+                // The site's voice-overs are separate videos: picking one goes on from the same moment.
+                if (playback.voices.size > 1 && onVoice != null) {
+                    val current = app.couchy.core.sources.Rezka.parseRef(playback.key)?.translator
+                    OptionSection("ОЗВУЧКА", playback.voices.map { (id, name) ->
+                        Option(name, id == current) { if (id != current) { save(); onVoice(id, player.currentPosition) } }
+                    })
+                } else null,
+                trackOptions(player, tracks, C.TRACK_TYPE_AUDIO) { lang -> onTracksChosen(lang, currentTextLanguage(player)) }
+                    .takeIf { playback.voices.size <= 1 || onVoice == null || it.size > 1 }
+                    ?.let { OptionSection(if (playback.voices.size > 1 && onVoice != null) "ДОРОЖКА" else "ОЗВУЧКА", it) },
                 OptionSection(
                     "СУБТИТРЫ",
                     listOf(
@@ -538,6 +551,7 @@ fun PlayerScreen(
                     ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) } +
                         (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSubs = true }) else emptyList()),
                 ),
+                onSources?.let { back -> OptionSection("ИСТОЧНИК", listOf(Option("Другой источник…", false) { save(); back() })) },
             ),
             onDismiss = { sheet = null },
         )

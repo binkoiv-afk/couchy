@@ -151,6 +151,7 @@ fun PlayerScreen(
     val background = playback.live == null && (playback.audioUri != null || app.couchy.core.youtube.YouTubeLinks.isVideo(playback.key))
     // The series' opening titles, marked once and jumped over in every episode after.
     val marks = (context.applicationContext as app.couchy.CouchyApp).marks
+    val stats = (context.applicationContext as app.couchy.CouchyApp).stats
     val series = remember(playback.key) { app.couchy.data.Intros.seriesOf(playback) }
     var intro by remember(series) { mutableStateOf(series?.let { app.couchy.data.Intros.get(marks, it) }) }
     var introFrom by remember(playback.key) { mutableStateOf<Long?>(null) }
@@ -192,6 +193,7 @@ fun PlayerScreen(
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         onDispose {
+            stats.flush()
             bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             // Brightness set by a swipe belongs to the video only.
             window?.attributes = window?.attributes?.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
@@ -293,6 +295,7 @@ fun PlayerScreen(
             app.couchy.cast.RemoteBridge.state = app.couchy.core.cast.RemoteState(playback.title, player.currentPosition, duration, player.isPlaying, hasNext)
             delay(500)
             sinceSave += 500
+            if (player.isPlaying && playback.live == null) stats.played(playback.title, 500)
             if (sinceSave >= 5_000 && player.isPlaying) { save(); sinceSave = 0 }
             // Sponsor reads and the like: jump to their end once, the first time playback reaches them.
             if (player.isPlaying) {

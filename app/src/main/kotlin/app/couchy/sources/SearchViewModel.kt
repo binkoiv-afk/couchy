@@ -781,6 +781,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val key = app.couchy.core.sources.NativeRef.of(release.source, release.id, season, episode)
             val title = if (release.series) "${release.name} · S${season}E$episode" else release.name
             val entry = library.open(key, title)
+            rememberTaste(entry.title)
             if (fromStart) library.clearProgress(key)
             val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
             val file = e.files.firstOrNull { it.first == wanted } ?: e.files.first()
@@ -813,6 +814,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         _siteWindow.value = null
         val key = window.key ?: SiteRef.siteOf(pageUrl)?.let { SiteRef.of(pageUrl, it.id) } ?: SiteRef.of(pageUrl, window.site?.id ?: "web")
         val entry = library.open(key, window.title)
+        rememberTaste(entry.title)
         // A series page plays whichever episode was picked in the site's player, so it starts where the site does.
         val start = if (window.series) 0L else Progress.resumeFrom(entry.positionMs, entry.durationMs)
         return Playback(
@@ -925,6 +927,15 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Genres and cast of what is played now, for «Итоги». */
+    private fun rememberTaste(playbackTitle: String) {
+        val t = _title.value ?: return
+        val site = t.rezka.page?.details ?: app.couchy.core.sources.TitleDetails()
+        val info = t.info?.details ?: app.couchy.core.sources.TitleDetails()
+        val d = if (t.info?.russian == true) info.or(site) else site.or(info)
+        couchy.stats.remember(playbackTitle, d.genres.map { it.name }, d.actors.map { it.name })
+    }
+
     /** Starts the film, or an episode of a series, from HDrezka. */
     suspend fun playRezka(season: Int = 0, episode: Int = 0, fromStart: Boolean = false): Playback? {
         val t = _title.value ?: return null
@@ -994,6 +1005,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
         val entry = library.open(key, title)
+        rememberTaste(entry.title)
         if (fromStart) library.clearProgress(key)
         val next = if (series) {
             val i = episodes.indexOfFirst { it.season == season && it.episode == episode }

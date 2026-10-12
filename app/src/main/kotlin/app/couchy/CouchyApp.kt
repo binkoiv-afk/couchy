@@ -25,6 +25,7 @@ class CouchyApp : Application() {
     val marks by lazy { app.couchy.data.Marks(this) }
     val downloads by lazy { app.couchy.download.Downloads(this) }
     val kinopub by lazy { app.couchy.sources.KinoPubAccount(this) }
+    val stats by lazy { app.couchy.data.WatchStats(this) }
     val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv, marks) }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)

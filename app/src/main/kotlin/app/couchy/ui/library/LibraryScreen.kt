@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Delete
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -58,6 +59,8 @@ class LibraryActions(
     val onRemoveSaved: (app.couchy.download.Saved) -> Unit = {},
     /** Deletes one of the person's folders; the titles in it stay everywhere else. */
     val onRemoveFolder: (id: String) -> Unit = {},
+    /** Opens «Итоги»: hours watched, favourite genres and actors. */
+    val onStats: (() -> Unit)? = null,
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
@@ -78,9 +81,14 @@ fun LibraryContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Моё", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
-            // Phones keep settings here; TV and tablets have them in the side menu.
-            if (!form.wide) actions.onSettings?.let { open ->
-                app.couchy.ui.components.SecondaryButton("Настройки", Icons.Rounded.Settings, onClick = open)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                actions.onStats?.let { open ->
+                    app.couchy.ui.components.SecondaryButton("Итоги", Icons.Rounded.Insights, onClick = open)
+                }
+                // Phones keep settings here; TV and tablets have them in the side menu.
+                if (!form.wide) actions.onSettings?.let { open ->
+                    app.couchy.ui.components.SecondaryButton("Настройки", Icons.Rounded.Settings, onClick = open)
+                }
             }
         }
         // Null: everything opened; otherwise one of the film lists.

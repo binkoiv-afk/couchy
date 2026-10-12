@@ -59,7 +59,39 @@ class Marks(context: Context) {
     fun scores(): Map<String, Int> = _all.value.filterKeys { it.startsWith("$RATED|") }
         .mapNotNull { (k, v) -> runCatching { k.substringAfter('|') to JSONObject(v).getInt("score") }.getOrNull() }.toMap()
 
+    // ---- Folders: the person's own lists of titles ----
+
+    /** Folders, oldest first, so they keep their order. */
+    fun folders(): List<Folder> = _all.value.filterKeys { it.startsWith("$FOLDER|") }
+        .mapNotNull { (k, v) -> runCatching { JSONObject(v).let { Folder(k.substringAfter('|'), it.getString("name"), it.optLong("at")) } }.getOrNull() }
+        .sortedBy { it.at }
+        .map { f -> f.copy(titles = titles(inFolder(f.id))) }
+
+    fun addFolder(name: String): String {
+        val id = System.currentTimeMillis().toString(36)
+        put("$FOLDER|$id", JSONObject().put("name", name.trim()))
+        return id
+    }
+
+    fun renameFolder(id: String, name: String) {
+        val old = _all.value["$FOLDER|$id"]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
+        replaceAll(_all.value + ("$FOLDER|$id" to old.put("name", name.trim()).toString()))
+    }
+
+    /** The folder goes with what was put in it; the titles stay everywhere else. */
+    fun removeFolder(id: String) = replaceAll(_all.value.filterKeys { it != "$FOLDER|$id" && !it.startsWith(inFolder(id) + "|") })
+
+    fun toggleInFolder(id: String, t: Title) = toggleTitle(inFolder(id), t)
+
+    /** Ids of the folders a title is in. */
+    fun foldersOf(t: Title): Set<String> = folders().filter { hasTitle(inFolder(it.id), t) }.map { it.id }.toSet()
+
+    private fun inFolder(id: String) = "$IN_FOLDER$id"
+
     companion object {
+        const val FOLDER = "folder"
+        /** Prefix of a folder's entries: "in-<id>|<title key>". */
+        const val IN_FOLDER = "in-"
         /** Watched, by the person's own word. */
         const val SEEN = "seen"
         const val RATED = "rated"
@@ -71,6 +103,9 @@ class Marks(context: Context) {
     }
 }
 
+/** A list of titles the person named: "Новый год", "С детьми", "Ужасы на выходные". */
+data class Folder(val id: String, val name: String, val at: Long = 0, val titles: List<Title> = emptyList())
+
 /** The two title lists Home and "Моё" show. */
 data class SavedTitles(
     val later: List<Title> = emptyList(),
@@ -79,4 +114,5 @@ data class SavedTitles(
     val rated: List<Title> = emptyList(),
     /** The person's scores by title key. */
     val scores: Map<String, Int> = emptyMap(),
+    val folders: List<Folder> = emptyList(),
 )

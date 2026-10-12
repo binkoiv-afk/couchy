@@ -30,6 +30,7 @@ class CouchyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         QualityChoice.init(this)
+        ExternalPlayer.init(this)
         app.couchy.sync.WebDav.FILE = "couchy-sync${app.couchy.data.Profiles.suffix(this)}.json"
         // Every connection asks the bypass which way to go, so it is in place before anything loads.
         bypass.install()

@@ -88,6 +88,49 @@ object QualityChoice {
     }
 }
 
+/**
+ * Another video player on the device (VLC, MX Player, Just Player): either always, as set in
+ * "Просмотр", or for one video from the player's menu. Progress is not brought back from it.
+ */
+object ExternalPlayer {
+    private var prefs: android.content.SharedPreferences? = null
+
+    @Volatile var always: Boolean = false
+        set(value) {
+            field = value
+            prefs?.edit()?.putBoolean("external", value)?.apply()
+        }
+
+    fun init(context: android.content.Context) {
+        prefs = context.getSharedPreferences("player", android.content.Context.MODE_PRIVATE)
+        always = prefs?.getBoolean("external", false) ?: false
+    }
+
+    /** Whether another player can show it: a link, with sound and picture in one stream. */
+    fun fits(p: Playback) = p.uri.startsWith("http") && p.audioUri == null
+
+    /** Opens the chooser of video players; false when there is none. */
+    fun open(context: android.content.Context, p: Playback, positionMs: Long = p.startMs): Boolean {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+            .setDataAndType(android.net.Uri.parse(p.uri), "video/*")
+            .putExtra("title", p.title)
+            .putExtra("position", positionMs)
+        val headers = p.headers.flatMap { listOf(it.key, it.value) }.toTypedArray()
+        if (headers.isNotEmpty()) intent.putExtra("headers", headers)
+        if (context.packageManager.queryIntentActivities(intent, 0).none { it.activityInfo.packageName != context.packageName }) return false
+        // MX Player reads the position as a whole number of milliseconds.
+        val mx = android.os.Bundle().apply { putInt("position", positionMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
+        val chooser = android.content.Intent.createChooser(intent, "Открыть в плеере")
+            .putExtra(android.content.Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(android.content.ComponentName(context, "app.couchy.MainActivity")))
+            .putExtra(android.content.Intent.EXTRA_REPLACEMENT_EXTRAS, android.os.Bundle().apply {
+                putBundle("com.mxtech.videoplayer.ad", mx)
+                putBundle("com.mxtech.videoplayer.pro", mx)
+            })
+        if (context !is android.app.Activity) chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { context.startActivity(chooser) }.isSuccess
+    }
+}
+
 data class TorrentPlay(val hash: String, val fileId: Int, val nextFileId: Int?)
 
 data class LiveChannel(

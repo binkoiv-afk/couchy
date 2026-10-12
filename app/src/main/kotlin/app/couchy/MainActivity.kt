@@ -466,6 +466,11 @@ private fun MainScreen(
     }
 
     val current = playback
+    // "Внешний плеер" in "Просмотр": every video that fits goes to the chosen app instead.
+    LaunchedEffect(current) {
+        if (current != null && ExternalPlayer.always && current.live == null && ExternalPlayer.fits(current) &&
+            ExternalPlayer.open(context, current)) vm.closePlayer()
+    }
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
@@ -490,6 +495,10 @@ private fun MainScreen(
             onVoice = { id, position -> scope.launch { searchVm.switchVoice(current.key, id, position)?.let(vm::playDirect) }; Unit },
             // The title page is under the player: closing it shows every other way to watch.
             onSources = if (route is app.couchy.sources.Route.TitlePage && current.live == null) vm::closePlayer else null,
+            onExternal = if (ExternalPlayer.fits(current)) ({ position ->
+                if (ExternalPlayer.open(context, current, position)) vm.closePlayer()
+                else android.widget.Toast.makeText(context, "Не нашлось другого видеоплеера", android.widget.Toast.LENGTH_SHORT).show()
+            }) else null,
             onDownload = if (current.live == null && current.uri.startsWith("http")) ({
                 downloads.start(current)
             }) else null,
@@ -581,6 +590,8 @@ private fun MainScreen(
                     following = page.title.imdbId != null && page.title.imdbId in following,
                     seen = saved.seen.any { it.key == page.title.key },
                     score = saved.scores[page.title.key],
+                    folders = saved.folders,
+                    inFolders = saved.folders.filter { f -> f.titles.any { it.key == page.title.key } }.map { it.id }.toSet(),
                 ),
                 TitleActions(
                     onBack = searchVm::back,
@@ -603,6 +614,8 @@ private fun MainScreen(
                     onFollow = { searchVm.toggleFollow(page.title) },
                     onSeen = { searchVm.toggleSeen(page.title) },
                     onMarkEpisode = searchVm::markEpisode,
+                    onFolder = { id -> searchVm.toggleInFolder(id, page.title) },
+                    onNewFolder = { name -> searchVm.addFolder(name, page.title) },
                     onRate = { searchVm.rate(page.title, it) },
                 ),
             )
@@ -717,6 +730,7 @@ private fun MainScreen(
                     onTitle = searchVm::openTitle,
                     onSaved = { s -> if (s.done) vm.open(s.playback.key, s.playback.title) },
                     onRemoveSaved = { s -> downloads.remove(s.playback.key) },
+                    onRemoveFolder = searchVm::removeFolder,
                 ),
             )
             Destination.SETTINGS -> prefs?.let { p ->

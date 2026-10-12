@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.VpnLock
@@ -110,6 +111,7 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
         "У каждого в семье своя история, места остановки, «Смотреть позже», «Любимое» и подписки YouTube. Настройки, плейлисты и загрузки общие.",
     ),
     APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
+    PLAYBACK("Просмотр", Icons.Rounded.PlayCircle, "Качество, в котором начинается видео, и каким плеером его смотреть."),
     SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочее зеркало HDrezka, например https://hdrezka.me, если основной адрес не открывается."),
     TORRENTS(
         "Торренты", Icons.Rounded.CloudDownload,
@@ -156,6 +158,7 @@ fun SettingsContent(
     fun summary(p: SettingsPage): String = when (p) {
         SettingsPage.PROFILES -> profileName
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
+        SettingsPage.PLAYBACK -> app.couchy.QualityChoice.name(app.couchy.QualityChoice.label) + " · " + if (app.couchy.ExternalPlayer.always) "внешний плеер" else "плеер Couchy"
         SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
         SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
@@ -174,6 +177,7 @@ fun SettingsContent(
                     UiMode.entries.forEach { Chip(it.label, it == prefs.uiMode, onClick = { actions.onUiMode(it) }) }
                 }
             }
+            SettingsPage.PLAYBACK -> PlaybackSettings()
             SettingsPage.SOURCES -> {
                 var host by rememberSaveable(prefs.rezkaHost) { mutableStateOf(prefs.rezkaHost) }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -317,6 +321,23 @@ private fun Group(title: String, hint: String? = null, content: @Composable () -
         Text(title, style = MaterialTheme.typography.titleSmall)
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
+}
+
+@Composable
+private fun PlaybackSettings() {
+    var quality by remember { mutableStateOf(app.couchy.QualityChoice.label) }
+    var external by remember { mutableStateOf(app.couchy.ExternalPlayer.always) }
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Group("Качество", "Видео начинается в нём, а если такого нет, то в ближайшем ниже. Касается онлайн-источников и YouTube.") {
+            app.couchy.QualityChoice.options.forEach { option ->
+                Chip(app.couchy.QualityChoice.name(option), option == quality, onClick = { app.couchy.QualityChoice.label = option; quality = option })
+            }
+        }
+        Group("Плеер", "Внешний: VLC, MX Player или другой установленный. Место остановки он в Couchy не возвращает. Из плеера Couchy видео тоже можно отдать: «Озвучка» → «Открыть во внешнем плеере».") {
+            Chip("Couchy", !external, onClick = { app.couchy.ExternalPlayer.always = false; external = false })
+            Chip("Внешний", external, onClick = { app.couchy.ExternalPlayer.always = true; external = true })
+        }
     }
 }
 

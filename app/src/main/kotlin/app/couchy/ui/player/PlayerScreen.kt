@@ -123,6 +123,8 @@ fun PlayerScreen(
     onVoice: ((id: Int, positionMs: Long) -> Unit)? = null,
     /** Back to the title's sources, to pick another one; null when there is no title page behind. */
     onSources: (() -> Unit)? = null,
+    /** Hands the video to another player app from the given position; null where it cannot. */
+    onExternal: ((positionMs: Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
@@ -551,7 +553,10 @@ fun PlayerScreen(
                     ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) } +
                         (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSubs = true }) else emptyList()),
                 ),
-                onSources?.let { back -> OptionSection("ИСТОЧНИК", listOf(Option("Другой источник…", false) { save(); back() })) },
+                listOfNotNull(
+                    onSources?.let { back -> Option("Другой источник…", false) { save(); back() } },
+                    onExternal?.let { open -> Option("Открыть во внешнем плеере", false) { save(); open(player.currentPosition) } },
+                ).takeIf { it.isNotEmpty() }?.let { OptionSection("ИСТОЧНИК", it) },
             ),
             onDismiss = { sheet = null },
         )

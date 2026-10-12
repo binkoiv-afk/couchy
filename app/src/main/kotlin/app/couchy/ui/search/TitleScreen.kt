@@ -1,6 +1,8 @@
 package app.couchy.ui.search
 
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -118,6 +120,10 @@ class TitleActions(
     val onRate: (Int?) -> Unit = {},
     /** Marks episodes as watched or not: season, episode, watched, and whether every one before it too. */
     val onMarkEpisode: (season: Int, episode: Int, watched: Boolean, before: Boolean) -> Unit = { _, _, _, _ -> },
+    /** Puts the title in a folder or takes it out. */
+    val onFolder: (id: String) -> Unit = {},
+    /** A new folder with the title in it. */
+    val onNewFolder: (name: String) -> Unit = {},
 )
 
 /** A film or series with every way to watch it: one main button, the other sources under it. */
@@ -695,7 +701,6 @@ private fun EpisodeTile(number: Int, progress: Float, watched: Boolean, onLongCl
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun Keep(state: TitleUi, actions: TitleActions) {
-    var quality by remember { mutableStateOf(app.couchy.QualityChoice.label) }
     var picking by remember { mutableStateOf(false) }
     var rating by remember { mutableStateOf(false) }
     if (rating) {
@@ -739,37 +744,64 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
         if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
             FollowAction(state.following, actions.onFollow, cell)
         }
-        KeepAction(Icons.Rounded.HighQuality, app.couchy.QualityChoice.name(quality), false, { picking = true }, cell)
+        val inSome = state.inFolders.isNotEmpty()
+        KeepAction(
+            if (inSome) Icons.Rounded.Folder else Icons.Rounded.CreateNewFolder,
+            if (state.inFolders.size == 1) state.folders.firstOrNull { it.id in state.inFolders }?.name ?: "В папке" else if (inSome) "В папках" else "В папку",
+            inSome,
+            { picking = true },
+            cell,
+        )
     }
-    if (picking) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { picking = false },
-            title = { Text("Качество видео") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (picking) FolderDialog(state, actions, onDismiss = { picking = false })
+}
+
+/** The person's folders with a tick where the title is, and a field for a new one. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun FolderDialog(state: TitleUi, actions: TitleActions, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Папки") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.folders.isEmpty()) {
                     Text(
-                        "Видео начнётся в этом качестве, а если такого нет, то в ближайшем ниже. Это касается онлайн-источников и YouTube.",
+                        "Свои списки: «На Новый год», «С детьми», «Ужасы на выходные». Они в «Моё» и синхронизируются.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        app.couchy.QualityChoice.options.forEach { option ->
-                            app.couchy.ui.components.Chip(app.couchy.QualityChoice.name(option), option == quality, onClick = {
-                                app.couchy.QualityChoice.label = option
-                                quality = option
-                                picking = false
-                            })
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.folders.forEach { f ->
+                            val inside = f.id in state.inFolders
+                            app.couchy.ui.components.Chip(
+                                f.name, inside, onClick = { actions.onFolder(f.id) },
+                                icon = if (inside) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { picking = false }) { Text("Закрыть") } },
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        )
-    }
+                androidx.compose.material3.OutlinedTextField(
+                    name,
+                    { name = it },
+                    placeholder = { Text("Новая папка", maxLines = 1) },
+                    singleLine = true,
+                    trailingIcon = {
+                        if (name.isNotBlank()) androidx.compose.material3.IconButton(onClick = { actions.onNewFolder(name); name = "" }) {
+                            Icon(Icons.Rounded.CreateNewFolder, "Создать")
+                        }
+                    },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (name.isNotBlank()) { actions.onNewFolder(name); name = "" } }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Готово") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    )
 }
 
 /** An icon in a soft circle over a one-line caption; filled with the accent when on. */

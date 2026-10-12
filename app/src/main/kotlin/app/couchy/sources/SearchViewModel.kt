@@ -164,6 +164,9 @@ data class TitleUi(
     val seen: Boolean = false,
     /** The person's own score, 1 to 10. */
     val score: Int? = null,
+    /** The person's folders, and the ids of those this title is in. */
+    val folders: List<app.couchy.data.Folder> = emptyList(),
+    val inFolders: Set<String> = emptySet(),
 )
 
 /**
@@ -195,7 +198,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "Смотреть позже" and "Любимое": the person's own lists of films and series. */
     val saved: StateFlow<SavedTitles> = marks.all
-        .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED), marks.titles(Marks.SEEN), marks.titles(Marks.RATED), marks.scores()) }
+        .map { SavedTitles(marks.titles(Marks.LATER), marks.titles(Marks.LOVED), marks.titles(Marks.SEEN), marks.titles(Marks.RATED), marks.scores(), marks.folders()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SavedTitles())
 
     fun toggleLater(t: Title) = keep(Marks.LATER, t)
@@ -218,6 +221,30 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     /** "Просмотрено": a watched film leaves "Смотреть позже" and the picks made for the person. */
+    fun toggleInFolder(id: String, t: Title) {
+        marks.toggleInFolder(id, t)
+        couchy.sync.syncSoon()
+    }
+
+    /** A new folder, with [t] already in it when given. */
+    fun addFolder(name: String, t: Title? = null) {
+        if (name.isBlank()) return
+        val id = marks.addFolder(name)
+        t?.let { marks.toggleInFolder(id, it) }
+        couchy.sync.syncSoon()
+    }
+
+    fun renameFolder(id: String, name: String) {
+        if (name.isBlank()) return
+        marks.renameFolder(id, name)
+        couchy.sync.syncSoon()
+    }
+
+    fun removeFolder(id: String) {
+        marks.removeFolder(id)
+        couchy.sync.syncSoon()
+    }
+
     fun toggleSeen(t: Title) {
         val adding = !marks.hasTitle(Marks.SEEN, t)
         marks.toggleTitle(Marks.SEEN, t)

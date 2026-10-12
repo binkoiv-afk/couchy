@@ -5,6 +5,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Folder
 
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -55,6 +56,8 @@ class LibraryActions(
     val onTitle: (app.couchy.core.sources.Title) -> Unit = {},
     val onSaved: (app.couchy.download.Saved) -> Unit = {},
     val onRemoveSaved: (app.couchy.download.Saved) -> Unit = {},
+    /** Deletes one of the person's folders; the titles in it stay everywhere else. */
+    val onRemoveFolder: (id: String) -> Unit = {},
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
@@ -101,6 +104,10 @@ fun LibraryContent(
             item {
                 Chip("Мои оценки · ${state.saved.rated.size}", list == "rated", onClick = { list = if (list == "rated") null else "rated" }, icon = Icons.Rounded.Star)
             }
+            items(state.saved.folders, key = { "folder:" + it.id }) { f ->
+                val id = "folder:" + f.id
+                Chip("${f.name} · ${f.titles.size}", list == id, onClick = { list = if (list == id) null else id }, icon = Icons.Rounded.Folder)
+            }
             items(LibraryFilter.entries) { f -> Chip(f.label, list == null && f == state.filter, onClick = { list = null; actions.onFilter(f) }) }
             item {
                 // One chip that cycles through the orders: easy on a remote, no menus to dig through.
@@ -120,7 +127,20 @@ fun LibraryContent(
             "loved" -> state.saved.loved
             "seen" -> state.saved.seen
             "rated" -> state.saved.rated.sortedByDescending { state.saved.scores[it.key] ?: 0 }
-            else -> null
+            else -> state.saved.folders.firstOrNull { "folder:" + it.id == list }?.titles
+        }
+        val folder = state.saved.folders.firstOrNull { "folder:" + it.id == list }
+        if (folder != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = side, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(folder.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                var confirm by androidx.compose.runtime.remember(folder.id) { androidx.compose.runtime.mutableStateOf(false) }
+                app.couchy.ui.components.SecondaryButton(if (confirm) "Точно удалить?" else "Удалить папку", null, onClick = {
+                    if (confirm) { actions.onRemoveFolder(folder.id); list = null } else confirm = true
+                })
+            }
         }
         if (titles != null) {
             if (titles.isEmpty()) {
@@ -128,6 +148,7 @@ fun LibraryContent(
                     Text(
                         if (list == "seen" || list == "rated") "Отмечайте на странице фильма «Просмотрено» и ставьте оценку: по ним Couchy подбирает «Для вас»."
                         else if (list == "later") "Откройте фильм и нажмите «Смотреть позже»: он появится здесь и на главной."
+                        else if (folder != null) "Пока пусто. На странице фильма нажмите «В папку» и выберите эту."
                         else "Откройте фильм и нажмите «Любимое»: так собирается ваша подборка.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

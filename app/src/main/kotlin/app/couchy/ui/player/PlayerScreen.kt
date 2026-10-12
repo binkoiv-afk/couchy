@@ -176,6 +176,19 @@ fun PlayerScreen(
     var secondWanted by remember { mutableStateOf<String?>(null) }
     var secondText by remember(playback.key) { mutableStateOf<String?>(null) }
     var findSecond by remember { mutableStateOf(false) }
+    LaunchedEffect(findSubs) {
+        if (!findSubs) return@LaunchedEffect
+        findSubs = false
+        sheet = Sheet.FIND_SUBS
+        if (subHits.isNullOrEmpty()) {
+            subError = null
+            subHits = null
+            subHits = runCatching { app.couchy.sources.SubtitleFinder.find(playback) }
+                .getOrElse { subError = "OpenSubtitles не ответил, попробуйте позже"; emptyList() }
+        }
+    }
+
+    fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
     fun loadSecond(label: String, uri: String) {
         subScope.launch {
             runCatching { app.couchy.sources.SubtitleFinder.cues(context, uri, playback.headers) }
@@ -196,19 +209,6 @@ fun PlayerScreen(
             delay(150)
         }
     }
-    LaunchedEffect(findSubs) {
-        if (!findSubs) return@LaunchedEffect
-        findSubs = false
-        sheet = Sheet.FIND_SUBS
-        if (subHits.isNullOrEmpty()) {
-            subError = null
-            subHits = null
-            subHits = runCatching { app.couchy.sources.SubtitleFinder.find(playback) }
-                .getOrElse { subError = "OpenSubtitles не ответил, попробуйте позже"; emptyList() }
-        }
-    }
-
-    fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
     LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
     // Digits on the remote collect into a channel number, which opens after a short pause.
     LaunchedEffect(typed) {

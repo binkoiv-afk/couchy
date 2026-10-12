@@ -24,7 +24,27 @@ data class MetaInfo(
     val trailer: String? = null,
     /** In Russian (TMDB), so it goes before what the sites say. */
     val russian: Boolean = false,
+    /** Legal services in Russia that have it (TMDB, from JustWatch). */
+    val providers: List<WatchProvider> = emptyList(),
+    /** TMDB's page with links to those services. */
+    val providersLink: String? = null,
 )
+
+/** A streaming service and how it has the title. */
+data class WatchProvider(val name: String, val how: String) {
+    companion object {
+        /** TMDB's "watch/providers" for one country: subscription first, then free, rent and buy. */
+        fun parse(o: JSONObject?, country: String = "RU"): Pair<List<WatchProvider>, String?> {
+            val c = o?.optJSONObject("results")?.optJSONObject(country) ?: return emptyList<WatchProvider>() to null
+            val kinds = listOf("flatrate" to "по подписке", "free" to "бесплатно", "ads" to "бесплатно с рекламой", "rent" to "аренда", "buy" to "покупка")
+            val list = kinds.flatMap { (key, how) ->
+                c.optJSONArray(key)?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("provider_name")?.ifBlank { null } } }.orEmpty()
+                    .map { WatchProvider(it, how) }
+            }.distinctBy { it.name }
+            return list to c.optString("link").ifBlank { null }
+        }
+    }
+}
 
 /** A genre every source understands, under its own name in each. */
 data class Genre(val slug: String, val name: String, val cinemeta: String?, val tmdbMovie: Int?, val tmdbTv: Int?)
@@ -226,7 +246,7 @@ object Tmdb {
     }
 
     fun detailsPath(id: Int, kind: TitleKind) = (if (kind == TitleKind.SERIES) "/tv/" else "/movie/") + id
-    const val APPEND = "credits,recommendations,external_ids,release_dates,content_ratings,videos"
+    const val APPEND = "credits,recommendations,external_ids,release_dates,content_ratings,videos,watch/providers"
 
     fun discover(f: CatalogFilter, page: Int): Pair<String, Map<String, String>> {
         val tv = f.type == CatalogType.SERIES || f.type == CatalogType.ANIME
@@ -331,6 +351,8 @@ object Tmdb {
             tmdbId = o.optInt("id").takeIf { it > 0 },
             trailer = trailer,
             russian = true,
+            providers = WatchProvider.parse(o.optJSONObject("watch/providers")).first,
+            providersLink = WatchProvider.parse(o.optJSONObject("watch/providers")).second,
             details = TitleDetails(
                 slogan = o.optString("tagline").ifBlank { null },
                 released = russianDate(date),

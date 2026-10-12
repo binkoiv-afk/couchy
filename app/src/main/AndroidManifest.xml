@@ -18,6 +18,26 @@
 
     <!-- Android 11+ hides other apps unless asked for: the speech recogniser for voice search. -->
     <queries>
+        <!-- Legal services, opened in their own app from «Где смотреть». -->
+        <package android:name="ru.kinopoisk" />
+        <package android:name="ru.kinopoisk.tv" />
+        <package android:name="ru.more.play" />
+        <package android:name="tv.okko.androidtv" />
+        <package android:name="ru.ivi.client" />
+        <package android:name="ru.start.androidmobile" />
+        <package android:name="ru.start.androidtv" />
+        <package android:name="ru.rt.video.app.mobile" />
+        <package android:name="ru.rt.video.app.tv" />
+        <package android:name="gpm.tnt_premier" />
+        <package android:name="ru.mts.mtstv" />
+        <package android:name="ru.mts.mtstv.androidtv" />
+        <package android:name="com.amediateka.amediateka" />
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="com.netflix.ninja" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.apple.atve.androidtv.appletv" />
+        <package android:name="com.apple.atve.amazon.appletv" />
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>

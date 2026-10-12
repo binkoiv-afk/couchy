@@ -21,3 +21,14 @@ class ReleasesTest {
         assertEquals(Instant.parse("2026-06-02T00:00:00Z").toEpochMilli(), Releases.cinemetaHome("""{"meta":{"dvdRelease":"2026-06-02T00:00:00.000Z"}}"""))
     }
 }
+
+class WatchProviderTest {
+    @Test
+    fun subscriptionFirstThenBuy() {
+        val o = org.json.JSONObject("""{"results":{"RU":{"link":"https://www.themoviedb.org/movie/1/watch?locale=RU",
+            "buy":[{"provider_name":"Okko"}],"flatrate":[{"provider_name":"Kinopoisk"},{"provider_name":"Okko"}]}}}""")
+        val (list, link) = app.couchy.core.sources.WatchProvider.parse(o)
+        assertEquals(listOf("Kinopoisk" to "по подписке", "Okko" to "по подписке"), list.map { it.name to it.how })
+        assertEquals("https://www.themoviedb.org/movie/1/watch?locale=RU", link)
+    }
+}

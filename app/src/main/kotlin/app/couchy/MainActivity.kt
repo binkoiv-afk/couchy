@@ -673,6 +673,11 @@ private fun MainScreen(
                     onFolder = { id -> searchVm.toggleInFolder(id, page.title) },
                     onNewFolder = { name -> searchVm.addFolder(name, page.title) },
                     onRate = { searchVm.rate(page.title, it) },
+                    onProvider = { p ->
+                        if (!app.couchy.sources.Providers.open(context, p.name, page.info?.providersLink)) {
+                            android.widget.Toast.makeText(context, "Не получилось открыть ${app.couchy.sources.Providers.name(p.name)}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
                 ),
             )
             if (sourceBusy || ytBusy) {

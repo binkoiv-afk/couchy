@@ -149,7 +149,7 @@ class Downloads(private val context: Context) {
     }.build()
 
     private fun encode(p: Playback): String = JSONObject()
-        .put("uri", p.uri).put("title", p.title).put("key", p.key).put("audio", p.audioUri ?: "").put("imdb", p.imdb ?: "")
+        .put("uri", p.uri).put("title", p.title).put("key", p.key).put("audio", p.audioUri ?: "").put("imdb", p.imdb ?: "").put("next", p.nextRef ?: "")
         .put("headers", JSONObject().apply { p.headers.forEach { (k, v) -> put(k, v) } })
         .put("subs", JSONArray().apply { p.subtitles.forEach { (l, u) -> put(JSONObject().put("l", l).put("u", u)) } })
         .put("skips", JSONArray().apply { p.skips.forEach { s -> put(JSONObject().put("s", s.startMs).put("e", s.endMs).put("l", s.label)) } })
@@ -170,6 +170,7 @@ class Downloads(private val context: Context) {
             headers = h.keys().asSequence().associateWith { h.getString(it) },
             audioUri = o.optString("audio").ifBlank { null },
             imdb = o.optString("imdb").ifBlank { null },
+            nextRef = o.optString("next").ifBlank { null },
             subtitles = (0 until subs.length()).map { subs.getJSONObject(it).let { x -> x.getString("l") to x.getString("u") } },
             skips = (0 until skips.length()).map { skips.getJSONObject(it).let { x -> Skip(x.getLong("s"), x.getLong("e"), x.getString("l")) } },
         )

@@ -92,6 +92,27 @@ object QualityChoice {
  * Another video player on the device (VLC, MX Player, Just Player): either always, as set in
  * "Просмотр", or for one video from the player's menu. Progress is not brought back from it.
  */
+/** The next two episodes downloaded ahead on Wi-Fi; on unless turned off in settings. */
+object AutoDownload {
+    private var prefs: android.content.SharedPreferences? = null
+
+    @Volatile var on: Boolean = true
+        set(value) {
+            field = value
+            prefs?.edit()?.putBoolean("autodownload", value)?.apply()
+        }
+
+    fun init(context: android.content.Context) {
+        prefs = context.getSharedPreferences("player", android.content.Context.MODE_PRIVATE)
+        on = prefs?.getBoolean("autodownload", true) ?: true
+    }
+
+    /** Library keys of the episodes downloaded this way, deleted once watched. */
+    fun keys(): Set<String> = prefs?.getStringSet("auto", null).orEmpty()
+    fun remember(key: String) { prefs?.edit()?.putStringSet("auto", keys() + key)?.apply() }
+    fun forget(key: String) { prefs?.edit()?.putStringSet("auto", keys() - key)?.apply() }
+}
+
 object ExternalPlayer {
     private var prefs: android.content.SharedPreferences? = null
 

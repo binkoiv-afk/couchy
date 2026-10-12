@@ -431,6 +431,11 @@ private fun PlaybackSettings() {
             Chip("Couchy", !external, onClick = { app.couchy.ExternalPlayer.always = false; external = false })
             Chip("Внешний", external, onClick = { app.couchy.ExternalPlayer.always = true; external = true })
         }
+        var auto by remember { mutableStateOf(app.couchy.AutoDownload.on) }
+        Group("Следующие серии", "Пока смотрите серию, две следующие скачиваются по Wi‑Fi и потом играют без ожидания. Просмотренные удаляются сами.") {
+            Chip("Скачивать заранее", auto, onClick = { app.couchy.AutoDownload.on = true; auto = true })
+            Chip("Не скачивать", !auto, onClick = { app.couchy.AutoDownload.on = false; auto = false })
+        }
     }
 }
 

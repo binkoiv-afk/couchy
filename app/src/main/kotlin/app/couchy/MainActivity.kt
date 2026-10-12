@@ -493,6 +493,7 @@ private fun MainScreen(
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
+        LaunchedEffect(current.key) { if (current.live == null) searchVm.prefetch(current) }
         PlayerScreen(
             playback = current,
             touch = !form.isTv,

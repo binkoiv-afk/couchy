@@ -33,6 +33,7 @@ class CouchyApp : Application() {
         super.onCreate()
         QualityChoice.init(this)
         ExternalPlayer.init(this)
+        AutoDownload.init(this)
         getSharedPreferences("sources", MODE_PRIVATE).let { p ->
             app.couchy.core.sources.Sites.hosts = app.couchy.core.sources.Sites.mirrors.keys.associateWith { p.getString(it, "").orEmpty() }
         }

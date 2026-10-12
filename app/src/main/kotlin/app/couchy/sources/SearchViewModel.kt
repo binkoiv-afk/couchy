@@ -958,6 +958,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reopens an episode saved in the library. */
     fun playRef(ref: String) {
+        // Downloaded ahead: plays from the device at once.
+        couchy.downloads.ready(ref)?.let { saved ->
+            viewModelScope.launch {
+                val entry = library.open(ref, saved.title)
+                _autoPlay.value = saved.copy(startMs = Progress.resumeFrom(entry.positionMs, entry.durationMs), audioLanguage = entry.audioLanguage, subtitleLanguage = entry.subtitleLanguage)
+            }
+            return
+        }
         if (app.couchy.core.sources.NativeRef.isRef(ref)) return playNativeRef(ref)
         val parsed = Rezka.parseRef(ref) ?: return
         val id = Rezka.idFromUrl(parsed.pageUrl) ?: return
@@ -975,6 +983,56 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun autoPlayHandled() { _autoPlay.value = null }
+
+    /**
+     * Downloads the next two episodes of what is playing, on Wi-Fi only, so they play without
+     * waiting. Episodes downloaded this way are deleted once watched.
+     */
+    fun prefetch(p: Playback) {
+        if (!app.couchy.AutoDownload.on || p.nextRef == null) return
+        val cm = getApplication<android.app.Application>().getSystemService(android.net.ConnectivityManager::class.java)
+        if (cm == null || cm.isActiveNetworkMetered) return
+        val downloads = couchy.downloads
+        viewModelScope.launch {
+            // Watched episodes from earlier rounds make room.
+            app.couchy.AutoDownload.keys().forEach { key ->
+                val e = library.get(key)
+                if (e != null && Progress.isWatched(e.positionMs, e.durationMs)) { downloads.remove(key); app.couchy.AutoDownload.forget(key) }
+            }
+            var ref = p.nextRef
+            repeat(2) {
+                val r = ref ?: return@launch
+                val next = runCatching { resolveQuietly(r, p.title.substringBefore(" · ")) }.getOrNull() ?: return@launch
+                if (!downloads.has(next.key)) { downloads.start(next); app.couchy.AutoDownload.remember(next.key) }
+                ref = next.nextRef
+            }
+        }
+    }
+
+    /** An episode's playback without opening it: for downloading ahead. */
+    private suspend fun resolveQuietly(ref: String, name: String): Playback? {
+        app.couchy.core.sources.NativeRef.parse(ref)?.let { r ->
+            val release = native.release(r.source, r.id) ?: return null
+            val i = release.episodes.indexOfFirst { it.season == r.season && it.episode == r.episode }
+            val e = release.episodes.getOrNull(i) ?: return null
+            val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
+            val file = e.files.firstOrNull { it.first == wanted } ?: e.files.firstOrNull() ?: return null
+            return Playback(
+                uri = file.second,
+                title = "${release.name} · S${r.season}E${r.episode}",
+                startMs = 0,
+                key = ref,
+                headers = mapOf("User-Agent" to web.userAgent),
+                nextRef = release.episodes.getOrNull(i + 1)?.let { app.couchy.core.sources.NativeRef.of(release.source, release.id, it.season, it.episode) },
+                skips = e.skips.map { (start, end, label) -> app.couchy.Skip(start, end, label) },
+                imdb = release.imdbId,
+            )
+        }
+        val parsed = Rezka.parseRef(ref) ?: return null
+        val id = Rezka.idFromUrl(parsed.pageUrl) ?: return null
+        val eps = catalog.rezka.episodes(id, parsed.translator, parsed.pageUrl)
+        return build(parsed.pageUrl, id, true, Translator(parsed.translator, ""), parsed.season, parsed.episode, name, eps, false, quiet = true)
+    }
 
     /** HDrezka's voice-overs by page, so the player can offer them for any episode. */
     private val voicesOf = java.util.concurrent.ConcurrentHashMap<String, List<Translator>>()
@@ -1002,6 +1060,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun build(
         url: String, id: Int, series: Boolean, translator: Translator, season: Int, episode: Int,
         name: String, episodes: List<EpisodeRef>, fromStart: Boolean,
+        /** For a download ahead: nothing goes into the library until it is watched. */
+        quiet: Boolean = false,
     ): Playback {
         val stream = if (series) catalog.rezka.episode(id, translator.id, season, episode, url) else catalog.rezka.movie(id, translator, url)
         // The site sometimes gives the same file under two names; one entry per file is enough.
@@ -1011,8 +1071,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
-        val entry = library.open(key, title)
-        rememberTaste(entry.title)
+        val entry = if (quiet) library.get(key) else library.open(key, title)
+        if (!quiet) rememberTaste(title)
         if (fromStart) library.clearProgress(key)
         val next = if (series) {
             val i = episodes.indexOfFirst { it.season == season && it.episode == episode }
@@ -1021,10 +1081,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         return Playback(
             voices = voicesOf[url].orEmpty().map { it.id to it.name }.filter { it.second.isNotBlank() },
             uri = best.url,
-            title = entry.title,
-            startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
-            audioLanguage = entry.audioLanguage,
-            subtitleLanguage = entry.subtitleLanguage,
+            title = entry?.title ?: title,
+            startMs = if (fromStart || entry == null) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
+            audioLanguage = entry?.audioLanguage,
+            subtitleLanguage = entry?.subtitleLanguage,
             key = key,
             headers = mapOf("User-Agent" to web.userAgent),
             subtitles = stream.subtitles.map { it.label to it.url },

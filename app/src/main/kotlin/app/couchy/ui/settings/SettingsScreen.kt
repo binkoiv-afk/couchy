@@ -699,8 +699,8 @@ private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActi
             OutlinedTextField(
                 config,
                 { config = it; result = null },
-                label = { Text("Конфиг WireGuard или AmneziaWG") },
-                placeholder = { Text("[Interface]\nPrivateKey = …\n\n[Peer]\nEndpoint = …") },
+                label = { Text("Конфиг WireGuard/AmneziaWG или ссылка VLESS") },
+                placeholder = { Text("vless://…\nили\n[Interface]\nPrivateKey = …\n[Peer]\nEndpoint = …") },
                 minLines = 4,
                 maxLines = 10,
                 modifier = Modifier.fillMaxWidth(),

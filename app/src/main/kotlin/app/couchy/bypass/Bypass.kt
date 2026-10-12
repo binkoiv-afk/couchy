@@ -67,6 +67,8 @@ class Bypass(private val context: Context, private val settings: Settings) {
     val status: StateFlow<BypassStatus> = _status.asStateFlow()
 
     private val binary: File get() = File(context.applicationInfo.nativeLibraryDir, "libwireproxy.so")
+    /** Xray, for servers shared as vless://, vmess://, trojan:// or ss:// links. */
+    private val xray: File get() = File(context.applicationInfo.nativeLibraryDir, "libxray.so")
     val available: Boolean get() = binary.exists()
     val ready: Boolean get() = _status.value is BypassStatus.Ready
 
@@ -147,7 +149,7 @@ class Bypass(private val context: Context, private val settings: Settings) {
                     start(config)
                     if (waitReady()) {
                         failedAt = 0
-                        _status.value = BypassStatus.Ready(if (p.bypassKind == BypassKind.WARP) "WARP" else "свой конфиг")
+                        _status.value = BypassStatus.Ready(if (p.bypassKind == BypassKind.WARP) "WARP" else "свой сервер")
                         applyWebView()
                         return
                     }
@@ -163,7 +165,7 @@ class Bypass(private val context: Context, private val settings: Settings) {
             stopProcess()
             val message = when (prefs.bypassKind) {
                 BypassKind.WARP -> "WARP не подключился. Возможно, его блокирует провайдер; попробуйте свой конфиг."
-                BypassKind.OWN -> e.message ?: "Свой конфиг не подключился. Проверьте его и сервер."
+                BypassKind.OWN -> e.message?.takeIf { it != "Туннель не отвечает" } ?: "Свой сервер не подключился. Проверьте конфиг или ссылку и сам сервер."
             }
             failedAt = System.currentTimeMillis()
             failure = message
@@ -218,7 +220,18 @@ class Bypass(private val context: Context, private val settings: Settings) {
         }
         BypassKind.OWN -> {
             TunnelConfig.problem(p.bypassConfig)?.let { throw IOException(it) }
-            TunnelConfig.withProxy(resolveEndpoint(p.bypassConfig), HTTP_PORT)
+            if (app.couchy.core.bypass.ProxyLink.isLink(p.bypassConfig)) {
+                if (!xray.exists()) throw IOException("Ссылки vless и другие пока не работают на этом процессоре.")
+                // Like WireGuard's endpoint, the server's name is looked up here: the engine cannot on Android.
+                val host = app.couchy.core.bypass.ProxyLink.host(p.bypassConfig)
+                val ip = host?.takeIf { h -> !h.all { it.isDigit() || it == '.' } }?.let { h ->
+                    runCatching { InetAddress.getAllByName(h).first { it is java.net.Inet4Address }.hostAddress }.getOrNull()
+                        ?: throw IOException("Не нашёл адрес сервера $h")
+                }
+                app.couchy.core.bypass.ProxyLink.config(p.bypassConfig, HTTP_PORT, ip)
+            } else {
+                TunnelConfig.withProxy(resolveEndpoint(p.bypassConfig), HTTP_PORT)
+            }
         }
     }
 
@@ -259,8 +272,12 @@ class Bypass(private val context: Context, private val settings: Settings) {
         if (runningConfig == config && process?.isAliveCompat() == true) return
         stopProcess()
         val dir = File(context.filesDir, "bypass").apply { mkdirs() }
-        val file = File(dir, "tunnel.conf").apply { writeText(config) }
-        process = ProcessBuilder(binary.absolutePath, "-c", file.absolutePath, "-i", "127.0.0.1:$INFO_PORT")
+        // A JSON config is Xray's; the rest is WireGuard's.
+        val json = config.trimStart().startsWith("{")
+        val file = File(dir, if (json) "tunnel.json" else "tunnel.conf").apply { writeText(config) }
+        val command = if (json) listOf(xray.absolutePath, "run", "-c", file.absolutePath)
+        else listOf(binary.absolutePath, "-c", file.absolutePath, "-i", "127.0.0.1:$INFO_PORT")
+        process = ProcessBuilder(command)
             .directory(dir)
             .redirectErrorStream(true)
             .start()

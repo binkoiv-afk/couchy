@@ -10,7 +10,7 @@ import java.util.TimeZone
 enum class BypassMode(val label: String) { AUTO("Авто"), ALWAYS("Всегда"), OFF("Выключен") }
 
 /** What carries it: a free Cloudflare WARP account, or the person's own WireGuard / AmneziaWG config. */
-enum class BypassKind(val label: String) { WARP("Cloudflare WARP"), OWN("Свой конфиг") }
+enum class BypassKind(val label: String) { WARP("Cloudflare WARP"), OWN("Свой сервер") }
 
 /** A registered WARP device: our keys plus what Cloudflare assigned. */
 data class WarpAccount(
@@ -99,9 +99,10 @@ object TunnelConfig {
 
     /** Problems that make a pasted config unusable, in words for the person; null when it looks fine. */
     fun problem(text: String): String? {
+        if (ProxyLink.isLink(text)) return ProxyLink.problem(text)
         val lower = text.lowercase()
         return when {
-            text.isBlank() -> "Вставьте текст конфига WireGuard или AmneziaWG."
+            text.isBlank() -> "Вставьте конфиг WireGuard или AmneziaWG, либо ссылку vless://, vmess://, trojan:// или ss://."
             "[interface]" !in lower -> "В конфиге нет раздела [Interface]."
             "[peer]" !in lower -> "В конфиге нет раздела [Peer]."
             !Regex("(?im)^\\s*privatekey\\s*=").containsMatchIn(text) -> "В конфиге нет PrivateKey."

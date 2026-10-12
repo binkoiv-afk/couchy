@@ -68,6 +68,19 @@ jobs:
             ls -la app/src/main/jniLibs/$abi
             test $(stat -c %s app/src/main/jniLibs/$abi/libwireproxy.so) -gt 1000000
           done
+      # Xray, for servers shared as vless://, vmess://, trojan:// or ss:// links.
+      - name: Fetch Xray
+        run: |
+          set -e
+          for pair in arm64-v8a:android-arm64-v8a armeabi-v7a:linux-arm32-v7a; do
+            abi=${pair%%:*}; arch=${pair#*:}
+            tmp=$(mktemp -d)
+            curl -fsSL --retry 3 -o $tmp/x.zip "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-$arch.zip"
+            unzip -q -o $tmp/x.zip xray -d $tmp
+            mkdir -p app/src/main/jniLibs/$abi
+            cp $tmp/xray app/src/main/jniLibs/$abi/libxray.so
+            test $(stat -c %s app/src/main/jniLibs/$abi/libxray.so) -gt 1000000
+          done
       - name: Test and build
         run: |
           set -o pipefail

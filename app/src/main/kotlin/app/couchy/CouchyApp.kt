@@ -40,6 +40,10 @@ class CouchyApp : Application() {
         bypass.install()
         app.couchy.episodes.NewEpisodes.schedule(this)
         // On a TV, what is half-watched goes to the home screen's "Продолжить просмотр" row.
+        // The home-screen widget follows the library.
+        scope.launch {
+            library.all.debounce(2_000).collect { runCatching { app.couchy.widget.ContinueWidget.draw(this@CouchyApp, it) } }
+        }
         if (app.couchy.tvhome.TvHome.isTv(this)) {
             scope.launch {
                 library.all.debounce(3_000).collect { runCatching { app.couchy.tvhome.TvHome.publish(this@CouchyApp, it) } }

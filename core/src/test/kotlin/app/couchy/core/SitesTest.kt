@@ -19,6 +19,15 @@ class SitesTest {
         assertTrue(dune.poster!!.startsWith("https://kinogo.so/uploads/"))
     }
 
+    @Test fun lordfilm() {
+        val hits = SiteSearch.parse("lordfilm", res("site_lordfilm.html"), "https://lordfilm.top")
+        assertEquals(3, hits.size)
+        assertEquals("Дюна: Пророчество", hits[2].name)
+        assertEquals(2024, hits[2].year)
+        assertEquals(2021, hits[1].year)
+        assertTrue(hits[0].poster!!.startsWith("https://lordfilm.top/uploads/"))
+    }
+
     @Test fun gidonline() {
         val hits = SiteSearch.parse("gidonline", res("site_gidonline.html"), "https://gidonline.eu")
         val dune = hits.first { it.name == "Дюна: Пророчество" }

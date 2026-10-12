@@ -441,7 +441,7 @@ private sealed interface Source {
     }
 }
 
-private fun siteName(id: String) = Sites.all.firstOrNull { it.id == id }?.name ?: id
+private fun siteName(id: String) = app.couchy.sources.NativeClient.name(id) ?: Sites.all.firstOrNull { it.id == id }?.name ?: id
 
 private fun sources(state: TitleUi): List<Source> = listOf(Source.Rezka) + state.sites.map { Source.OnSite(it) } + Source.Torrents
 
@@ -518,7 +518,13 @@ private fun Loading(text: String) {
 @Composable
 private fun SiteBody(state: TitleUi, hit: SiteHit, actions: TitleActions) {
     Muted(listOfNotNull(hit.name, hit.year?.toString()).joinToString(" · "))
-    Muted("Видео идёт из плеера сайта: озвучку и серию выбираете там, смотрите в Couchy без рекламы.")
+    Muted(
+        when (hit.site) {
+            app.couchy.core.sources.Anilibria.ID -> "Аниме в озвучке AniLibria, прямо в плеере Couchy: серии, качество до 1080p, пропуск заставки."
+            app.couchy.core.sources.KinoPub.ID -> "С вашей подпиской Kino.pub: серии, все озвучки и качество до 4K, прямо в плеере Couchy."
+            else -> "Видео идёт из плеера сайта: озвучку и серию выбираете там, смотрите в Couchy без рекламы."
+        },
+    )
     PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = { actions.onSite(hit) })
 }
 

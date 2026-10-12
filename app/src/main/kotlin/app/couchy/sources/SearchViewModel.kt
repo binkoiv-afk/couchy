@@ -129,6 +129,9 @@ sealed interface Route {
 
 enum class SourceStatus { LOADING, READY, NOT_FOUND, BLOCKED, ERROR }
 
+/** A series from AniLibria or Kino.pub: which episodes were watched, and the one to go on with. */
+data class NativePick(val release: app.couchy.core.sources.NativeRelease, val watched: Set<Pair<Int, Int>>, val next: Pair<Int, Int>?)
+
 /** HDrezka's part of a title page. */
 data class RezkaUi(
     val status: SourceStatus = SourceStatus.LOADING,
@@ -191,6 +194,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private var host = Rezka.DEFAULT_HOST
     private val catalog = Catalog(web, RezkaClient(web) { host })
     private val siteClient = SiteClient(web)
+    private val native = NativeClient(web, couchy.kinopub)
     private var tmdbKey = ""
     private val meta = MetaClient(web) { tmdbKey }
 
@@ -692,7 +696,12 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadSites(title: Title) {
-        val hits = runCatching { siteClient.find(title) }.getOrDefault(emptyList())
+        val hits = kotlinx.coroutines.coroutineScope {
+            val own = async { runCatching { native.find(title) }.getOrDefault(emptyList()) }
+            val sites = async { runCatching { siteClient.find(title) }.getOrDefault(emptyList()) }
+            // Sources that play straight from their own API come first: no site window at all.
+            own.await() + sites.await()
+        }
         patch { it.copy(sites = hits, sitesLoading = false, title = it.title.copy(poster = it.title.poster ?: hits.firstNotNullOfOrNull { h -> h.poster })) }
     }
 
@@ -700,6 +709,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The film's page on a site, found by Couchy. */
     fun openSite(hit: SiteHit) {
+        if (hit.site in NativeClient.ids) return openNative(hit.site, hit.url)
         val t = _title.value?.title
         val site = Sites.all.firstOrNull { it.id == hit.site }
         _siteWindow.value = SiteWindow(hit.url, site, t?.name ?: hit.name, t?.kind == TitleKind.SERIES, SiteRef.of(hit.url, hit.site))
@@ -721,6 +731,80 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeSite() { _siteWindow.value = null }
+
+    // ---- AniLibria and Kino.pub: episodes and files from their API ----
+
+    /** A series from a native source, waiting for an episode to be picked. */
+    private val _nativePick = MutableStateFlow<NativePick?>(null)
+    val nativePick: StateFlow<NativePick?> = _nativePick.asStateFlow()
+
+    fun closeNativePick() { _nativePick.value = null }
+
+    private fun openNative(source: String, id: String) {
+        viewModelScope.launch {
+            val release = guarded({ openNative(source, id) }) { native.release(source, id) } ?: return@launch
+            if (release.episodes.isEmpty()) {
+                _error.value = "${NativeClient.name(source)}: видео для этого тайтла нет."
+                return@launch
+            }
+            if (!release.series || release.episodes.size == 1) {
+                val e = release.episodes.first()
+                playNative(release, e.season, e.episode, false)?.let { _autoPlay.value = it }
+                return@launch
+            }
+            // Ticks for what was watched, and the next episode to go on with.
+            val prefix = app.couchy.core.sources.NativeRef.of(source, id, 0, 0).substringBeforeLast(":0:0")
+            val mine = library.snapshot().filter { it.uri.startsWith(prefix) }
+            val watched = mine.filter { Progress.isWatched(it.positionMs, it.durationMs) }
+                .mapNotNull { app.couchy.core.sources.NativeRef.parse(it.uri) }.map { it.season to it.episode }.toSet()
+            val last = mine.maxByOrNull { it.lastWatchedAt }?.let { app.couchy.core.sources.NativeRef.parse(it.uri) }
+            val next = last?.let { l ->
+                val i = release.episodes.indexOfFirst { it.season == l.season && it.episode == l.episode }
+                if ((l.season to l.episode) in watched) release.episodes.getOrNull(i + 1) else release.episodes.getOrNull(i)
+            } ?: release.episodes.firstOrNull { (it.season to it.episode) !in watched }
+            _nativePick.value = NativePick(release, watched, next?.let { it.season to it.episode })
+        }
+    }
+
+    fun pickNative(season: Int, episode: Int) {
+        val release = _nativePick.value?.release ?: return
+        _nativePick.value = null
+        viewModelScope.launch { playNative(release, season, episode, false)?.let { _autoPlay.value = it } }
+    }
+
+    private suspend fun playNative(release: app.couchy.core.sources.NativeRelease, season: Int, episode: Int, fromStart: Boolean): Playback? =
+        guarded({ viewModelScope.launch { playNative(release, season, episode, fromStart)?.let { _autoPlay.value = it } } }) {
+            val i = release.episodes.indexOfFirst { it.season == season && it.episode == episode }
+            val e = release.episodes.getOrNull(i) ?: throw IllegalStateException("Нет такой серии")
+            val key = app.couchy.core.sources.NativeRef.of(release.source, release.id, season, episode)
+            val title = if (release.series) "${release.name} · S${season}E$episode" else release.name
+            val entry = library.open(key, title)
+            if (fromStart) library.clearProgress(key)
+            val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
+            val file = e.files.firstOrNull { it.first == wanted } ?: e.files.first()
+            Playback(
+                uri = file.second,
+                title = entry.title,
+                startMs = if (fromStart) 0 else Progress.resumeFrom(entry.positionMs, entry.durationMs),
+                audioLanguage = entry.audioLanguage,
+                subtitleLanguage = entry.subtitleLanguage,
+                key = key,
+                headers = mapOf("User-Agent" to web.userAgent),
+                nextRef = release.episodes.getOrNull(i + 1)?.takeIf { release.series }?.let { app.couchy.core.sources.NativeRef.of(release.source, release.id, it.season, it.episode) },
+                variants = e.files,
+                skips = e.skips.map { (start, end, label) -> app.couchy.Skip(start, end, label) },
+                imdb = release.imdbId ?: _title.value?.title?.imdbId,
+            )
+        }
+
+    /** An episode saved in the library or the next one: its release is asked again for fresh links. */
+    private fun playNativeRef(ref: String) {
+        val r = app.couchy.core.sources.NativeRef.parse(ref) ?: return
+        viewModelScope.launch {
+            val release = guarded({ playNativeRef(ref) }) { native.release(r.source, r.id) } ?: return@launch
+            playNative(release, r.season, r.episode, false)?.let { _autoPlay.value = it }
+        }
+    }
 
     /** The site's player started [video]; it continues in Couchy's player with the same headers. */
     suspend fun siteCaught(window: SiteWindow, video: String, headers: Map<String, String>, pageUrl: String): Playback {
@@ -854,6 +938,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reopens an episode saved in the library. */
     fun playRef(ref: String) {
+        if (app.couchy.core.sources.NativeRef.isRef(ref)) return playNativeRef(ref)
         val parsed = Rezka.parseRef(ref) ?: return
         val id = Rezka.idFromUrl(parsed.pageUrl) ?: return
         viewModelScope.launch {

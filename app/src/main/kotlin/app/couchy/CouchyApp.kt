@@ -24,6 +24,7 @@ class CouchyApp : Application() {
     val cast by lazy { app.couchy.cast.Cast(this) }
     val marks by lazy { app.couchy.data.Marks(this) }
     val downloads by lazy { app.couchy.download.Downloads(this) }
+    val kinopub by lazy { app.couchy.sources.KinoPubAccount(this) }
     val sync by lazy { app.couchy.sync.Sync(this, settings, library, tv, marks) }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
@@ -31,8 +32,9 @@ class CouchyApp : Application() {
         super.onCreate()
         QualityChoice.init(this)
         ExternalPlayer.init(this)
-        getSharedPreferences("sources", MODE_PRIVATE).getString("kinogo", null)?.takeIf { it.isNotBlank() }
-            ?.let { app.couchy.core.sources.Sites.kinogoHost = it }
+        getSharedPreferences("sources", MODE_PRIVATE).let { p ->
+            app.couchy.core.sources.Sites.hosts = app.couchy.core.sources.Sites.mirrors.keys.associateWith { p.getString(it, "").orEmpty() }
+        }
         app.couchy.sync.WebDav.FILE = "couchy-sync${app.couchy.data.Profiles.suffix(this)}.json"
         // Every connection asks the bypass which way to go, so it is in place before anything loads.
         bypass.install()

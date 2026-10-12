@@ -13,12 +13,17 @@ data class Site(val id: String, val name: String, val search: String) {
  * browser window with ads cut out, and takes over as soon as a video stream starts.
  */
 object Sites {
-    /** Kinogo moves between addresses; a working one can be set in the settings. */
-    const val KINOGO_HOST = "https://kinogo.so"
-    @Volatile var kinogoHost: String = KINOGO_HOST
+    /** Sites that move between addresses: the default, and a working one can be set in the settings. */
+    val mirrors = linkedMapOf("kinogo" to "https://kinogo.so", "lordfilm" to "https://lordfilm.top")
+    @Volatile var hosts: Map<String, String> = emptyMap()
+
+    fun host(id: String): String = (hosts[id]?.takeIf { it.isNotBlank() } ?: mirrors.getValue(id)).trimEnd('/')
+
+    private fun dle(id: String, name: String) = Site(id, name, host(id) + "/index.php?do=search&subaction=search&story={q}")
 
     val all: List<Site> get() = listOf(
-        Site("kinogo", "Kinogo", kinogoHost.trimEnd('/') + "/index.php?do=search&subaction=search&story={q}"),
+        dle("kinogo", "Kinogo"),
+        dle("lordfilm", "LordFilm"),
         Site("gidonline", "GidOnline", "https://gidonline.eu/index.php?do=search&subaction=search&story={q}"),
         Site("zona", "Zona", "https://w140.zona.plus/search/{q}"),
         Site("filmix", "Filmix", "https://filmix.gg/search/{q}"),
@@ -68,7 +73,7 @@ data class SiteHit(val site: String, val name: String, val year: Int?, val url: 
 /** Search pages of the sites whose results come as plain HTML. */
 object SiteSearch {
     /** Sites with a readable search page; the rest are searched in the site window. */
-    val parsed = setOf("kinogo", "gidonline", "kinokrad", "baskino", "seasonvar")
+    val parsed = setOf("kinogo", "lordfilm", "gidonline", "kinokrad", "baskino", "seasonvar")
 
     fun parse(siteId: String, html: String, base: String): List<SiteHit> = when (siteId) {
         "kinogo" -> blocks(html, "<article class=\"pcard\"").mapNotNull { b ->
@@ -76,6 +81,11 @@ object SiteSearch {
             val (name, year) = splitYear(m.groupValues[2])
             val poster = Regex("<img[^>]*?src=\"([^\"]+)\"").find(b)?.groupValues?.get(1)
             SiteHit(siteId, name, year ?: Regex("xfsearch/year/(\\d{4})").find(b)?.groupValues?.get(1)?.toIntOrNull(), abs(m.groupValues[1], base)!!, abs(poster, base))
+        }
+        "lordfilm" -> blocks(html, "<div class=\"item expand-link").mapNotNull { b ->
+            val m = Regex("item__title[^>]*href=\"([^\"]+)\">([^<]+)</a>").find(b) ?: return@mapNotNull null
+            val poster = Regex("<img src=\"([^\"]+)\"").find(b)?.groupValues?.get(1)
+            SiteHit(siteId, clean(m.groupValues[2]), Regex("item__year\">\\((\\d{4})\\)").find(b)?.groupValues?.get(1)?.toIntOrNull(), abs(m.groupValues[1], base)!!, abs(poster, base))
         }
         "gidonline" -> blocks(html, "<div class=\"mainlink\">").mapNotNull { b ->
             val url = attr(b, "<a href=\"") ?: return@mapNotNull null

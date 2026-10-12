@@ -238,7 +238,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
-        if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link) || app.couchy.core.youtube.YouTubeLinks.isVideo(link)) {
+        if (Rezka.isRef(link) || app.couchy.core.sources.SiteRef.isRef(link) || app.couchy.core.sources.NativeRef.isRef(link) || app.couchy.core.youtube.YouTubeLinks.isVideo(link)) {
             _pendingSource.value = link
             return
         }

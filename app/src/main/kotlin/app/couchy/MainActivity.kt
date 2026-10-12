@@ -565,6 +565,25 @@ private fun MainScreen(
         return
     }
 
+    // A series from AniLibria or Kino.pub: episodes by season, the next one ticked.
+    val nativePick by searchVm.nativePick.collectAsStateWithLifecycle()
+    nativePick?.let { pick ->
+        app.couchy.ui.player.OptionsDialog(
+            pick.release.name,
+            pick.release.episodes.groupBy { it.season }.map { (season, eps) ->
+                app.couchy.ui.player.OptionSection(
+                    if (pick.release.episodes.map { it.season }.distinct().size > 1) "СЕЗОН $season" else null,
+                    eps.map { e ->
+                        val seen = (e.season to e.episode) in pick.watched
+                        val title = "${e.episode}. " + e.name.takeIf { !it.startsWith("Серия ") }.orEmpty().ifEmpty { "Серия ${e.episode}" }
+                        app.couchy.ui.player.Option(if (seen) "$title ✓" else title, (e.season to e.episode) == pick.next) { searchVm.pickNative(e.season, e.episode) }
+                    },
+                )
+            },
+            onDismiss = searchVm::closeNativePick,
+        )
+    }
+
     val page = titlePage
     // The film or episode waiting for its voice-over and quality: season, episode, from the start.
     var watchAsk by remember { mutableStateOf<Triple<Int, Int, Boolean>?>(null) }

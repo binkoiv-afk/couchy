@@ -40,6 +40,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,7 +116,7 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
     ),
     APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
     PLAYBACK("Просмотр", Icons.Rounded.PlayCircle, "Качество, в котором начинается видео, и каким плеером его смотреть."),
-    SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочие адреса HDrezka и Kinogo, если основные не открываются."),
+    SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочие адреса HDrezka, Kinogo и LordFilm, если основные не открываются."),
     TORRENTS(
         "Торренты", Icons.Rounded.CloudDownload,
         "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
@@ -159,7 +163,7 @@ fun SettingsContent(
         SettingsPage.PROFILES -> profileName
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
         SettingsPage.PLAYBACK -> app.couchy.QualityChoice.name(app.couchy.QualityChoice.label) + " · " + if (app.couchy.ExternalPlayer.always) "внешний плеер" else "плеер Couchy"
-        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://") + " · Kinogo: " + app.couchy.core.sources.Sites.kinogoHost.substringAfter("://")
+        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
         SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
         SettingsPage.SYNC -> sync.status
@@ -190,26 +194,9 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
-                    // Kinogo moves often: a working address from a search engine goes here.
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val kinoPrefs = remember { context.getSharedPreferences("sources", android.content.Context.MODE_PRIVATE) }
-                    var savedKino by remember { mutableStateOf(kinoPrefs.getString("kinogo", "").orEmpty()) }
-                    var kino by rememberSaveable { mutableStateOf(savedKino) }
-                    OutlinedTextField(
-                        kino, { kino = it },
-                        label = { Text("Адрес Kinogo") },
-                        placeholder = { Text(app.couchy.core.sources.Sites.KINOGO_HOST) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (kino.trim() != savedKino) SecondaryButton("Сохранить", null, onClick = {
-                        val value = normalizeHost(kino)
-                        kinoPrefs.edit().putString("kinogo", value).apply()
-                        app.couchy.core.sources.Sites.kinogoHost = value.ifBlank { app.couchy.core.sources.Sites.KINOGO_HOST }
-                        savedKino = value
-                        kino = value
-                    })
+                    // Kinogo and LordFilm move often: a working address from a search engine goes here.
+                    app.couchy.core.sources.Sites.mirrors.forEach { (id, default) -> MirrorField(id, default) }
+                    KinoPubLogin()
                     var key by rememberSaveable(prefs.tmdbKey) { mutableStateOf(prefs.tmdbKey) }
                     Text(
                         if (app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) {
@@ -342,6 +329,82 @@ private fun Group(title: String, hint: String? = null, content: @Composable () -
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
+}
+
+/** Signing in to Kino.pub with a code typed on kino.pub/device, like on a TV. */
+@Composable
+private fun KinoPubLogin() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val account = remember { (context.applicationContext as app.couchy.CouchyApp).kinopub }
+    val signedIn by account.signedIn.collectAsState()
+    var code by remember { mutableStateOf<app.couchy.core.sources.KinoPub.DeviceCode?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var asking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Kino.pub", style = MaterialTheme.typography.titleSmall)
+        val c = code
+        when {
+            signedIn -> {
+                Text("Вы вошли: фильмы и сериалы из Kino.pub появляются среди источников на странице фильма.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SecondaryButton("Выйти", null, onClick = { account.signOut() })
+            }
+            c != null -> {
+                Text("Откройте ${c.verifyUrl.substringAfter("://")} на телефоне или компьютере и введите код:", style = MaterialTheme.typography.bodyMedium)
+                Text(c.userCode, style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+                Text("Как только код введён, Couchy войдёт сам.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LaunchedEffect(c.code) {
+                    val until = System.currentTimeMillis() + c.expiresIn * 1000L
+                    while (System.currentTimeMillis() < until) {
+                        kotlinx.coroutines.delay(c.interval.coerceAtLeast(3) * 1000L)
+                        if (account.poll(c.code)) { code = null; return@LaunchedEffect }
+                    }
+                    code = null
+                    error = "Время вышло. Нажмите «Войти» ещё раз."
+                }
+            }
+            else -> {
+                Text("С подпиской Kino.pub его фильмы и сериалы, со всеми озвучками и в 4K, играют прямо в Couchy.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                SecondaryButton(if (asking) "Получаю код…" else "Войти", null, onClick = {
+                    if (asking) return@SecondaryButton
+                    asking = true
+                    error = null
+                    scope.launch {
+                        runCatching { account.start() }
+                            .onSuccess { code = it }
+                            .onFailure { error = "Kino.pub не ответил: ${it.message}" }
+                        asking = false
+                    }
+                })
+            }
+        }
+    }
+}
+
+/** The address of a site that moves between domains, kept in prefs "sources". */
+@Composable
+private fun MirrorField(id: String, default: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("sources", android.content.Context.MODE_PRIVATE) }
+    var saved by remember { mutableStateOf(prefs.getString(id, "").orEmpty()) }
+    var text by rememberSaveable { mutableStateOf(saved) }
+    val name = app.couchy.core.sources.Sites.all.firstOrNull { it.id == id }?.name ?: id
+    OutlinedTextField(
+        text, { text = it },
+        label = { Text("Адрес $name") },
+        placeholder = { Text(default) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (text.trim() != saved) SecondaryButton("Сохранить", null, onClick = {
+        val value = normalizeHost(text)
+        prefs.edit().putString(id, value).apply()
+        app.couchy.core.sources.Sites.hosts = app.couchy.core.sources.Sites.hosts + (id to value)
+        saved = value
+        text = value
+    })
 }
 
 @Composable

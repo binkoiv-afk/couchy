@@ -112,7 +112,7 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
     ),
     APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
     PLAYBACK("Просмотр", Icons.Rounded.PlayCircle, "Качество, в котором начинается видео, и каким плеером его смотреть."),
-    SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочее зеркало HDrezka, например https://hdrezka.me, если основной адрес не открывается."),
+    SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочие адреса HDrezka и Kinogo, если основные не открываются."),
     TORRENTS(
         "Торренты", Icons.Rounded.CloudDownload,
         "Встроенный движок работает прямо в Couchy. TorrServe в сети: если он уже стоит на приставке или компьютере, укажите его адрес.",
@@ -159,7 +159,7 @@ fun SettingsContent(
         SettingsPage.PROFILES -> profileName
         SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
         SettingsPage.PLAYBACK -> app.couchy.QualityChoice.name(app.couchy.QualityChoice.label) + " · " + if (app.couchy.ExternalPlayer.always) "внешний плеер" else "плеер Couchy"
-        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
+        SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://") + " · Kinogo: " + app.couchy.core.sources.Sites.kinogoHost.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
         SettingsPage.BYPASS -> if (prefs.bypassMode == BypassMode.OFF) "Выключен" else "${prefs.bypassMode.label} · ${bypass.status}"
         SettingsPage.SYNC -> sync.status
@@ -190,6 +190,26 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (host.trim() != prefs.rezkaHost) SecondaryButton("Сохранить", null, onClick = { actions.onRezkaHost(normalizeHost(host)) })
+                    // Kinogo moves often: a working address from a search engine goes here.
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val kinoPrefs = remember { context.getSharedPreferences("sources", android.content.Context.MODE_PRIVATE) }
+                    var savedKino by remember { mutableStateOf(kinoPrefs.getString("kinogo", "").orEmpty()) }
+                    var kino by rememberSaveable { mutableStateOf(savedKino) }
+                    OutlinedTextField(
+                        kino, { kino = it },
+                        label = { Text("Адрес Kinogo") },
+                        placeholder = { Text(app.couchy.core.sources.Sites.KINOGO_HOST) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (kino.trim() != savedKino) SecondaryButton("Сохранить", null, onClick = {
+                        val value = normalizeHost(kino)
+                        kinoPrefs.edit().putString("kinogo", value).apply()
+                        app.couchy.core.sources.Sites.kinogoHost = value.ifBlank { app.couchy.core.sources.Sites.KINOGO_HOST }
+                        savedKino = value
+                        kino = value
+                    })
                     var key by rememberSaveable(prefs.tmdbKey) { mutableStateOf(prefs.tmdbKey) }
                     Text(
                         if (app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) {

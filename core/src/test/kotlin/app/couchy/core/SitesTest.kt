@@ -11,6 +11,14 @@ import org.junit.Test
 class SitesTest {
     private fun res(name: String) = javaClass.getResource("/sources/$name")!!.readText()
 
+    @Test fun kinogo() {
+        val hits = SiteSearch.parse("kinogo", res("site_kinogo.html"), "https://kinogo.so")
+        val dune = hits.first { it.name == "Дюна: Пророчество" }
+        assertEquals(2024, dune.year)
+        assertEquals("https://kinogo.so/serials/10031-djuna-prorochestvo-2024/", dune.url)
+        assertTrue(dune.poster!!.startsWith("https://kinogo.so/uploads/"))
+    }
+
     @Test fun gidonline() {
         val hits = SiteSearch.parse("gidonline", res("site_gidonline.html"), "https://gidonline.eu")
         val dune = hits.first { it.name == "Дюна: Пророчество" }

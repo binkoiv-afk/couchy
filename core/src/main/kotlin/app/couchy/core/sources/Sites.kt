@@ -13,7 +13,12 @@ data class Site(val id: String, val name: String, val search: String) {
  * browser window with ads cut out, and takes over as soon as a video stream starts.
  */
 object Sites {
-    val all = listOf(
+    /** Kinogo moves between addresses; a working one can be set in the settings. */
+    const val KINOGO_HOST = "https://kinogo.so"
+    @Volatile var kinogoHost: String = KINOGO_HOST
+
+    val all: List<Site> get() = listOf(
+        Site("kinogo", "Kinogo", kinogoHost.trimEnd('/') + "/index.php?do=search&subaction=search&story={q}"),
         Site("gidonline", "GidOnline", "https://gidonline.eu/index.php?do=search&subaction=search&story={q}"),
         Site("zona", "Zona", "https://w140.zona.plus/search/{q}"),
         Site("filmix", "Filmix", "https://filmix.gg/search/{q}"),
@@ -63,9 +68,15 @@ data class SiteHit(val site: String, val name: String, val year: Int?, val url: 
 /** Search pages of the sites whose results come as plain HTML. */
 object SiteSearch {
     /** Sites with a readable search page; the rest are searched in the site window. */
-    val parsed = setOf("gidonline", "kinokrad", "baskino", "seasonvar")
+    val parsed = setOf("kinogo", "gidonline", "kinokrad", "baskino", "seasonvar")
 
     fun parse(siteId: String, html: String, base: String): List<SiteHit> = when (siteId) {
+        "kinogo" -> blocks(html, "<article class=\"pcard\"").mapNotNull { b ->
+            val m = Regex("class=\"pcard-title\" href=\"([^\"]+)\">([^<]+)</a>").find(b) ?: return@mapNotNull null
+            val (name, year) = splitYear(m.groupValues[2])
+            val poster = Regex("<img[^>]*?src=\"([^\"]+)\"").find(b)?.groupValues?.get(1)
+            SiteHit(siteId, name, year ?: Regex("xfsearch/year/(\\d{4})").find(b)?.groupValues?.get(1)?.toIntOrNull(), abs(m.groupValues[1], base)!!, abs(poster, base))
+        }
         "gidonline" -> blocks(html, "<div class=\"mainlink\">").mapNotNull { b ->
             val url = attr(b, "<a href=\"") ?: return@mapNotNull null
             val name = Regex("<span>([^<]+)</span>").find(b)?.groupValues?.get(1) ?: return@mapNotNull null

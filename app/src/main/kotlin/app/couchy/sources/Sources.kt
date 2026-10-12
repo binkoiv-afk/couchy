@@ -210,6 +210,28 @@ class MetaClient(private val web: Web, private val key: () -> String) {
 
     suspend fun catalog(f: app.couchy.core.sources.CatalogFilter, page: Int): List<Title> = catalogPage(f, page).first
 
+    /** «Ранее в сериале»: the episode before season [season] episode [episode], told in a few lines. */
+    suspend fun recap(imdb: String?, tmdbId: Int?, season: Int, episode: Int): app.couchy.core.sources.EpisodeNote? {
+        if (tmdb) {
+            val id = tmdbId ?: imdb?.let { i ->
+                runCatching { app.couchy.core.sources.Tmdb.parseFind(tmdbGet("/find/$i", mapOf("external_source" to "imdb_id"))) }.getOrNull()
+                    ?.takeIf { it.second == TitleKind.SERIES }?.first
+            }
+            if (id != null) {
+                val seasons = if (episode > 1) listOf(season) else listOf(season - 1, season).filter { it > 0 }
+                val notes = seasons.flatMap { n ->
+                    runCatching { app.couchy.core.sources.Recap.parseTmdbSeason(tmdbGet("/tv/$id/season/$n")) }.getOrDefault(emptyList())
+                }
+                app.couchy.core.sources.Recap.previous(notes, season, episode)?.let { return it }
+            }
+        }
+        val i = imdb ?: return null
+        val notes = runCatching {
+            app.couchy.core.sources.Recap.parseCinemeta(web.get(app.couchy.core.sources.Cinemeta.metaUrl(i, TitleKind.SERIES)))
+        }.getOrDefault(emptyList())
+        return app.couchy.core.sources.Recap.previous(notes, season, episode)
+    }
+
     /** «Что посмотреть?»: a random page of well-liked titles for the mood and the time there is. */
     suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength): List<Title> {
         val page = kotlin.random.Random.nextInt(1, app.couchy.core.sources.Pick.PAGES + 1)

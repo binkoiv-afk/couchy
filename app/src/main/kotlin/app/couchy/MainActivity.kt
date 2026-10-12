@@ -515,6 +515,7 @@ private fun MainScreen(
             onVoice = { id, position -> scope.launch { searchVm.switchVoice(current.key, id, position)?.let(vm::playDirect) }; Unit },
             // The title page is under the player: closing it shows every other way to watch.
             onSources = if (route is app.couchy.sources.Route.TitlePage && current.live == null) vm::closePlayer else null,
+            recap = { searchVm.recap(current) },
             onExternal = if (ExternalPlayer.fits(current)) ({ position ->
                 if (ExternalPlayer.open(context, current, position)) vm.closePlayer()
                 else android.widget.Toast.makeText(context, "Не нашлось другого видеоплеера", android.widget.Toast.LENGTH_SHORT).show()

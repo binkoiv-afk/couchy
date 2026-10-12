@@ -17,6 +17,9 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -130,6 +133,8 @@ fun PlayerScreen(
     onSources: (() -> Unit)? = null,
     /** Hands the video to another player app from the given position; null where it cannot. */
     onExternal: ((positionMs: Long) -> Unit)? = null,
+    /** «Ранее в сериале»: the episode before, after a break; null when not wanted. */
+    recap: (suspend () -> app.couchy.core.sources.EpisodeNote?)? = null,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
@@ -189,6 +194,12 @@ fun PlayerScreen(
     }
 
     fun flash(text: String) { hint = text; hintAt = System.currentTimeMillis() }
+    var recapNote by remember(playback.key) { mutableStateOf<app.couchy.core.sources.EpisodeNote?>(null) }
+    LaunchedEffect(playback.key) {
+        val note = recap?.invoke() ?: return@LaunchedEffect
+        recapNote = note
+        player.pause()
+    }
     fun loadSecond(label: String, uri: String) {
         subScope.launch {
             runCatching { app.couchy.sources.SubtitleFinder.cues(context, uri, playback.headers) }
@@ -593,6 +604,9 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        recapNote?.let { note ->
+            RecapCard(note, Modifier.align(Alignment.Center)) { recapNote = null; player.play(); runCatching { rootFocus.requestFocus() } }
+        }
         secondText?.let { text ->
             Text(
                 text,
@@ -818,6 +832,30 @@ fun PlayerScreen(
         }
         null -> Unit
     }
+}
+
+/** «Ранее в сериале»: the episode before, over the paused picture, until "Смотреть". */
+@Composable
+private fun RecapCard(note: app.couchy.core.sources.EpisodeNote, modifier: Modifier, onDone: () -> Unit) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.foundation.layout.Column(
+        modifier
+            .padding(24.dp)
+            .widthIn(max = 560.dp)
+            .background(Color.Black.copy(alpha = 0.82f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .padding(22.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+    ) {
+        Text("РАНЕЕ В СЕРИАЛЕ", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
+        Text(
+            "${note.season} сезон, ${note.episode} серия" + (note.name?.let { " · $it" } ?: ""),
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(note.overview, color = Color.White.copy(alpha = 0.88f), style = MaterialTheme.typography.bodyMedium, maxLines = 9, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        app.couchy.ui.components.PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = onDone, modifier = Modifier.focusRequester(focus))
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 /** The label AniLibria's end credits come with: those wait for the next-episode card instead of being jumped. */

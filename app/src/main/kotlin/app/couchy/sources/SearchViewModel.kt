@@ -359,6 +359,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * «Ранее в сериале»: after a break of a few days, what happened in the episode before this one.
+     * Null when there was no break, for the first episode, or when nothing is known.
+     */
+    suspend fun recap(p: Playback): app.couchy.core.sources.EpisodeNote? {
+        if (p.live != null) return null
+        val (season, episode) = app.couchy.core.sources.Subtitles.episodeOf(p.title) ?: return null
+        if (season <= 1 && episode <= 1) return null
+        val name = p.title.substringBefore(" · ")
+        val last = library.snapshot().filter { it.uri != p.key && it.title.substringBefore(" · ") == name }.maxOfOrNull { it.lastWatchedAt }
+        if (!app.couchy.core.sources.Recap.needed(last, System.currentTimeMillis())) return null
+        val page = _title.value?.title?.takeIf { it.name == name || it.imdbId != null && it.imdbId == p.imdb }
+        return runCatching { meta.recap(p.imdb ?: page?.imdbId, page?.tmdbId, season, episode) }.getOrNull()
+    }
+
     /** «Что посмотреть?»: three titles for the mood, skipping what was seen and what was just shown. */
     suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength, shown: Set<String>): List<Title> {
         val seen = (marks.titles(Marks.SEEN) + marks.titles(Marks.RATED)).map { it.key }.toSet()

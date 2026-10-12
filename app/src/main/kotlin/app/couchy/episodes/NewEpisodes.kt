@@ -19,6 +19,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import app.couchy.BuildConfig
 import app.couchy.CouchyApp
 import app.couchy.MainActivity
 import app.couchy.R
@@ -30,6 +31,7 @@ import app.couchy.core.sources.TitleKind
 import app.couchy.data.Marks
 import app.couchy.sources.Web
 import org.json.JSONArray
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /**
@@ -46,6 +48,10 @@ object NewEpisodes {
         marks.titles(Marks.FOLLOW)
             .filter { it.kind == TitleKind.SERIES && it.imdbId != null }
             .distinctBy { it.imdbId }
+
+    /** Films marked «Жду»: announced once they can be watched at home, then let go. */
+    fun awaited(marks: Marks): List<Title> =
+        marks.titles(Marks.FOLLOW).filter { it.kind == TitleKind.MOVIE && it.imdbId != null }.distinctBy { it.imdbId }
 
     fun schedule(context: Context) {
         val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -80,7 +86,28 @@ object NewEpisodes {
                 seen.edit().putInt(imdb, Episodes.aired(list, now).size).apply()
                 Episodes.announce(fresh)?.let { text -> notify(app, title, text) }
             }
+            val key = app.settings.prefs.first().tmdbKey.ifBlank { BuildConfig.TMDB_KEY }
+            for (film in awaited(app.marks)) {
+                val home = runCatching { homeRelease(web, key, film.imdbId!!) }.getOrNull() ?: continue
+                if (home <= now) {
+                    notify(app, film, "Вышел в цифре, можно смотреть")
+                    app.marks.toggleTitle(Marks.FOLLOW, film)
+                }
+            }
             return Result.success()
+        }
+
+        /** When the film can be watched at home: TMDB's digital release, or Cinemeta's without a key. */
+        private suspend fun homeRelease(web: Web, key: String, imdb: String): Long? {
+            if (key.isNotBlank()) {
+                val (findUrl, h) = app.couchy.core.sources.Tmdb.request(key, "/find/$imdb", mapOf("external_source" to "imdb_id"))
+                val id = app.couchy.core.sources.Tmdb.parseFind(web.get(findUrl, h))?.first
+                if (id != null) {
+                    val (url, headers) = app.couchy.core.sources.Tmdb.request(key, "/movie/$id/release_dates")
+                    app.couchy.core.sources.Releases.homeRelease(web.get(url, headers))?.let { return it }
+                }
+            }
+            return app.couchy.core.sources.Releases.cinemetaHome(web.get(Cinemeta.metaUrl(imdb, TitleKind.MOVIE)))
         }
     }
 

@@ -221,7 +221,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Series the person hears about when a new episode is out. */
     val following: StateFlow<Set<String>> = marks.all
-        .map { NewEpisodes.followed(marks).mapNotNull { it.imdbId }.toSet() }
+        .map { (NewEpisodes.followed(marks) + NewEpisodes.awaited(marks)).mapNotNull { it.imdbId }.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     /** "Просмотрено": a watched film leaves "Смотреть позже" and the picks made for the person. */

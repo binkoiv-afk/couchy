@@ -755,6 +755,9 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
         )
         if (state.title.kind == app.couchy.core.sources.TitleKind.SERIES && state.title.imdbId != null) {
             FollowAction(state.following, actions.onFollow, cell)
+        } else if (state.title.imdbId != null && (state.title.year ?: Int.MAX_VALUE) >= java.time.LocalDate.now().year - 1) {
+            // A new film: «Жду» tells the day it can be watched at home.
+            FollowAction(state.following, actions.onFollow, cell, on = "Жду ✓", off = "Жду")
         }
         val inSome = state.inFolders.isNotEmpty()
         KeepAction(
@@ -852,14 +855,14 @@ private fun KeepAction(
 
 /** Following a series for new episodes; asks for notifications the first time. */
 @Composable
-private fun FollowAction(following: Boolean, onFollow: () -> Unit, modifier: Modifier) {
+private fun FollowAction(following: Boolean, onFollow: () -> Unit, modifier: Modifier, on: String = "Слежу", off: String = "Следить") {
     val context = androidx.compose.ui.platform.LocalContext.current
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { }
     KeepAction(
         if (following) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
-        if (following) "Слежу" else "Следить",
+        if (following) on else off,
         following,
         {
             if (!following && !app.couchy.episodes.NewEpisodes.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {

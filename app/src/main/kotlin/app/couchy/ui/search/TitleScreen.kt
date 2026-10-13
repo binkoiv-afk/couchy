@@ -210,48 +210,7 @@ private fun anyWay(state: TitleUi): Boolean =
         state.sitesLoading || state.torrentsLoading || state.info?.providers.orEmpty().isNotEmpty()
 
 /** The steps behind «Смотреть»: where from, which voice-over, which episode; the quality comes last, in the player's dialog. */
-private enum class Step { SOURCE, VOICE, EPISODE, TORRENT }
-
-/** The big button: «Смотреть» opens the steps; «Продолжить» goes straight on where the person stopped. */
-@Composable
-private fun WatchButton(state: TitleUi, actions: TitleActions, onSteps: () -> Unit) {
-    val next = continuing(state)
-    val series = state.rezka.page?.series == true
-    val any = anyWay(state)
-    val label = when {
-        next != null && series -> "Продолжить · ${next.first} сезон, ${next.second} серия"
-        next != null -> "Продолжить"
-        any -> "Смотреть"
-        else -> "Не нашлось, где посмотреть"
-    }
-    val shape = RoundedCornerShape(16.dp)
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(
-            Modifier
-                .weight(1f)
-                .height(56.dp)
-                .couchyClickable(shape, focusScale = 1.03f) {
-                    when {
-                        next != null -> actions.onPlay(next.first, next.second, false)
-                        any -> onSteps()
-                    }
-                }
-                .background(if (any) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
-                .padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val fg = if (any) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant
-            if (any) Icon(Icons.Rounded.PlayArrow, null, tint = fg, modifier = Modifier.size(24.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        // Going on is one tap; another source, voice or quality is one more.
-        if (next != null) {
-            SecondaryButton(null, Icons.Rounded.Tune, onClick = onSteps, modifier = Modifier.height(56.dp))
-            if (!series) SecondaryButton(null, Icons.Rounded.Replay, onClick = { actions.onPlay(0, 0, true) }, modifier = Modifier.height(56.dp))
-        }
-    }
-}
+private enum class Step { SOURCE, VOICE, EPISODE, TORRENT_VOICE, TORRENT }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -259,7 +218,11 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
     var step by remember(state.title.key) { mutableStateOf<Step?>(null) }
     // Picking a voice from the episodes card changes only the voice; from «Смотреть» it goes on to the episode.
     var voiceOnly by remember { mutableStateOf(false) }
-    step?.let { s -> WatchSteps(state, actions, s, voiceOnly, onStep = { step = it }, onClose = { step = null; voiceOnly = false }) }
+    // The voice picked among the torrents; null for any.
+    var torrentVoice by remember(state.title.key) { mutableStateOf<String?>(null) }
+    step?.let { s ->
+        WatchSteps(state, actions, s, voiceOnly, torrentVoice, onTorrentVoice = { torrentVoice = it }, onStep = { step = it }, onClose = { step = null; voiceOnly = false })
+    }
     val r = state.rezka
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         val details = mergedDetails(state)
@@ -267,7 +230,8 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
-                WatchButton(state, actions, onSteps = { voiceOnly = false; step = Step.SOURCE })
+                // Step one is right here on the page: where to watch. The voice-over and the quality follow.
+                WhereToWatch(state, actions, onStep = { voiceOnly = false; step = it })
                 Spacer(Modifier.height(4.dp))
                 Keep(state, actions)
                 state.info?.trailer?.let { id ->
@@ -301,35 +265,30 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WatchSteps(state: TitleUi, actions: TitleActions, step: Step, voiceOnly: Boolean, onStep: (Step) -> Unit, onClose: () -> Unit) {
+private fun WatchSteps(
+    state: TitleUi,
+    actions: TitleActions,
+    step: Step,
+    voiceOnly: Boolean,
+    torrentVoice: String?,
+    onTorrentVoice: (String?) -> Unit,
+    onStep: (Step) -> Unit,
+    onClose: () -> Unit,
+) {
     val r = state.rezka
     val page = r.page
     val voices = page?.translators.orEmpty()
     val series = page?.series == true
-    // Rezka's steps: source, voice when there is a choice, episode for a series, quality.
-    val total = 2 + (if (voices.size > 1) 1 else 0) + (if (series) 1 else 0)
-    fun after(s: Step): Int = when (s) {
-        Step.SOURCE -> 1
-        Step.VOICE -> 2
-        Step.EPISODE -> if (voices.size > 1) 3 else 2
-        Step.TORRENT -> 2
-    }
     fun playRezka(season: Int, episode: Int) { onClose(); actions.onPlay(season, episode, false) }
     fun fromVoice() { if (series) onStep(Step.EPISODE) else playRezka(0, 0) }
     when (step) {
         Step.SOURCE -> CouchySheet("Где смотреть", onClose, step = "Шаг 1 · источник") {
-            SourceRows(state, actions, onClose, onRezka = {
-                when {
-                    voices.size > 1 -> onStep(Step.VOICE)
-                    series -> onStep(Step.EPISODE)
-                    else -> playRezka(0, 0)
-                }
-            }, onTorrents = { onStep(Step.TORRENT) })
+            SourceRows(state, actions, onClose, onRezka = { onStep(rezkaFirst(state)) }, onTorrents = { onStep(torrentFirst(state)) })
         }
         Step.VOICE -> CouchySheet(
             "Озвучка", onClose,
-            step = if (voiceOnly) null else "Шаг ${after(step)} из ${if (state.rezka.status == SourceStatus.READY) total else 2} · озвучка",
-            onBack = if (voiceOnly) null else { { onStep(Step.SOURCE) } },
+            step = if (voiceOnly) null else "Шаг 2 · озвучка · HDrezka",
+            onBack = if (voiceOnly) null else { { onClose() } },
         ) {
             voices.forEach { t ->
                 val mark = when {
@@ -352,8 +311,8 @@ private fun WatchSteps(state: TitleUi, actions: TitleActions, step: Step, voiceO
         }
         Step.EPISODE -> CouchySheet(
             "Серия", onClose,
-            step = "Шаг ${after(step)} из $total · серия",
-            onBack = { onStep(if (voices.size > 1) Step.VOICE else Step.SOURCE) },
+            step = "Шаг 3 · серия",
+            onBack = { if (voices.isNotEmpty()) onStep(Step.VOICE) else onClose() },
         ) {
             val seasons = r.episodes.map { it.season }.distinct()
             val season = r.season ?: seasons.firstOrNull()
@@ -371,9 +330,21 @@ private fun WatchSteps(state: TitleUi, actions: TitleActions, step: Step, voiceO
                 }
             }
         }
-        Step.TORRENT -> CouchySheet("Качество", onClose, step = "Шаг 2 из 2 · качество", onBack = { onStep(Step.SOURCE) }) {
-            val best = bestTorrent(state)?.first
-            state.torrents.forEach { g ->
+        Step.TORRENT_VOICE -> CouchySheet("Озвучка", onClose, step = "Шаг 2 · озвучка · торрент", onBack = onClose) {
+            val all = state.torrents.flatMap { it.hits }
+            val counts = all.flatMap { h -> h.voices.distinct() }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }
+            SheetRow("Любая", onClick = { onTorrentVoice(null); onStep(Step.TORRENT) }, icon = Icons.Rounded.RecordVoiceOver, tag = "${all.size}", selected = torrentVoice == null)
+            counts.forEach { (voice, n) ->
+                SheetRow(voice, onClick = { onTorrentVoice(voice); onStep(Step.TORRENT) }, icon = Icons.Rounded.RecordVoiceOver, tag = "$n", selected = voice == torrentVoice)
+            }
+        }
+        Step.TORRENT -> CouchySheet(
+            "Качество", onClose, step = "Шаг 3 · качество" + (torrentVoice?.let { " · $it" } ?: ""),
+            onBack = { if (state.torrents.any { g -> g.hits.any { it.voices.isNotEmpty() } }) onStep(Step.TORRENT_VOICE) else onClose() },
+        ) {
+            val groups = state.torrents.map { g -> g.copy(hits = g.hits.filter { torrentVoice == null || torrentVoice in it.voices }) }.filter { it.hits.isNotEmpty() }
+            val best = (groups.firstOrNull { it.label.contains("1080") } ?: groups.firstOrNull())?.label
+            groups.forEach { g ->
                 val hit = g.hits.maxByOrNull { it.seeds } ?: return@forEach
                 SheetRow(
                     g.label,
@@ -384,6 +355,40 @@ private fun WatchSteps(state: TitleUi, actions: TitleActions, step: Step, voiceO
                 )
             }
         }
+    }
+}
+
+/** HDrezka after the source: the voice-over when there is one to pick, else the episode, else the quality. */
+private fun rezkaFirst(state: TitleUi): Step = when {
+    state.rezka.page?.translators.orEmpty().isNotEmpty() -> Step.VOICE
+    else -> Step.EPISODE
+}
+
+/** Torrents after the source: the voice-over when the trackers name them, else the quality. */
+private fun torrentFirst(state: TitleUi): Step =
+    if (state.torrents.any { g -> g.hits.any { it.voices.isNotEmpty() } }) Step.TORRENT_VOICE else Step.TORRENT
+
+/** Step one on the page itself: every source, the best one marked; going on where the person stopped is above them. */
+@Composable
+private fun WhereToWatch(state: TitleUi, actions: TitleActions, onStep: (Step) -> Unit) {
+    val next = continuing(state)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (next != null) {
+            SheetRow(
+                "Продолжить",
+                onClick = { actions.onPlay(next.first, next.second, false) },
+                icon = Icons.Rounded.PlayArrow,
+                tag = if (state.rezka.page?.series == true) "${next.first} сезон · ${next.second} серия" else "HDrezka",
+                selected = true,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        Text("ГДЕ СМОТРЕТЬ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+        SourceRows(state, actions, onClose = {}, onRezka = {
+            val first = rezkaFirst(state)
+            if (first == Step.EPISODE && state.rezka.page?.series != true) actions.onPlay(0, 0, false) else onStep(first)
+        }, onTorrents = { onStep(torrentFirst(state)) })
+        if (!anyWay(state)) Muted("Нигде не нашлось.")
     }
 }
 

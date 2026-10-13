@@ -220,6 +220,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _playback = MutableStateFlow<Playback?>(null)
     val playback: StateFlow<Playback?> = _playback.asStateFlow()
 
+    /** The YouTube video shrunk into a corner after Back, playing on over the rest of Couchy. */
+    val mini = MutableStateFlow(false)
+
     private val _notice = MutableStateFlow<Notice?>(null)
     val notice: StateFlow<Notice?> = _notice.asStateFlow()
 

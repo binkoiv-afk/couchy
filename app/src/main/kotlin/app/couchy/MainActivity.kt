@@ -1,5 +1,8 @@
 package app.couchy
 
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.zIndex
 import app.couchy.ui.search.WatchDialog
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -125,7 +128,8 @@ class MainActivity : ComponentActivity() {
             CouchyTheme(loaded.theme) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
-                    MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh, openTitle)
+                    // A Box, so the small YouTube player can float over every screen.
+                    Box(Modifier.fillMaxSize()) { MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh, openTitle) }
                 }
             }
         }
@@ -134,7 +138,11 @@ class MainActivity : ComponentActivity() {
     /** Going home while a video plays shrinks it into a window instead of stopping it. */
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (vm.playback.value != null) app.couchy.ui.player.PlayerWindow.enter(this)
+        if (vm.playback.value != null) {
+            // The small player in the corner opens up first, so the window shows the video, not the app.
+            vm.mini.value = false
+            app.couchy.ui.player.PlayerWindow.enter(this)
+        }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
@@ -490,11 +498,27 @@ private fun MainScreen(
         if (current != null && ExternalPlayer.always && current.live == null && ExternalPlayer.fits(current) &&
             ExternalPlayer.open(context, current)) vm.closePlayer()
     }
+    val miniWanted by vm.mini.collectAsStateWithLifecycle()
+    // A new video always opens full screen.
+    LaunchedEffect(current?.key) { vm.mini.value = false }
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
         LaunchedEffect(current.key) { if (current.live == null) searchVm.prefetch(current) }
+        // YouTube on a phone or tablet: Back shrinks the video into a corner and it plays on.
+        val youTube = !form.isTv && live == null && app.couchy.core.youtube.YouTubeLinks.isVideo(current.key)
+        val mini = miniWanted && youTube
         PlayerScreen(
+            mini = mini,
+            onMinimize = if (youTube) ({ vm.mini.value = true }) else null,
+            onExpand = { vm.mini.value = false },
+            onSaveAudio = if (youTube) ({ app.couchy.youtube.AudioSave.start(context, current.key, current.title) }) else null,
+            modifier = Modifier
+                .zIndex(10f)
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(end = 12.dp, bottom = 96.dp)
+                .wrapContentSize(Alignment.BottomEnd),
             playback = current,
             touch = !form.isTv,
             onProgress = { pos, dur -> vm.saveProgress(current.key, pos, dur) },
@@ -551,7 +575,7 @@ private fun MainScreen(
                 }
             },
         )
-        return
+        if (!mini) return
     }
 
     val openTorrent = torrent

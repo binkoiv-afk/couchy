@@ -1,7 +1,19 @@
 package app.couchy.ui.player
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.NightsStay
 import android.app.Activity
@@ -140,6 +152,14 @@ fun PlayerScreen(
     onExternal: ((positionMs: Long) -> Unit)? = null,
     /** «Ранее в сериале»: the episode before, after a break; null when not wanted. */
     recap: (suspend () -> app.couchy.core.sources.EpisodeNote?)? = null,
+    /** Small in a corner over the app, still playing (YouTube after Back). */
+    mini: Boolean = false,
+    /** Back shrinks the player into the corner instead of closing it. */
+    onMinimize: (() -> Unit)? = null,
+    onExpand: () -> Unit = {},
+    /** Saves the sound alone, split into tracks by the video's chapters (YouTube). */
+    onSaveAudio: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
@@ -238,7 +258,8 @@ fun PlayerScreen(
 
     // Full screen: the status and navigation bars hide and come back with a swipe from the edge.
     val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.runtime.DisposableEffect(view) {
+    androidx.compose.runtime.DisposableEffect(view, mini) {
+        if (mini) return@DisposableEffect onDispose { }
         val window = (view.context as? android.app.Activity)?.window
         val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -258,6 +279,12 @@ fun PlayerScreen(
     }
 
     fun exit() { save(); onExit() }
+
+    // YouTube: Back and the arrow shrink the video into a corner; it goes on playing there.
+    fun leave() {
+        val m = onMinimize
+        if (m != null) { save(); sheet = null; overlay = false; m() } else exit()
+    }
 
     // Sleep timer "to the end of the episode" and "stay on the credits" both stop here instead of going on.
     fun finished() { if (sleepAfterEpisode || nextCancelled) onExit() else onFinished() }
@@ -302,14 +329,17 @@ fun PlayerScreen(
     // Phones turn sideways for video, and the rotate button stands them up again; tablets and TVs keep whatever they have.
     val phone = touch && context.resources.configuration.smallestScreenWidthDp < 600
     var upright by remember { mutableStateOf(false) }
+    val orientationBefore = remember { (context as? Activity)?.requestedOrientation }
     DisposableEffect(touch) {
         val activity = context as? Activity
-        val before = activity?.requestedOrientation
-        onDispose { if (before != null) activity?.requestedOrientation = before }
+        onDispose { if (orientationBefore != null) activity?.requestedOrientation = orientationBefore }
     }
-    androidx.compose.runtime.LaunchedEffect(upright, phone) {
-        if (phone) (context as? Activity)?.requestedOrientation =
-            if (upright) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    androidx.compose.runtime.LaunchedEffect(upright, phone, mini) {
+        if (phone) (context as? Activity)?.requestedOrientation = when {
+            mini -> orientationBefore ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            upright -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
     }
 
     // Leaving the app pauses playback and saves the spot; coming back does not auto-play.
@@ -411,12 +441,12 @@ fun PlayerScreen(
     // Screen lock against little hands and pockets: touches and Back do nothing until a long press.
     var locked by remember { mutableStateOf(false) }
     var lockHintAt by remember { mutableLongStateOf(0L) }
-    BackHandler {
+    BackHandler(enabled = !mini) {
         when {
             locked -> lockHintAt = System.currentTimeMillis()
             sheet != null -> sheet = null
-            overlay && ui.playing && ui.error == null -> overlay = false
-            else -> exit()
+            overlay && ui.playing && ui.error == null && onMinimize == null -> overlay = false
+            else -> leave()
         }
     }
 
@@ -492,7 +522,7 @@ fun PlayerScreen(
     }
 
     val controls = PlayerControls(
-        onBack = ::exit,
+        onBack = ::leave,
         onTogglePlay = { poke(); if (player.isPlaying) player.pause() else player.play() },
         onSeekTo = { poke(); player.seekTo(it) },
         onSeekBy = { poke(); player.seekTo((player.currentPosition + it).coerceAtLeast(0)) },
@@ -536,6 +566,11 @@ fun PlayerScreen(
             }
         },
     )
+
+    if (mini) {
+        MiniPlayer(player, ui, modifier, onExpand = onExpand, onToggle = { if (player.isPlaying) player.pause() else player.play() }, onClose = ::exit)
+        return
+    }
 
     Box(
         Modifier
@@ -854,6 +889,7 @@ fun PlayerScreen(
                         },
                     ) { sheet = Sheet.SLEEP },
                     controls.onDownload?.let { d -> app.couchy.ui.components.Tile("Скачать", Icons.Rounded.Download, state = "На устройство") { sheet = null; d() } },
+                    onSaveAudio?.let { a -> app.couchy.ui.components.Tile("Сохранить звук", Icons.Rounded.MusicNote, state = "Музыка, по трекам") { sheet = null; a(); flash("Сохраняю звук. Прогресс в уведомлении") } },
                     controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
                 ),
             )
@@ -929,6 +965,69 @@ fun PlayerScreen(
 }
 
 /** Takes every touch while the screen is locked; a long press anywhere unlocks it. */
+/** The video small in a corner, over the rest of Couchy: tap to open it again, ✕ to stop. */
+@Composable
+private fun MiniPlayer(player: Player, ui: PlayerUi, modifier: Modifier, onExpand: () -> Unit, onToggle: () -> Unit, onClose: () -> Unit) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    Column(
+        modifier
+            .width(232.dp)
+            .shadow(16.dp, shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+            .clip(shape),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(Color.Black)
+                .pointerInput(Unit) { detectTapGestures(onTap = { onExpand() }) },
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                        layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        this.player = player
+                    }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (ui.buffering) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.align(Alignment.Center).size(26.dp), color = Color.White, strokeWidth = 2.dp)
+            }
+            // How far along: a thin line at the bottom of the picture.
+            if (ui.durationMs > 0) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.2f))) {
+                    Box(Modifier.fillMaxWidth((ui.positionMs.toFloat() / ui.durationMs).coerceIn(0f, 1f)).height(3.dp).background(MaterialTheme.colorScheme.primary))
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                ui.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).pointerInput(Unit) { detectTapGestures(onTap = { onExpand() }) },
+            )
+            androidx.compose.material3.IconButton(onClick = onToggle) {
+                androidx.compose.material3.Icon(
+                    if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    if (ui.playing) "Пауза" else "Играть",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            androidx.compose.material3.IconButton(onClick = onClose) {
+                androidx.compose.material3.Icon(Icons.Rounded.Close, "Закрыть", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 @Composable
 private fun LockShield(hintAt: Long, onTap: () -> Unit, onUnlock: () -> Unit) {
     var visible by remember { mutableStateOf(true) }

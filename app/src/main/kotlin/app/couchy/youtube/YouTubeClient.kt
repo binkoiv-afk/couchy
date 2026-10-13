@@ -53,6 +53,17 @@ data class YtStream(
     val subtitles: List<Pair<String, String>>,
 )
 
+/** A video's sound to save: where it is, m4a or webm, and the tracks it splits into. */
+data class YtAudio(
+    val title: String,
+    val channel: String,
+    val url: String,
+    val userAgent: String,
+    val mp4: Boolean,
+    val durationMs: Long,
+    val chapters: List<app.couchy.core.youtube.Chapter>,
+)
+
 /**
  * YouTube through NewPipe Extractor: the same pages the site shows, read without an account,
  * so there are no ads and nothing is tracked. Stream links come straight from YouTube's servers.
@@ -177,6 +188,23 @@ object YouTubeClient {
                 YtStream(video, muxed.content, null, agentFor(muxed.content), emptyList(), label(muxed.height, muxed.fps), skips, description, related, subtitles)
             }
         }
+    }
+
+    /** The sound of a video alone, for saving as music: m4a when there is one, and its chapters. */
+    suspend fun audio(link: String): YtAudio = io {
+        val info = StreamInfo.getInfo(service, link)
+        val audio = info.audioStreams
+            .filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
+            .sortedWith(compareByDescending<org.schabi.newpipe.extractor.stream.AudioStream> { it.format?.mimeType?.contains("mp4") == true }
+                .thenByDescending { it.audioLocale?.language == "ru" || it.audioTrackType == null }
+                .thenByDescending { it.averageBitrate })
+            .firstOrNull() ?: throw IllegalStateException("YouTube не отдал звук этого видео")
+        val durationMs = info.duration * 1000
+        val own = runCatching { info.streamSegments.map { it.startTimeSeconds * 1000L to it.title.orEmpty() } }.getOrDefault(emptyList())
+        val description = info.description?.content.orEmpty().replace(Regex("<br\\s*/?>"), "\n").replace(Regex("<[^>]+>"), "")
+        val chapters = if (own.size >= 2) app.couchy.core.youtube.Chapters.of(own, durationMs) else app.couchy.core.youtube.Chapters.parse(description, durationMs)
+        val mp4 = audio.format?.mimeType?.contains("mp4") == true
+        YtAudio(info.name, info.uploaderName.orEmpty(), audio.content, agentFor(audio.content), mp4, durationMs, chapters)
     }
 
     /** A trailer's picture alone, 720p at most, for playing muted behind Home's banner: link and user agent. */

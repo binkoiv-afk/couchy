@@ -255,6 +255,29 @@ class ScreensTest {
     @Test fun phoneYoutube() = snap("phone_youtube", phone, FormFactor.PHONE) {
         Shell(Destination.YOUTUBE, {}, {}) { app.couchy.ui.youtube.YouTubeContent(ytState, ytActions) }
     }
+    @Test fun phoneYoutubeMusic() = snap("phone_youtube_music", phone, FormFactor.PHONE) {
+        Shell(Destination.YOUTUBE, {}, {}) {
+            app.couchy.ui.youtube.YouTubeContent(
+                ytState.copy(
+                    shelf = app.couchy.youtube.YtShelf.Music("Кино"),
+                    query = "Кино",
+                    list = app.couchy.youtube.YtListUi(end = true),
+                    music = app.couchy.youtube.YtMusicUi(
+                        songs = listOf(
+                            app.couchy.core.youtube.YtVideo("bbbbbbbbbb1", "Группа крови", "Кино", durationSec = 287, thumb = ""),
+                            app.couchy.core.youtube.YtVideo("bbbbbbbbbb2", "Звезда по имени Солнце", "Кино", durationSec = 225, thumb = ""),
+                            app.couchy.core.youtube.YtVideo("bbbbbbbbbb3", "Кукушка", "Кино", durationSec = 401, thumb = ""),
+                        ),
+                        albums = listOf(
+                            app.couchy.youtube.YtAlbum("https://music.youtube.com/playlist?list=1", "Группа крови", "Кино", null, 11),
+                            app.couchy.youtube.YtAlbum("https://music.youtube.com/playlist?list=2", "Чёрный альбом", "Кино", null, 8),
+                        ),
+                    ),
+                ),
+                ytActions,
+            )
+        }
+    }
     @Test fun tvYoutube() = snap("tv_youtube", tv, FormFactor.TV) {
         Shell(Destination.YOUTUBE, {}, {}) { app.couchy.ui.youtube.YouTubeContent(ytState, ytActions) }
     }

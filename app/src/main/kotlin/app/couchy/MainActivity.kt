@@ -252,6 +252,7 @@ private fun MainScreen(
     val ytAutoPlay by ytVm.autoPlay.collectAsStateWithLifecycle()
     val ytBusy by ytVm.busy.collectAsStateWithLifecycle()
     val ytError by ytVm.error.collectAsStateWithLifecycle()
+    val musicQueue by ytVm.queue.collectAsStateWithLifecycle()
     LaunchedEffect(destination) { if (destination == Destination.YOUTUBE) ytVm.start() }
     LaunchedEffect(ytAutoPlay) { ytAutoPlay?.let { vm.playDirect(it); ytVm.autoPlayHandled() } }
     val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
@@ -508,7 +509,12 @@ private fun MainScreen(
         // YouTube on a phone or tablet: Back shrinks the video into a corner and it plays on.
         val youTube = !form.isTv && live == null && app.couchy.core.youtube.YouTubeLinks.isVideo(current.key)
         val mini = miniWanted && youTube
+        // Music from YouTube: the queue of songs, while one of them is playing.
+        val songs = musicQueue?.takeIf { q -> q.current.url == current.key }
         PlayerScreen(
+            queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }.orEmpty(),
+            queueAt = songs?.index ?: 0,
+            onQueuePick = songs?.let { { i: Int -> ytVm.nextTrack(i); Unit } },
             mini = mini,
             onMinimize = if (youTube) ({ vm.mini.value = true }) else null,
             onExpand = { vm.mini.value = false },
@@ -570,6 +576,7 @@ private fun MainScreen(
                 val nextRef = current.nextRef
                 when {
                     next != null -> scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
+                    nextRef == app.couchy.youtube.YouTubeViewModel.MUSIC_NEXT -> { if (!ytVm.nextTrack()) vm.closePlayer() }
                     nextRef != null -> searchVm.playRef(nextRef)
                     else -> vm.closePlayer()
                 }
@@ -776,6 +783,9 @@ private fun MainScreen(
                         onClearHistory = ytVm::clearHistory,
                         onLater = ytVm::toggleLater,
                         onLoved = ytVm::toggleLoved,
+                        onSong = { list, i -> ytVm.playMusic(list, i) },
+                        onAlbum = { album, shuffle -> ytVm.playAlbum(album, shuffle) },
+                        onSaveAlbum = ytVm::saveAlbum,
                     ),
                 )
                 if (ytBusy) {

@@ -26,6 +26,8 @@ import org.schabi.newpipe.extractor.kiosk.KioskInfo
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.search.SearchInfo
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
@@ -62,7 +64,13 @@ data class YtAudio(
     val mp4: Boolean,
     val durationMs: Long,
     val chapters: List<app.couchy.core.youtube.Chapter>,
+    val thumb: String? = null,
 )
+
+/** An album or playlist on YouTube Music. */
+data class YtAlbum(val url: String, val title: String, val artist: String, val thumb: String?, val count: Long)
+
+data class YtMusic(val songs: List<YtVideo>, val albums: List<YtAlbum>, val playlists: List<YtAlbum>)
 
 /**
  * YouTube through NewPipe Extractor: the same pages the site shows, read without an account,
@@ -190,6 +198,55 @@ object YouTubeClient {
         }
     }
 
+    /** YouTube Music: songs, albums and playlists for a query, read in parallel. */
+    suspend fun music(query: String): YtMusic = coroutineScope {
+        fun search(filter: String) = async {
+            runCatching {
+                io {
+                    val handler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
+                    SearchInfo.getInfo(service, handler).relatedItems
+                }
+            }.getOrDefault(emptyList())
+        }
+        val songs = search(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS)
+        val albums = search(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS)
+        val playlists = search(YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS)
+        YtMusic(
+            songs = songs.await().mapNotNull { (it as? StreamInfoItem)?.let(::videoOf) },
+            albums = albums.await().mapNotNull { (it as? PlaylistInfoItem)?.let(::albumOf) },
+            playlists = playlists.await().mapNotNull { (it as? PlaylistInfoItem)?.let(::albumOf) },
+        )
+    }
+
+    /** What plays on YouTube's music shelf now, for the music section before anything is searched. */
+    suspend fun musicCharts(): List<YtVideo> = io {
+        val list = service.kioskList
+        val id = list.availableKiosks.firstOrNull { it.contains("music", ignoreCase = true) } ?: return@io emptyList()
+        pageOf(KioskInfo.getInfo(list.getExtractorById(id, null)).relatedItems, null).videos
+    }
+
+    /** An album's or playlist's tracks, in order. */
+    suspend fun tracks(url: String): List<YtVideo> = io {
+        val info = PlaylistInfo.getInfo(service, url)
+        val all = ArrayList<YtVideo>()
+        all += info.relatedItems.map(::videoOf)
+        var next = info.nextPage
+        while (next != null && Page.isValid(next) && all.size < 300) {
+            val more = PlaylistInfo.getMoreItems(service, url, next)
+            all += more.items.map(::videoOf)
+            next = more.nextPage
+        }
+        all
+    }
+
+    private fun albumOf(p: PlaylistInfoItem) = YtAlbum(
+        url = p.url,
+        title = p.name,
+        artist = p.uploaderName.orEmpty(),
+        thumb = best(p.thumbnails, 226),
+        count = p.streamCount.coerceAtLeast(0),
+    )
+
     /** The sound of a video alone, for saving as music: m4a when there is one, and its chapters. */
     suspend fun audio(link: String): YtAudio = io {
         val info = StreamInfo.getInfo(service, link)
@@ -204,7 +261,7 @@ object YouTubeClient {
         val description = info.description?.content.orEmpty().replace(Regex("<br\\s*/?>"), "\n").replace(Regex("<[^>]+>"), "")
         val chapters = if (own.size >= 2) app.couchy.core.youtube.Chapters.of(own, durationMs) else app.couchy.core.youtube.Chapters.parse(description, durationMs)
         val mp4 = audio.format?.mimeType?.contains("mp4") == true
-        YtAudio(info.name, info.uploaderName.orEmpty(), audio.content, agentFor(audio.content), mp4, durationMs, chapters)
+        YtAudio(info.name, info.uploaderName.orEmpty(), audio.content, agentFor(audio.content), mp4, durationMs, chapters, best(info.thumbnails, 720))
     }
 
     /** A trailer's picture alone, 720p at most, for playing muted behind Home's banner: link and user agent. */

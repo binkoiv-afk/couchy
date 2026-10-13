@@ -1,5 +1,8 @@
 package app.couchy.ui.player
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.blur
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.size
@@ -104,7 +107,7 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE }
 
 private val sleepMinutes = listOf(15, 30, 45, 60, 90)
 
@@ -159,6 +162,10 @@ fun PlayerScreen(
     onExpand: () -> Unit = {},
     /** Saves the sound alone, split into tracks by the video's chapters (YouTube). */
     onSaveAudio: (() -> Unit)? = null,
+    /** Music: the songs in a row (artist — title), which one plays, and a jump to another. */
+    queue: List<String> = emptyList(),
+    queueAt: Int = 0,
+    onQueuePick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -454,7 +461,7 @@ fun PlayerScreen(
     // End credits: where the site says they start, or where the person marked them for the series.
     val creditsAt = playback.skips.firstOrNull { it.label == CREDITS }?.startMs
         ?: intro?.creditsMs?.takeIf { it > 0 && ui.durationMs > it * 3 }?.let { ui.durationMs - it }
-    val nextAllowed = hasNext && playback.live == null && !nextCancelled && !sleepAfterEpisode && ui.durationMs > 60_000
+    val nextAllowed = hasNext && playback.live == null && playback.artwork == null && !nextCancelled && !sleepAfterEpisode && ui.durationMs > 60_000
     val nextIn = when {
         !nextAllowed || remaining < 0 -> null
         creditsAt != null && ui.positionMs >= creditsAt -> (10 - (ui.positionMs - creditsAt) / 1000).toInt().coerceAtLeast(0)
@@ -568,7 +575,7 @@ fun PlayerScreen(
     )
 
     if (mini) {
-        MiniPlayer(player, ui, modifier, onExpand = onExpand, onToggle = { if (player.isPlaying) player.pause() else player.play() }, onClose = ::exit)
+        MiniPlayer(player, ui, playback.artwork, modifier, onExpand = onExpand, onToggle = { if (player.isPlaying) player.pause() else player.play() }, onClose = ::exit)
         return
     }
 
@@ -706,6 +713,7 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        playback.artwork?.let { Cover(it, ui.title) }
         if (listening) {
             app.couchy.ui.components.VoiceCapture(
                 "Скажите: «перемотай на 10 минут», «включи субтитры», «следующая серия»",
@@ -823,6 +831,11 @@ fun PlayerScreen(
             ),
             onDismiss = { sheet = null },
         )
+        Sheet.QUEUE -> OptionsDialog(
+            "Очередь",
+            listOf(OptionSection(null, queue.mapIndexed { i, t -> Option(t, i == queueAt, icon = Icons.Rounded.MusicNote) { save(); onQueuePick?.invoke(i) } })),
+            onDismiss = { sheet = null },
+        )
         Sheet.SLEEP -> OptionsDialog(
             "Таймер сна",
             listOf(
@@ -890,6 +903,7 @@ fun PlayerScreen(
                     ) { sheet = Sheet.SLEEP },
                     controls.onDownload?.let { d -> app.couchy.ui.components.Tile("Скачать", Icons.Rounded.Download, state = "На устройство") { sheet = null; d() } },
                     onSaveAudio?.let { a -> app.couchy.ui.components.Tile("Сохранить звук", Icons.Rounded.MusicNote, state = "Музыка, по трекам") { sheet = null; a(); flash("Сохраняю звук. Прогресс в уведомлении") } },
+                    onQueuePick?.takeIf { queue.size > 1 }?.let { app.couchy.ui.components.Tile("Очередь", Icons.Rounded.QueueMusic, true, "${queueAt + 1} из ${queue.size}") { sheet = Sheet.QUEUE } },
                     controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
                 ),
             )
@@ -965,9 +979,27 @@ fun PlayerScreen(
 }
 
 /** Takes every touch while the screen is locked; a long press anywhere unlocks it. */
+/** Music: the album cover large in the middle over a dim, blurred copy of itself. */
+@Composable
+private fun Cover(url: String, title: String) {
+    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        coil.compose.AsyncImage(
+            url, null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().then(if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(40.dp) else Modifier),
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
+        coil.compose.AsyncImage(
+            url, title,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxHeight(0.62f).aspectRatio(1f).shadow(24.dp, androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+        )
+    }
+}
+
 /** The video small in a corner, over the rest of Couchy: tap to open it again, ✕ to stop. */
 @Composable
-private fun MiniPlayer(player: Player, ui: PlayerUi, modifier: Modifier, onExpand: () -> Unit, onToggle: () -> Unit, onClose: () -> Unit) {
+private fun MiniPlayer(player: Player, ui: PlayerUi, artwork: String?, modifier: Modifier, onExpand: () -> Unit, onToggle: () -> Unit, onClose: () -> Unit) {
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     Column(
         modifier
@@ -995,6 +1027,7 @@ private fun MiniPlayer(player: Player, ui: PlayerUi, modifier: Modifier, onExpan
                 update = { it.player = player },
                 modifier = Modifier.fillMaxSize(),
             )
+            artwork?.let { coil.compose.AsyncImage(it, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             if (ui.buffering) {
                 androidx.compose.material3.CircularProgressIndicator(Modifier.align(Alignment.Center).size(26.dp), color = Color.White, strokeWidth = 2.dp)
             }

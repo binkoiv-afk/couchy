@@ -1,5 +1,13 @@
 package app.couchy.ui.youtube
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -86,6 +94,10 @@ class YouTubeActions(
     val onClearHistory: () -> Unit,
     val onLater: (YtVideo) -> Unit,
     val onLoved: (YtVideo) -> Unit,
+    /** Music: a song with the songs around it as the queue. */
+    val onSong: (List<YtVideo>, Int) -> Unit = { _, _ -> },
+    val onAlbum: (app.couchy.youtube.YtAlbum, shuffle: Boolean) -> Unit = { _, _ -> },
+    val onSaveAlbum: (app.couchy.youtube.YtAlbum) -> Unit = {},
 )
 
 /**
@@ -101,6 +113,10 @@ fun YouTubeContent(state: YouTubeUi, actions: YouTubeActions, modifier: Modifier
         VideoGrid(channel.list, state, actions, modifier, onMore = {}) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "channel") { ChannelHeader(channel.channel, subscribed, actions) }
         }
+        return
+    }
+    if (state.shelf is YtShelf.Music) {
+        MusicList(state, actions, modifier)
         return
     }
     VideoGrid(state.list, state, actions, modifier, onMore = actions.onMore) {
@@ -185,7 +201,7 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
         OutlinedTextField(
             state.query,
             actions.onQuery,
-            placeholder = { Text("Видео, канал или ссылка") },
+            placeholder = { Text(if (state.shelf is YtShelf.Music) "Песня, артист или альбом" else "Видео, канал или ссылка") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             trailingIcon = if (state.query.isNotEmpty()) ({
                 Icon(Icons.Rounded.Close, "Очистить", Modifier.couchyClickable(CircleShape) { actions.onQuery("") }.padding(6.dp))
@@ -207,6 +223,9 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
                 Chip("Подписки", state.shelf == YtShelf.Subscriptions, onClick = { actions.onShelf(YtShelf.Subscriptions) }, icon = Icons.Rounded.Subscriptions)
             }
             item {
+                Chip("Музыка", state.shelf is YtShelf.Music, onClick = { actions.onShelf(YtShelf.Music()) }, icon = Icons.Rounded.MusicNote)
+            }
+            item {
                 val later = YtShelf.Saved(app.couchy.youtube.YouTubeViewModel.LATER, "Смотреть позже")
                 Chip(later.name, state.shelf == later, onClick = { actions.onShelf(later) }, icon = Icons.Rounded.Bookmark)
             }
@@ -214,14 +233,15 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
                 val loved = YtShelf.Saved(app.couchy.youtube.YouTubeViewModel.LOVED, "Любимое")
                 Chip(loved.name, state.shelf == loved, onClick = { actions.onShelf(loved) }, icon = Icons.Rounded.Favorite)
             }
-            val kiosks = state.kiosks.ifEmpty { listOf(YtShelf.Kiosk(null, "Популярное")) }
+            // YouTube's own music shelf is inside «Музыка», as its first page.
+            val kiosks = state.kiosks.filter { it.id?.contains("music", ignoreCase = true) != true }.ifEmpty { listOf(YtShelf.Kiosk(null, "Популярное")) }
             items(kiosks) { k ->
                 val shelf = state.shelf
                 Chip(k.name, shelf is YtShelf.Kiosk && (shelf.id == k.id || shelf.id == null && k == kiosks.first()), onClick = { actions.onShelf(k) })
             }
             (state.shelf as? YtShelf.Search)?.let { s -> item { Chip("«${s.query}»", true, onClick = {}, icon = Icons.Rounded.Search) } }
         }
-        if (state.history.isNotEmpty() && state.shelf !is YtShelf.Search) {
+        if (state.history.isNotEmpty() && state.shelf !is YtShelf.Search && (state.shelf as? YtShelf.Music)?.query == null) {
             androidx.compose.foundation.layout.FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -382,5 +402,121 @@ private fun agoOf(ms: Long): String {
         minutes < 30 * 24 * 60 -> "${minutes / 60 / 24} дн. назад"
         minutes < 365 * 24 * 60 -> "${minutes / 60 / 24 / 30} мес. назад"
         else -> "${minutes / 60 / 24 / 365} г. назад"
+    }
+}
+
+/** YouTube Music: albums and playlists in rows, songs in a list; a song plays with the rest after it. */
+@Composable
+private fun MusicList(state: YouTubeUi, actions: YouTubeActions, modifier: Modifier) {
+    val form = LocalFormFactor.current
+    val side = if (form.wide) 32.dp else 16.dp
+    val music = state.music
+    var albumMenu by remember { mutableStateOf<app.couchy.youtube.YtAlbum?>(null) }
+    androidx.compose.foundation.lazy.LazyColumn(
+        modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(start = side, end = side, top = 12.dp, bottom = 120.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item("head") { Header(state, actions) }
+        if (state.list.loading) item("loading") {
+            Box(Modifier.fillMaxWidth().padding(vertical = 28.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(28.dp), color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        state.list.error?.let { e ->
+            item("error") {
+                Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(e, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SecondaryButton("Ещё раз", Icons.Rounded.Refresh, onClick = actions.onRetry)
+                }
+            }
+        }
+        if (music.albums.isNotEmpty()) item("albums") { AlbumRow("Альбомы", music.albums, actions) { albumMenu = it } }
+        if (music.playlists.isNotEmpty()) item("playlists") { AlbumRow("Плейлисты", music.playlists, actions) { albumMenu = it } }
+        if (music.songs.isNotEmpty()) item("songs-title") {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if ((state.shelf as? YtShelf.Music)?.query == null) "Сейчас слушают" else "Песни", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                SecondaryButton("Перемешать", Icons.Rounded.Shuffle, onClick = { actions.onSong(music.songs.shuffled(), 0) })
+            }
+        }
+        itemsIndexed(music.songs, key = { _, v -> "song-" + v.id }) { i, v -> SongRow(v) { actions.onSong(music.songs, i) } }
+        if (!state.list.loading && state.list.error == null && music.songs.isEmpty() && music.albums.isEmpty()) item("empty") {
+            Text(
+                "Найдите песню, артиста или альбом. Музыка играет без картинки, в фоне и в маленьком плеере, песни идут одна за другой.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+        }
+    }
+    albumMenu?.let { a ->
+        app.couchy.ui.player.OptionsDialog(
+            a.title,
+            listOf(
+                app.couchy.ui.player.OptionSection(
+                    null,
+                    listOf(
+                        app.couchy.ui.player.Option("Слушать", false, icon = Icons.Rounded.PlayArrow) { actions.onAlbum(a, false) },
+                        app.couchy.ui.player.Option("Перемешать", false, icon = Icons.Rounded.Shuffle) { actions.onAlbum(a, true) },
+                        app.couchy.ui.player.Option("Сохранить в «Музыку»", false, icon = Icons.Rounded.Download, tag = "по трекам") { actions.onSaveAlbum(a) },
+                    ),
+                ),
+            ),
+            onDismiss = { albumMenu = null },
+        )
+    }
+}
+
+@Composable
+private fun AlbumRow(title: String, albums: List<app.couchy.youtube.YtAlbum>, actions: YouTubeActions, onMenu: (app.couchy.youtube.YtAlbum) -> Unit) {
+    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(albums, key = { it.url }) { a ->
+                val shape = RoundedCornerShape(14.dp)
+                Column(
+                    Modifier.width(148.dp).couchyClickable(shape, focusScale = 1.04f, onLongClick = { onMenu(a) }) { actions.onAlbum(a, false) },
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(Modifier.size(148.dp).clip(shape)) {
+                        Artwork(a.url, Modifier.fillMaxSize())
+                        a.thumb?.let { AsyncImage(it, a.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).padding(8.dp).size(36.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                .couchyClickable(CircleShape) { onMenu(a) },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Rounded.MoreHoriz, "Ещё", tint = Color.White, modifier = Modifier.size(20.dp)) }
+                    }
+                    Text(a.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(a.artist.takeIf { it.isNotBlank() }, a.count.takeIf { it > 0 }?.let { "$it треков" }).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SongRow(v: YtVideo, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().couchyClickable(shape, focusScale = 1.02f, onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp))) {
+            Artwork(v.id, Modifier.fillMaxSize())
+            AsyncImage(v.thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(v.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(v.channel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (v.durationSec > 0) Text(duration(v.durationSec), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

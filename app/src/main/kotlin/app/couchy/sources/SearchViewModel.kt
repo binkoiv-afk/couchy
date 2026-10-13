@@ -1018,7 +1018,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      * waiting. Episodes downloaded this way are deleted once watched.
      */
     fun prefetch(p: Playback) {
-        if (!app.couchy.AutoDownload.on || p.nextRef == null) return
+        if (!app.couchy.AutoDownload.on || p.nextRef == null || p.nextRef.startsWith("#couchy-music")) return
         val cm = getApplication<android.app.Application>().getSystemService(android.net.ConnectivityManager::class.java)
         if (cm == null || cm.isActiveNetworkMetered) return
         val downloads = couchy.downloads

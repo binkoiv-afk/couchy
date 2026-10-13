@@ -30,6 +30,21 @@ sealed interface YtShelf {
     data class Search(val query: String) : YtShelf
     /** The videos put aside on this device: "ytlater" or "ytloved". */
     data class Saved(val list: String, val name: String) : YtShelf
+    /** YouTube Music: what plays now, or the songs, albums and playlists for [query]. */
+    data class Music(val query: String? = null) : YtShelf
+}
+
+/** The music section: songs to play in a row, albums and playlists to open. */
+data class YtMusicUi(
+    val songs: List<YtVideo> = emptyList(),
+    val albums: List<YtAlbum> = emptyList(),
+    val playlists: List<YtAlbum> = emptyList(),
+)
+
+/** The songs playing one after another, and which one is on now. */
+data class MusicQueue(val tracks: List<YtVideo>, val index: Int, val album: String? = null) {
+    val current: YtVideo get() = tracks[index]
+    val hasNext: Boolean get() = index < tracks.lastIndex
 }
 
 data class YtListUi(
@@ -52,6 +67,7 @@ data class YouTubeUi(
     val history: List<String> = emptyList(),
     val later: Set<String> = emptySet(),
     val loved: Set<String> = emptySet(),
+    val music: YtMusicUi = YtMusicUi(),
 )
 
 class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
@@ -109,7 +125,8 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         if (app.couchy.core.youtube.YouTubeLinks.isVideo(query)) { play(query); return }
         rememberQuery(query)
         _state.update { it.copy(query = query, channel = null) }
-        show(YtShelf.Search(query))
+        // In the music section a search looks for songs and albums, not videos.
+        show(if (_state.value.shelf is YtShelf.Music) YtShelf.Music(query) else YtShelf.Search(query))
     }
 
     fun show(shelf: YtShelf) {
@@ -134,6 +151,11 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                         next = page.next
                         _state.update { it.copy(list = YtListUi(page.videos, page.channels, end = page.next == null)) }
                     }
+                    is YtShelf.Music -> {
+                        val music = if (shelf.query == null) YtMusicUi(songs = YouTubeClient.musicCharts().map(::artistOnly))
+                        else YouTubeClient.music(shelf.query).let { m -> YtMusicUi(m.songs.map(::artistOnly), m.albums, m.playlists) }
+                        _state.update { it.copy(music = music, list = YtListUi(end = true)) }
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -155,7 +177,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                 val more = when (shelf) {
                     is YtShelf.Kiosk -> YouTubeClient.kiosk(shelf.id, page)
                     is YtShelf.Search -> YouTubeClient.search(shelf.query, page)
-                    YtShelf.Subscriptions, is YtShelf.Saved -> return@launch
+                    YtShelf.Subscriptions, is YtShelf.Saved, is YtShelf.Music -> return@launch
                 }
                 next = more.next
                 _state.update { s ->
@@ -230,6 +252,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     /** Opens a video by its link, from a list, the library or a link shared from another app. */
     fun play(link: String, fromStart: Boolean = false) {
         if (_busy.value) return
+        _queue.value = null
         _busy.value = true
         viewModelScope.launch {
             try {
@@ -256,6 +279,97 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                 _error.value = problem(e)
             } finally {
                 _busy.value = false
+            }
+        }
+    }
+
+    private val _queue = MutableStateFlow<MusicQueue?>(null)
+    /** The songs in a row, when music is playing. */
+    val queue: StateFlow<MusicQueue?> = _queue.asStateFlow()
+
+    /** "Artist - Topic" is how YouTube names an artist's music channel; the artist is enough. */
+    private fun artistOnly(v: YtVideo) = v.copy(channel = v.channel.removeSuffix(" - Topic"))
+
+    /** Plays [tracks] one after another from [index]: the sound only, with the cover on screen. */
+    fun playMusic(tracks: List<YtVideo>, index: Int, album: String? = null) {
+        if (tracks.isEmpty()) return
+        _queue.value = MusicQueue(tracks, index.coerceIn(0, tracks.lastIndex), album)
+        playTrack()
+    }
+
+    /** An album or playlist from its first track, or shuffled. */
+    fun playAlbum(album: YtAlbum, shuffle: Boolean = false) {
+        if (_busy.value) return
+        _busy.value = true
+        viewModelScope.launch {
+            try {
+                val tracks = YouTubeClient.tracks(album.url).map(::artistOnly)
+                if (tracks.isEmpty()) _error.value = "В альбоме нет треков"
+                else { _busy.value = false; playMusic(if (shuffle) tracks.shuffled() else tracks, 0, album.title) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = problem(e)
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    /** The next song, or another one in the queue. */
+    fun nextTrack(to: Int? = null): Boolean {
+        val q = _queue.value ?: return false
+        val i = to ?: (q.index + 1)
+        if (i !in q.tracks.indices) return false
+        _queue.value = q.copy(index = i)
+        playTrack()
+        return true
+    }
+
+    fun stopMusic() { _queue.value = null }
+
+    /** Saves the whole album to Music, one file per track. */
+    fun saveAlbum(album: YtAlbum) {
+        viewModelScope.launch {
+            try {
+                val tracks = YouTubeClient.tracks(album.url)
+                AudioSave.album(getApplication(), album.title, tracks.map { it.url to it.title })
+                android.widget.Toast.makeText(getApplication(), "Сохраняю «${album.title}»: ${tracks.size} треков", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = problem(e)
+            }
+        }
+    }
+
+    private var trackJob: Job? = null
+
+    private fun playTrack() {
+        val q = _queue.value ?: return
+        val v = q.current
+        trackJob?.cancel()
+        _busy.value = true
+        trackJob = viewModelScope.launch {
+            try {
+                val a = YouTubeClient.audio(v.url)
+                _autoPlay.value = Playback(
+                    uri = a.url,
+                    title = listOf(v.channel, v.title).filter { it.isNotBlank() }.joinToString(" — "),
+                    startMs = 0,
+                    headers = mapOf("User-Agent" to a.userAgent),
+                    key = v.url,
+                    artwork = a.thumb ?: v.thumb,
+                    nextRef = MUSIC_NEXT.takeIf { q.hasNext },
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A song YouTube will not give: on to the next one rather than stopping the music.
+                if (q.hasNext) { _queue.value = q.copy(index = q.index + 1); _busy.value = false; playTrack(); return@launch }
+                _error.value = problem(e)
+            } finally {
+                if (coroutineContext[Job] === trackJob) _busy.value = false
             }
         }
     }
@@ -316,5 +430,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val LATER = "ytlater"
         const val LOVED = "ytloved"
+        /** Playback.nextRef of a song with more after it: the queue goes on instead of a source. */
+        const val MUSIC_NEXT = "#couchy-music-next"
     }
 }

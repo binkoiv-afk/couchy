@@ -45,6 +45,17 @@ object AudioSave {
         WorkManager.getInstance(context).enqueueUniqueWork("audio:$link", ExistingWorkPolicy.KEEP, request)
     }
 
+    /** A whole album, track after track, into one folder named after it. */
+    fun album(context: Context, album: String, tracks: List<Pair<String, String>>) {
+        if (tracks.isEmpty()) return
+        val requests = tracks.mapIndexed { i, (link, title) ->
+            OneTimeWorkRequestBuilder<Worker>()
+                .setInputData(workDataOf("link" to link, "title" to title, "album" to album, "number" to i + 1, "of" to tracks.size))
+                .build()
+        }
+        requests.drop(1).fold(WorkManager.getInstance(context).beginUniqueWork("album:$album", ExistingWorkPolicy.KEEP, requests.first())) { chain, r -> chain.then(r) }.enqueue()
+    }
+
     class Worker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
         private val id = (inputData.getString("link") ?: "").hashCode()
 
@@ -57,16 +68,28 @@ object AudioSave {
                 progress(name, "Готовлю…", null)
                 val audio = YouTubeClient.audio(link)
                 download(audio, whole) { done, total -> progress(audio.title, "Скачиваю звук", if (total > 0) (done * 100 / total).toInt() else null) }
-                val tracks = audio.chapters.takeIf { it.size >= 2 } ?: listOf(Chapter(0, Long.MAX_VALUE, audio.title))
-                val album = Chapters.safe(audio.title)
+                // A track of an album being saved: one file, numbered, in the album's folder.
+                val ofAlbum = inputData.getString("album")
+                val tracks = audio.chapters.takeIf { it.size >= 2 && ofAlbum == null } ?: listOf(Chapter(0, Long.MAX_VALUE, audio.title))
+                val album = Chapters.safe(ofAlbum ?: audio.title)
                 val ext = if (audio.mp4) "m4a" else "webm"
                 tracks.forEachIndexed { i, ch ->
                     progress(audio.title, "Трек ${i + 1} из ${tracks.size}", (i * 100) / tracks.size)
                     val part = File(cache, "${id.toUInt()}-$i.$ext")
                     cut(whole, part, ch, audio.mp4)
-                    val fileName = if (tracks.size == 1) "${album}.$ext" else Chapters.fileName(i + 1, tracks.size, ch.title, ext)
+                    val fileName = when {
+                        ofAlbum != null -> Chapters.fileName(inputData.getInt("number", 1), inputData.getInt("of", 1), name.ifBlank { audio.title }, ext)
+                        tracks.size == 1 -> "${album}.$ext"
+                        else -> Chapters.fileName(i + 1, tracks.size, ch.title, ext)
+                    }
                     publish(part, album, fileName, if (audio.mp4) "audio/mp4" else "audio/webm")
                     part.delete()
+                }
+                if (ofAlbum != null) {
+                    val n = inputData.getInt("number", 1)
+                    val of = inputData.getInt("of", 1)
+                    if (n == of) done(ofAlbum, "Альбом сохранён в «Музыка/Couchy/$album»")
+                    return Result.success()
                 }
                 done(audio.title, if (tracks.size == 1) "Сохранено в «Музыка/Couchy»" else "${tracks.size} треков в «Музыка/Couchy/$album»")
                 Result.success()
@@ -74,7 +97,8 @@ object AudioSave {
                 throw e
             } catch (e: Exception) {
                 done(name, "Не получилось сохранить звук: ${e.message ?: "ошибка"}")
-                Result.failure()
+                // One track that would not save does not stop the rest of the album.
+                if (inputData.getString("album") != null) Result.success() else Result.failure()
             } finally {
                 whole.delete()
             }

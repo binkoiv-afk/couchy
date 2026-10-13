@@ -1,8 +1,12 @@
 package app.couchy.ui.search
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +54,7 @@ fun WatchDialog(
                     null,
                     translators.map { t ->
                         val marks = listOfNotNull("режиссёрская".takeIf { t.director }, "экранка".takeIf { t.camrip }, "с рекламой".takeIf { t.ads })
-                        Option(t.name + if (marks.isEmpty()) "" else " · " + marks.joinToString(", "), t.id == current) {
+                        Option(t.name, t.id == current, icon = Icons.Rounded.RecordVoiceOver, tag = marks.firstOrNull()) {
                             moving = true
                             if (t.id != current) onTranslator(t.id)
                             voiceChosen = true
@@ -76,17 +80,12 @@ fun WatchDialog(
     val p = playback
     if (p == null) {
         if (!loaded) {
-            AlertDialog(
-                onDismissRequest = onDismiss,
-                confirmButton = {},
-                title = { Text("Качество") },
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        CircularProgressIndicator(Modifier.size(22.dp), color = MaterialTheme.colorScheme.primary)
-                        Text("Смотрю, какое качество есть…", style = MaterialTheme.typography.bodyLarge)
-                    }
-                },
-            )
+            app.couchy.ui.components.CouchySheet("Качество", onDismiss, step = "Последний шаг · качество") {
+                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CircularProgressIndicator(Modifier.size(22.dp), color = MaterialTheme.colorScheme.primary)
+                    Text("Смотрю, какое качество есть…", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
         return
     }
@@ -95,12 +94,12 @@ fun WatchDialog(
         "Качество",
         listOfNotNull(
             voice?.let { v ->
-                OptionSection("ОЗВУЧКА", listOf(Option("${v.name} · сменить", false) { moving = true; voiceChosen = false }))
+                OptionSection("Озвучка", listOf(Option(v.name, false, icon = Icons.Rounded.RecordVoiceOver, tag = "сменить") { moving = true; voiceChosen = false }))
             },
             OptionSection(
                 null,
                 p.variants.map { (label, url) ->
-                    Option(label, url == p.uri) {
+                    Option(label, url == p.uri, icon = Icons.Rounded.HighQuality) {
                         moving = true
                         onPlay(p.copy(uri = url))
                     }
@@ -108,5 +107,6 @@ fun WatchDialog(
             ),
         ),
         onDismiss = { if (moving) moving = false else onDismiss() },
+        step = "Последний шаг · качество",
     )
 }

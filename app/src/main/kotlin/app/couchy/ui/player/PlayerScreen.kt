@@ -1,5 +1,9 @@
 package app.couchy.ui.player
 
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.NightsStay
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -835,24 +839,25 @@ fun PlayerScreen(
                 onDismiss = { sheet = null },
             )
         }
-        Sheet.MORE -> OptionsDialog(
-            "Ещё",
-            listOf(
-                OptionSection(null, listOfNotNull(
+        Sheet.MORE -> app.couchy.ui.components.CouchySheet("Ещё", onDismiss = { sheet = null }) {
+            app.couchy.ui.components.TileGrid(
+                listOfNotNull(
                     controls.onNight?.takeIf { playback.live == null }?.let { toggle ->
-                        Option(if (night) "Ночной звук · включён" else "Ночной звук: взрывы тише, голоса громче", night) { sheet = null; toggle() }
+                        app.couchy.ui.components.Tile("Ночной звук", Icons.Rounded.NightsStay, night, if (night) "Включён" else "Голоса громче") { sheet = null; toggle() }
                     },
-                    Option(when {
-                        sleepAfterEpisode -> "Таймер сна · до конца серии"
-                        sleepAt != null -> "Таймер сна · идёт"
-                        else -> "Таймер сна…"
-                    }, sleepAt != null || sleepAfterEpisode) { sheet = Sheet.SLEEP },
-                    controls.onDownload?.let { d -> Option("Скачать на устройство", false) { sheet = null; d() } },
-                    controls.onPip?.let { p -> Option("Маленькое окно поверх приложений", false) { sheet = null; p() } },
-                )),
-            ),
-            onDismiss = { sheet = null },
-        )
+                    app.couchy.ui.components.Tile(
+                        "Таймер сна", Icons.Rounded.Bedtime, sleepAt != null || sleepAfterEpisode,
+                        when {
+                            sleepAfterEpisode -> "До конца серии"
+                            sleepAt != null -> "Идёт"
+                            else -> "Выключен"
+                        },
+                    ) { sheet = Sheet.SLEEP },
+                    controls.onDownload?.let { d -> app.couchy.ui.components.Tile("Скачать", Icons.Rounded.Download, state = "На устройство") { sheet = null; d() } },
+                    controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
+                ),
+            )
+        }
         Sheet.INTRO -> {
             val at = player.currentPosition
             val from = introFrom

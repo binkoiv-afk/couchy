@@ -49,12 +49,8 @@ fun ItemActionsDialog(
     onKids: (() -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text(item.title, maxLines = 2) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    CouchySheet(item.title, onDismiss) {
+            run {
                 val resume = Progress.resumeFrom(item.positionMs, item.durationMs)
                 ActionRow(
                     Icons.Rounded.PlayArrow,
@@ -73,22 +69,11 @@ fun ItemActionsDialog(
                 if (item.positionMs > 0) ActionRow(Icons.Rounded.VisibilityOff, "Отметить непросмотренным") { onDismiss(); onUnwatched() }
                 ActionRow(Icons.Rounded.Delete, "Удалить из медиатеки") { onDismiss(); onRemove() }
             }
-        },
-    )
+    }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 @Composable
 private fun ActionRow(icon: ImageVector, text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .couchyClickable(RoundedCornerShape(10.dp), focusScale = 1.02f, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Icon(icon, null, modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text, style = MaterialTheme.typography.bodyLarge)
-    }
+    SheetRow(text, onClick = onClick, modifier = modifier, icon = icon)
 }

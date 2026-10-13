@@ -1,5 +1,12 @@
 package app.couchy.ui.search
 
+import app.couchy.ui.components.SheetHeader
+import app.couchy.ui.components.SheetRow
+import app.couchy.ui.components.CouchySheet
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -59,8 +66,6 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Tv
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -179,29 +184,18 @@ fun TitleContent(state: TitleUi, actions: TitleActions, modifier: Modifier = Mod
     }
 }
 
-/** What the big button does: the best way to watch, picked for the person. */
-private data class MainAction(val label: String, val note: String?, val icon: androidx.compose.ui.graphics.vector.ImageVector?, val run: (() -> Unit)?)
-
-/** HDrezka's way to watch: the film, or the next episode not yet watched; null until the page is read. */
-private fun rezkaAction(state: TitleUi, actions: TitleActions): MainAction? {
+/** The next thing to go on with: the film or the episode started and not finished. Null when nothing was started. */
+private fun continuing(state: TitleUi): Pair<Int, Int>? {
     val r = state.rezka
     val page = r.page ?: return null
     if (r.status != SourceStatus.READY) return null
-    val voice = page.translators.firstOrNull { it.id == r.translator }?.name
-    val note = listOfNotNull("HDrezka", voice, "без рекламы").joinToString(" · ")
-    if (!page.series) {
-        val started = (state.progress["0:0"] ?: 0f) > 0f && "0:0" !in state.watched
-        return MainAction(if (started) "Продолжить" else "Смотреть", note, Icons.Rounded.PlayArrow) { actions.onPlay(0, 0, false) }
-    }
+    fun started(key: String) = (state.progress[key] ?: 0f) > 0f && key !in state.watched
+    if (!page.series) return (0 to 0).takeIf { started("0:0") }
     val episodes = r.episodes.sortedWith(compareBy({ it.season }, { it.episode }))
-    val next = episodes.firstOrNull { e -> (state.progress["${e.season}:${e.episode}"] ?: 0f) > 0f && "${e.season}:${e.episode}" !in state.watched }
-        ?: episodes.firstOrNull { e -> "${e.season}:${e.episode}" !in state.watched }
-        ?: episodes.firstOrNull()
-        ?: return null
-    val started = (state.progress["${next.season}:${next.episode}"] ?: 0f) > 0f
-    return MainAction("${if (started) "Продолжить" else "Смотреть"} · ${next.season} сезон, ${next.episode} серия", note, Icons.Rounded.PlayArrow) {
-        actions.onPlay(next.season, next.episode, false)
-    }
+    episodes.firstOrNull { started("${it.season}:${it.episode}") }?.let { return it.season to it.episode }
+    // Some episodes watched: the first one not watched yet.
+    if (episodes.none { "${it.season}:${it.episode}" in state.watched }) return null
+    return episodes.firstOrNull { "${it.season}:${it.episode}" !in state.watched }?.let { it.season to it.episode }
 }
 
 /** The torrent most likely to play well: 1080p if there is one, the most seeded in it. */
@@ -210,70 +204,70 @@ private fun bestTorrent(state: TitleUi): Pair<String, TorrentHit>? {
     return group.hits.maxByOrNull { it.seeds }?.let { group.label to it }
 }
 
-private fun mainAction(state: TitleUi, actions: TitleActions): MainAction {
-    val r = state.rezka
-    val page = r.page
-    // Kino.pub, with the person's subscription, has every voice-over and 4K: it goes first.
-    state.sites.firstOrNull { it.site == app.couchy.core.sources.KinoPub.ID }?.let { hit ->
-        return MainAction("Смотреть", "Kino.pub · все озвучки · до 4K", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
-    }
-    rezkaAction(state, actions)?.let { return it }
-    // HDrezka is slow, blocked or has nothing: whatever else has the title plays instead, without waiting.
-    state.sites.firstOrNull { r.status != SourceStatus.LOADING || it.site in app.couchy.sources.NativeClient.ids }?.let { hit ->
-        val native = hit.site in app.couchy.sources.NativeClient.ids
-        return MainAction("Смотреть", "${siteName(hit.site)} · " + if (native) "прямо в Couchy" else "без рекламы", Icons.Rounded.PlayArrow) { actions.onSite(hit) }
-    }
-    if (r.status == SourceStatus.BLOCKED) return MainAction("Открыть HDrezka", "Сайт просит подтвердить, что вы не бот", Icons.Rounded.VerifiedUser, actions.onChallenge)
-    if (r.status == SourceStatus.LOADING) return MainAction("Ищу, где посмотреть…", null, null, null)
-    bestTorrent(state)?.let { (label, hit) ->
-        return MainAction("Смотреть торрент · $label", "${hit.tracker} · ▲ ${hit.seeds}", Icons.Rounded.PlayArrow) { actions.onTorrent(hit) }
-    }
-    if (state.sitesLoading || state.torrentsLoading) return MainAction("Ищу, где посмотреть…", null, null, null)
-    return MainAction("Не нашлось, где посмотреть", "Попробуйте поиск на сайтах ниже", null, null)
-}
+/** Whether there is anything at all to watch from, or still something being looked for. */
+private fun anyWay(state: TitleUi): Boolean =
+    state.rezka.status != SourceStatus.NOT_FOUND || state.sites.isNotEmpty() || state.torrents.isNotEmpty() ||
+        state.sitesLoading || state.torrentsLoading || state.info?.providers.orEmpty().isNotEmpty()
 
+/** The steps behind «Смотреть»: where from, which voice-over, which episode; the quality comes last, in the player's dialog. */
+private enum class Step { SOURCE, VOICE, EPISODE, TORRENT }
+
+/** The big button: «Смотреть» opens the steps; «Продолжить» goes straight on where the person stopped. */
 @Composable
-private fun WatchButton(state: TitleUi, actions: TitleActions) {
-    val action = mainAction(state, actions)
+private fun WatchButton(state: TitleUi, actions: TitleActions, onSteps: () -> Unit) {
+    val next = continuing(state)
+    val series = state.rezka.page?.series == true
+    val any = anyWay(state)
+    val label = when {
+        next != null && series -> "Продолжить · ${next.first} сезон, ${next.second} серия"
+        next != null -> "Продолжить"
+        any -> "Смотреть"
+        else -> "Не нашлось, где посмотреть"
+    }
     val shape = RoundedCornerShape(16.dp)
-    val enabled = action.run != null
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(56.dp)
-                .couchyClickable(shape, focusScale = 1.03f) { action.run?.invoke() }
-                .background(if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+                .couchyClickable(shape, focusScale = 1.03f) {
+                    when {
+                        next != null -> actions.onPlay(next.first, next.second, false)
+                        any -> onSteps()
+                    }
+                }
+                .background(if (any) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh, shape)
                 .padding(horizontal = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val fg = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant
-            if (action.icon != null) Icon(action.icon, null, tint = fg, modifier = Modifier.size(24.dp))
-            else if (!enabled && action.label.endsWith("…")) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
-            Text(action.label, style = MaterialTheme.typography.titleMedium, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val fg = if (any) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant
+            if (any) Icon(Icons.Rounded.PlayArrow, null, tint = fg, modifier = Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.titleMedium, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        action.note?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
+        // Going on is one tap; another source, voice or quality is one more.
+        if (next != null) {
+            SecondaryButton(null, Icons.Rounded.Tune, onClick = onSteps, modifier = Modifier.height(56.dp))
+            if (!series) SecondaryButton(null, Icons.Rounded.Replay, onClick = { actions.onPlay(0, 0, true) }, modifier = Modifier.height(56.dp))
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, padding: PaddingValues) {
-    val t = state.title
-    var selected by rememberSaveable(t.name, t.year) { mutableStateOf<String?>(null) }
-    val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
+    var step by remember(state.title.key) { mutableStateOf<Step?>(null) }
+    // Picking a voice from the episodes card changes only the voice; from «Смотреть» it goes on to the episode.
+    var voiceOnly by remember { mutableStateOf(false) }
+    step?.let { s -> WatchSteps(state, actions, s, voiceOnly, onStep = { step = it }, onClose = { step = null; voiceOnly = false }) }
+    val r = state.rezka
     LazyColumn(modifier, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         val details = mergedDetails(state)
         item("head") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
-                WatchButton(state, actions)
-                Spacer(Modifier.height(4.dp))
-                // Right under the button: every other way to watch, so the choice is made here.
-                WhereToWatch(state, selected, onSelect = { selected = it }, actions)
+                WatchButton(state, actions, onSteps = { voiceOnly = false; step = Step.SOURCE })
                 Spacer(Modifier.height(4.dp))
                 Keep(state, actions)
                 state.info?.trailer?.let { id ->
@@ -283,30 +277,9 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 Facts(state.title, details, actions)
             }
         }
-        when (val src = current) {
-            Source.Rezka -> item("rezka") { Card("HDrezka") { RezkaBody(state, actions) } }
-            is Source.OnSite -> item("site-${src.hit.site}") { Card(siteName(src.hit.site)) { SiteBody(state, src.hit, actions) } }
-            Source.Torrents -> {
-                if (state.torrentsLoading) item("t-loading") { Card("Торренты") { Loading("Ищу раздачи…") } }
-                else if (state.torrents.isEmpty()) item("t-none") { Card("Торренты") { Muted("Раздач не нашлось.") } }
-                state.torrents.forEach { group ->
-                    item("g-${group.label}") {
-                        var open by rememberSaveable(group.label) { mutableStateOf(false) }
-                        Card("Торренты · ${group.label}", "${group.hits.size}") {
-                            val shown = if (open) group.hits else group.hits.take(4)
-                            shown.forEach { hit -> TorrentRow(hit, onClick = { actions.onTorrent(hit) }) }
-                            if (group.hits.size > 4) {
-                                Text(
-                                    if (open) "Свернуть" else "Ещё ${group.hits.size - 4}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp)) { open = !open }.padding(8.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        // A series keeps its episodes on the page: what was watched, and any episode in one tap.
+        if (r.status == SourceStatus.READY && r.page?.series == true) item("episodes") {
+            Card("Серии") { Ready(state, r, actions, onVoice = { voiceOnly = true; step = Step.VOICE }) }
         }
         val people = (details.directors.map { it to "режиссёр" } + details.actors.map { it to null }).distinctBy { it.first.url }
         if (people.isNotEmpty()) item("cast") {
@@ -320,6 +293,153 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
         if (details.parts.isNotEmpty()) item("parts") { Shelf("Все части", details.parts, actions.onTitle) }
         if (details.similar.isNotEmpty()) item("similar") { Shelf("Похожее", details.similar, actions.onTitle) }
     }
+}
+
+/**
+ * «Смотреть», step by step, as the person asked: where from, then the voice-over, then for a series the
+ * episode; the quality is asked last, by the dialog that starts the video.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WatchSteps(state: TitleUi, actions: TitleActions, step: Step, voiceOnly: Boolean, onStep: (Step) -> Unit, onClose: () -> Unit) {
+    val r = state.rezka
+    val page = r.page
+    val voices = page?.translators.orEmpty()
+    val series = page?.series == true
+    // Rezka's steps: source, voice when there is a choice, episode for a series, quality.
+    val total = 2 + (if (voices.size > 1) 1 else 0) + (if (series) 1 else 0)
+    fun after(s: Step): Int = when (s) {
+        Step.SOURCE -> 1
+        Step.VOICE -> 2
+        Step.EPISODE -> if (voices.size > 1) 3 else 2
+        Step.TORRENT -> 2
+    }
+    fun playRezka(season: Int, episode: Int) { onClose(); actions.onPlay(season, episode, false) }
+    fun fromVoice() { if (series) onStep(Step.EPISODE) else playRezka(0, 0) }
+    when (step) {
+        Step.SOURCE -> CouchySheet("Где смотреть", onClose, step = "Шаг 1 · источник") {
+            SourceRows(state, actions, onClose, onRezka = {
+                when {
+                    voices.size > 1 -> onStep(Step.VOICE)
+                    series -> onStep(Step.EPISODE)
+                    else -> playRezka(0, 0)
+                }
+            }, onTorrents = { onStep(Step.TORRENT) })
+        }
+        Step.VOICE -> CouchySheet(
+            "Озвучка", onClose,
+            step = if (voiceOnly) null else "Шаг ${after(step)} из ${if (state.rezka.status == SourceStatus.READY) total else 2} · озвучка",
+            onBack = if (voiceOnly) null else { { onStep(Step.SOURCE) } },
+        ) {
+            voices.forEach { t ->
+                val mark = when {
+                    t.director -> "режиссёрская"
+                    t.camrip -> "экранка"
+                    t.ads -> "с рекламой"
+                    else -> null
+                }
+                SheetRow(
+                    t.name,
+                    onClick = {
+                        actions.onTranslator(t.id)
+                        if (voiceOnly) onClose() else fromVoice()
+                    },
+                    icon = Icons.Rounded.RecordVoiceOver,
+                    tag = mark,
+                    selected = t.id == r.translator,
+                )
+            }
+        }
+        Step.EPISODE -> CouchySheet(
+            "Серия", onClose,
+            step = "Шаг ${after(step)} из $total · серия",
+            onBack = { onStep(if (voices.size > 1) Step.VOICE else Step.SOURCE) },
+        ) {
+            val seasons = r.episodes.map { it.season }.distinct()
+            val season = r.season ?: seasons.firstOrNull()
+            if (seasons.size > 1) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                    seasons.forEach { s -> Chip("Сезон $s", s == season, onClick = { actions.onSeason(s) }) }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (r.episodesLoading || season == null) Loading("Загружаю серии…")
+            else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                r.episodes.filter { it.season == season }.forEach { e ->
+                    val key = "${e.season}:${e.episode}"
+                    EpisodeTile(e.episode, state.progress[key] ?: 0f, key in state.watched) { playRezka(e.season, e.episode) }
+                }
+            }
+        }
+        Step.TORRENT -> CouchySheet("Качество", onClose, step = "Шаг 2 из 2 · качество", onBack = { onStep(Step.SOURCE) }) {
+            val best = bestTorrent(state)?.first
+            state.torrents.forEach { g ->
+                val hit = g.hits.maxByOrNull { it.seeds } ?: return@forEach
+                SheetRow(
+                    g.label,
+                    onClick = { onClose(); actions.onTorrent(hit) },
+                    icon = Icons.Rounded.HighQuality,
+                    tag = app.couchy.core.torrent.Sizes.bytes(hit.size).takeIf { hit.size > 0 },
+                    badge = "ЛУЧШЕЕ".takeIf { g.label == best },
+                )
+            }
+        }
+    }
+}
+
+/** Step one: every source that has the title, each with one short word on how it plays; the best is marked. */
+@Composable
+private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Unit, onRezka: () -> Unit, onTorrents: () -> Unit) {
+    val r = state.rezka
+    var bestGiven = false
+    fun badge(): String? = if (bestGiven) null else { bestGiven = true; "ЛУЧШИЙ" }
+    val kp = state.sites.firstOrNull { it.site == app.couchy.core.sources.KinoPub.ID }
+    kp?.let { SheetRow("Kino.pub", onClick = { onClose(); actions.onSite(it) }, icon = Icons.Rounded.PlayCircle, tag = "до 4K", badge = badge()) }
+    when (r.status) {
+        SourceStatus.READY -> {
+            val n = r.page?.translators?.size ?: 0
+            SheetRow("HDrezka", onClick = onRezka, icon = Icons.Rounded.PlayCircle, tag = if (n > 1) "озвучек: $n" else "1080p", badge = badge())
+        }
+        SourceStatus.LOADING -> SheetRow("HDrezka", onClick = {}, icon = Icons.Rounded.PlayCircle, enabled = false, trailing = { Spinner() })
+        SourceStatus.BLOCKED -> SheetRow("HDrezka", onClick = { onClose(); actions.onChallenge() }, icon = Icons.Rounded.VerifiedUser, tag = "проверка")
+        SourceStatus.ERROR -> SheetRow("HDrezka", onClick = actions.onRetryRezka, icon = Icons.Rounded.Refresh, tag = "повторить")
+        SourceStatus.NOT_FOUND -> Unit
+    }
+    state.sites.filter { it != kp }.forEach { hit ->
+        val native = hit.site in app.couchy.sources.NativeClient.ids
+        SheetRow(
+            siteName(hit.site),
+            onClick = { onClose(); actions.onSite(hit) },
+            icon = if (native) Icons.Rounded.PlayCircle else Icons.Rounded.Language,
+            tag = if (native) "1080p" else "плеер сайта",
+            badge = if (native) badge() else null,
+        )
+    }
+    if (state.sitesLoading) SheetRow("Онлайн-кинотеатры", onClick = {}, icon = Icons.Rounded.Language, enabled = false, trailing = { Spinner() })
+    bestTorrent(state)?.let { (label, _) ->
+        SheetRow("Торрент", onClick = onTorrents, icon = Icons.Rounded.Download, tag = label, badge = badge())
+    } ?: run {
+        if (state.torrentsLoading) SheetRow("Торрент", onClick = {}, icon = Icons.Rounded.Download, enabled = false, trailing = { Spinner() })
+    }
+    val legal = state.info?.providers.orEmpty()
+    if (legal.isNotEmpty()) {
+        SheetHeader("Легально, в приложении сервиса")
+        legal.forEach { p -> SheetRow(app.couchy.sources.Providers.name(p.name), onClick = { onClose(); actions.onProvider(p) }, icon = Icons.Rounded.Tv, tag = p.how) }
+    }
+    // Cinemas without a readable search, and those that did not find the title by name: their own search.
+    val found = state.sites.map { it.site }.toSet()
+    val manual = Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }
+    if (manual.isNotEmpty()) {
+        var open by remember { mutableStateOf(false) }
+        SheetHeader("Другие сайты")
+        if (!open) SheetRow("Искать вручную", onClick = { open = true }, icon = Icons.Rounded.Search, tag = "${manual.size}")
+        else manual.forEach { site -> SheetRow(site.name, onClick = { onClose(); actions.onSearchSite(site) }, icon = Icons.Rounded.Language, tag = "поиск ↗") }
+    }
+}
+
+@Composable
+private fun Spinner() {
+    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** TMDB's Russian data goes first; with Cinemeta (English) the site's Russian names do. */
@@ -450,180 +570,7 @@ private fun Shelf(title: String, items: List<Title>, onTitle: (Title) -> Unit) {
     }
 }
 
-/** One place a title can be watched from; the page shows one at a time, all in the same card style. */
-private sealed interface Source {
-    val id: String
-
-    data object Rezka : Source {
-        override val id = "rezka"
-    }
-
-    data class OnSite(val hit: SiteHit) : Source {
-        override val id = "site:" + hit.site
-    }
-
-    data object Torrents : Source {
-        override val id = "torrents"
-    }
-}
-
 private fun siteName(id: String) = app.couchy.sources.NativeClient.name(id) ?: Sites.all.firstOrNull { it.id == id }?.name ?: id
-
-private fun sources(state: TitleUi): List<Source> = listOf(Source.Rezka) + state.sites.map { Source.OnSite(it) } + Source.Torrents
-
-/** Opens on the first source that has the title: HDrezka, then the cinemas, then torrents. */
-private fun firstReady(state: TitleUi): Source = when {
-    state.rezka.status == SourceStatus.READY || state.rezka.status == SourceStatus.BLOCKED -> Source.Rezka
-    state.sites.isNotEmpty() -> Source.OnSite(state.sites.first())
-    state.rezka.status == SourceStatus.LOADING -> Source.Rezka
-    // HDrezka failed: torrents rather than an error card, while the cinemas are still being asked.
-    state.torrents.isNotEmpty() -> Source.Torrents
-    state.sitesLoading -> Source.Rezka
-    state.torrents.isNotEmpty() || state.torrentsLoading -> Source.Torrents
-    else -> Source.Rezka
-}
-
-/** One way to watch: where, how, and what it plays when tapped. [details] opens its card below. */
-private data class Way(
-    val id: String,
-    val name: String,
-    val how: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val play: (() -> Unit)?,
-    val details: String? = null,
-    val waiting: Boolean = false,
-)
-
-/** Every way to watch, best first, so the choice is clear: Couchy's own sources, torrents, then the legal services. */
-private fun ways(state: TitleUi, actions: TitleActions): List<Way> {
-    val r = state.rezka
-    val list = ArrayList<Way>()
-    val kp = state.sites.firstOrNull { it.site == app.couchy.core.sources.KinoPub.ID }
-    kp?.let { list += Way("site:${it.site}", "Kino.pub", "В Couchy · все озвучки · до 4K · ваша подписка", Icons.Rounded.PlayCircle, { actions.onSite(it) }, "site:${it.site}") }
-    rezkaAction(state, actions)?.let { a ->
-        val voices = r.page?.translators?.size ?: 0
-        list += Way(
-            "rezka", "HDrezka",
-            listOfNotNull("В Couchy", voices.takeIf { it > 1 }?.let { "$it озвучек" }, "до 1080p", "без рекламы").joinToString(" · "),
-            Icons.Rounded.PlayCircle, a.run, "rezka",
-        )
-    }
-    state.sites.filter { it != kp }.forEach { hit ->
-        val native = hit.site in app.couchy.sources.NativeClient.ids
-        list += Way(
-            "site:${hit.site}", siteName(hit.site),
-            if (native) "В Couchy · свой плеер · без рекламы" else "Плеер сайта внутри Couchy · реклама вырезана",
-            if (native) Icons.Rounded.PlayCircle else Icons.Rounded.Language, { actions.onSite(hit) }, "site:${hit.site}",
-        )
-    }
-    val torrent = bestTorrent(state)
-    when {
-        torrent != null -> {
-            val (label, hit) = torrent
-            val count = state.torrents.sumOf { it.hits.size }
-            list += Way(
-                "torrents", "Торрент",
-                listOfNotNull(label, app.couchy.core.torrent.Sizes.bytes(hit.size).takeIf { hit.size > 0 }, "▲ ${hit.seeds}", "раздач: $count").joinToString(" · "),
-                Icons.Rounded.Download, { actions.onTorrent(hit) }, "torrents",
-            )
-        }
-        state.torrentsLoading -> list += Way("torrents", "Торрент", "Ищу раздачи…", Icons.Rounded.Download, null, waiting = true)
-    }
-    // HDrezka that is not ready yet: still listed, with what it waits for.
-    when (r.status) {
-        SourceStatus.LOADING -> list += Way("rezka", "HDrezka", "Ищу…", Icons.Rounded.PlayCircle, null, waiting = true)
-        SourceStatus.BLOCKED -> list += Way("rezka", "HDrezka", "Сайт просит один раз подтвердить, что вы не бот", Icons.Rounded.VerifiedUser, actions.onChallenge, "rezka")
-        SourceStatus.ERROR -> list += Way("rezka", "HDrezka", "Не ответил · нажмите, чтобы повторить", Icons.Rounded.PlayCircle, actions.onRetryRezka)
-        else -> Unit
-    }
-    if (state.sitesLoading) list += Way("sites", "Онлайн-кинотеатры", "Ищу на сайтах…", Icons.Rounded.Language, null, waiting = true)
-    state.info?.providers.orEmpty().forEach { p ->
-        list += Way("legal:${p.name}", app.couchy.sources.Providers.name(p.name), "Легально · ${p.how} · откроется приложение сервиса", Icons.Rounded.Tv, { actions.onProvider(p) })
-    }
-    return list.distinctBy { it.id }
-}
-
-/** «Где смотреть»: every way, how it plays, the best one marked; the arrow shows its voices, episodes or torrents. */
-@Composable
-private fun WhereToWatch(state: TitleUi, selected: String?, onSelect: (String) -> Unit, actions: TitleActions) {
-    val current = sources(state).firstOrNull { it.id == selected } ?: firstReady(state)
-    var moreSites by remember(state.title.key) { mutableStateOf(false) }
-    val list = ways(state, actions)
-    val best = list.firstOrNull { it.play != null && !it.id.startsWith("legal:") }?.id
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("ГДЕ СМОТРЕТЬ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        list.forEach { w -> WayRow(w, best = w.id == best, open = w.details != null && w.details == current.id, onDetails = w.details?.let { d -> { onSelect(d) } }) }
-        if (list.none { it.play != null } && !state.sitesLoading && !state.torrentsLoading && state.rezka.status != SourceStatus.LOADING) {
-            Muted("Нигде не нашлось. Попробуйте поиск на сайте вручную.")
-        }
-        // Cinemas without a readable search, and those that did not find the title by name, open their own search.
-        val found = state.sites.map { it.site }.toSet()
-        val manual = Sites.all.filter { it.id !in found && (it.id !in SiteSearch.parsed || !state.sitesLoading) }
-        if (manual.isNotEmpty()) {
-            if (!moreSites) {
-                Text(
-                    "Искать на сайте вручную…",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.couchyClickable(RoundedCornerShape(8.dp)) { moreSites = true }.padding(8.dp),
-                )
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
-                    items(manual, key = { "find:" + it.id }) { site -> Chip("${site.name} ↗", false, onClick = { actions.onSearchSite(site) }) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WayRow(w: Way, best: Boolean, open: Boolean, onDetails: (() -> Unit)?) {
-    val shape = RoundedCornerShape(14.dp)
-    val accent = MaterialTheme.colorScheme.primary
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(if (best) accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainer, shape)
-            .then(if (best) Modifier.border(1.dp, accent.copy(alpha = 0.6f), shape) else Modifier),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            Modifier
-                .weight(1f)
-                .couchyClickable(shape, focusScale = 1.02f) { w.play?.invoke() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (w.waiting) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else Icon(w.icon, null, tint = if (best) accent else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(w.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (best) Text(
-                        "ЛУЧШИЙ ВАРИАНТ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.background,
-                        modifier = Modifier.background(accent, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-                Text(w.how, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        onDetails?.let { d ->
-            Box(
-                Modifier.size(48.dp).couchyClickable(CircleShape, onClick = d),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                    "Озвучки, серии и раздачи",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
 
 /** The card every service's results sit in. */
 @Composable
@@ -646,19 +593,6 @@ private fun Loading(text: String) {
         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
         Muted(text)
     }
-}
-
-@Composable
-private fun SiteBody(state: TitleUi, hit: SiteHit, actions: TitleActions) {
-    Muted(listOfNotNull(hit.name, hit.year?.toString()).joinToString(" · "))
-    Muted(
-        when (hit.site) {
-            app.couchy.core.sources.Anilibria.ID -> "Аниме в озвучке AniLibria, прямо в плеере Couchy: серии, качество до 1080p, пропуск заставки."
-            app.couchy.core.sources.KinoPub.ID -> "С вашей подпиской Kino.pub: серии, все озвучки и качество до 4K, прямо в плеере Couchy."
-            else -> "Видео идёт из плеера сайта: озвучку и серию выбираете там, смотрите в Couchy без рекламы."
-        },
-    )
-    PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = { actions.onSite(hit) })
 }
 
 @Composable
@@ -725,34 +659,14 @@ private fun Muted(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable
-private fun RezkaBody(state: TitleUi, actions: TitleActions) {
-    val r: RezkaUi = state.rezka
-    when (r.status) {
-        SourceStatus.LOADING -> Loading("Ищу на HDrezka…")
-        SourceStatus.NOT_FOUND -> Muted("На HDrezka этого нет. Посмотрите другие сервисы выше.")
-        SourceStatus.ERROR -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Muted(r.error ?: "HDrezka не ответила.")
-            SecondaryButton("Ещё раз", Icons.Rounded.Refresh, onClick = actions.onRetryRezka)
-        }
-        SourceStatus.BLOCKED -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Muted("HDrezka просит подтвердить, что вы не бот. Это займёт пару секунд.")
-            PrimaryButton("Пройти проверку", Icons.Rounded.VerifiedUser, onClick = actions.onChallenge)
-        }
-        SourceStatus.READY -> Ready(state, r, actions)
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Ready(state: TitleUi, r: RezkaUi, actions: TitleActions) {
+private fun Ready(state: TitleUi, r: RezkaUi, actions: TitleActions, onVoice: () -> Unit) {
     val page = r.page ?: return
     if (page.translators.size > 1) {
-        Text("Озвучка", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
-            items(page.translators, key = { it.id }) { tr -> Chip(tr.name, tr.id == r.translator, onClick = { actions.onTranslator(tr.id) }) }
-        }
-    } else page.translators.firstOrNull()?.let { Muted("Озвучка: ${it.name}") }
+        val name = page.translators.firstOrNull { it.id == r.translator }?.name ?: "Озвучка"
+        Chip(name, false, onClick = onVoice, icon = Icons.Rounded.RecordVoiceOver)
+    }
 
     if (!page.series) {
         val progress = state.progress["0:0"] ?: 0f
@@ -783,11 +697,6 @@ private fun Ready(state: TitleUi, r: RezkaUi, actions: TitleActions) {
             EpisodeTile(e.episode, state.progress[key] ?: 0f, key in state.watched, onLongClick = { menu = e }) { actions.onPlay(e.season, e.episode, false) }
         }
     }
-    Text(
-        "Удерживайте серию, чтобы отметить её просмотренной",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
     menu?.let { e ->
         val watched = "${e.season}:${e.episode}" in state.watched
         app.couchy.ui.player.OptionsDialog(

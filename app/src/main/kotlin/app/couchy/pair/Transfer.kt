@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import app.couchy.CouchyApp
 import app.couchy.core.pair.PairLink
+import app.couchy.sync.WebDav
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -45,7 +46,7 @@ object Transfer {
             .put("settings", JSONObject(app.settings.exportTransfer()))
             .put("prefs", prefs)
             .put("state", runCatching { app.sync.snapshot() }.getOrNull())
-            .put("google", app.settings.prefs.first().syncUrl == app.couchy.sync.WebDav.GOOGLE_ACCOUNT)
+            .put("google", app.settings.prefs.first().syncUrl == WebDav.GOOGLE_ACCOUNT)
             .toString()
     }
 

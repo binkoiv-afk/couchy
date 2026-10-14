@@ -70,6 +70,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import app.couchy.tv.ChannelNow
 import app.couchy.ui.torrent.TorrentActions
@@ -125,7 +126,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val prefs by vm.prefs.collectAsStateWithLifecycle()
             val loaded = prefs ?: return@setContent
-            CouchyTheme(loaded.theme) {
+            CouchyTheme(loaded.theme, loaded.accent) {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
                     // A Box, so the small YouTube player can float over every screen.
@@ -190,9 +191,16 @@ class MainActivity : ComponentActivity() {
         val link = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
-                ?.let { text -> Regex("""(https?|magnet)\S+""").find(text)?.value }
+                ?.let { text -> Regex("""(couchy://together|https?|magnet)\S+""").find(text)?.value }
             else -> null
         } ?: return
+        if (link.startsWith("couchy://together")) {
+            app.couchy.core.together.Together.normalize(link.substringAfter("c=", ""))?.let { code ->
+                app.couchy.together.Room.join(this, code)
+                app.couchy.together.Room.sheetRequest.value = true
+            }
+            return
+        }
         if (link.startsWith("couchy://pair")) {
             app.couchy.pair.incomingPair.value = app.couchy.core.pair.PairLink.parse(link)
             return
@@ -272,6 +280,7 @@ private fun MainScreen(
     var statsOpen by remember { mutableStateOf(false) }
     var pickOpen by remember { mutableStateOf(false) }
     var calendarOpen by remember { mutableStateOf(false) }
+    val togetherAsked by app.couchy.together.Room.sheetRequest.collectAsStateWithLifecycle()
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
     LaunchedEffect(kids) {
@@ -499,6 +508,9 @@ private fun MainScreen(
             onTitle = { t -> pickOpen = false; searchVm.openTitle(t) },
             onDismiss = { pickOpen = false },
         )
+    }
+    if (togetherAsked) {
+        app.couchy.together.RoomSheet(onDismiss = { app.couchy.together.Room.sheetRequest.value = false })
     }
     if (calendarOpen) {
         app.couchy.episodes.CalendarDialog(onTitle = searchVm::openTitle, onDismiss = { calendarOpen = false })
@@ -734,7 +746,10 @@ private fun MainScreen(
     var watchAsk by remember { mutableStateOf<Triple<Int, Int, Boolean>?>(null) }
     if (route is app.couchy.sources.Route.TitlePage && page != null) {
         BackHandler { searchVm.back() }
-        Box(Modifier.fillMaxSize()) {
+        // A title page rises in gently instead of appearing at once.
+        val appear = remember(page.title.key) { androidx.compose.animation.core.Animatable(0f) }
+        LaunchedEffect(page.title.key) { appear.animateTo(1f, androidx.compose.animation.core.tween(260)) }
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = appear.value; translationY = (1f - appear.value) * 48f }) {
             watchAsk?.let { (s, e, fromStart) ->
                 val r = page.rezka
                 WatchDialog(
@@ -841,7 +856,9 @@ private fun MainScreen(
         onNavigate = { if (kids && it == Destination.SETTINGS) askPin = true else destination = it },
         onOpen = { showOpen = true },
     ) {
-        screens.SaveableStateProvider(destination.name) { when (destination) {
+        // Tabs change with a short fade instead of a jump.
+        androidx.compose.animation.Crossfade(destination, animationSpec = androidx.compose.animation.core.tween(220), label = "tab") { shown ->
+        screens.SaveableStateProvider(shown.name) { when (shown) {
             Destination.HOME -> HomeContent(
                 home,
                 HomeActions(
@@ -855,10 +872,12 @@ private fun MainScreen(
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                     onPick = { pickOpen = true },
                     onCalendar = if (kids) null else ({ calendarOpen = true }),
+                    onTogether = if (kids) null else ({ app.couchy.together.Room.sheetRequest.value = true }),
                     trailer = if (kids) null else searchVm::trailerClip,
                 ),
                 feed = feed,
                 saved = saved,
+                banner = prefs?.banner ?: app.couchy.data.Banner.NEW,
                 update = UpdateCenter.available?.takeIf { update !is UpdateState.UpToDate && update !is UpdateState.Idle }?.let { u ->
                     { app.couchy.ui.settings.UpdateStrip(u.build, update, onUpdate = ::installUpdate) }
                 },
@@ -1010,6 +1029,7 @@ private fun MainScreen(
                 )
             }
         } }
+        }
     }
 
     if (showOpen) {

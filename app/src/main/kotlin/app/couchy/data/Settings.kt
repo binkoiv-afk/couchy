@@ -13,6 +13,19 @@ import kotlinx.coroutines.flow.map
 
 enum class ThemeMode(val label: String) { DARK("Тёмная"), LIGHT("Светлая"), SYSTEM("Как в системе") }
 
+/** What the big banner on Home shows: new and popular titles, the person's own, or both in turn. */
+enum class Banner(val label: String) { NEW("Новинки"), MINE("Моё любимое"), MIXED("Вперемешку") }
+
+/** The accent colour of buttons, progress and marks: bright for dark screens, light, and deep for light screens. */
+enum class Accent(val label: String, val main: Long, val light: Long, val deep: Long) {
+    POPCORN("Попкорн", 0xFFFF8A3D, 0xFFFFB070, 0xFFEA6A1A),
+    CHERRY("Вишня", 0xFFFF4D6D, 0xFFFF8FA3, 0xFFD81E45),
+    SKY("Небо", 0xFF4DA3FF, 0xFF8CC4FF, 0xFF1F74D6),
+    MINT("Мята", 0xFF34D399, 0xFF7EE7BF, 0xFF0F8F63),
+    LAVENDER("Лаванда", 0xFFA78BFA, 0xFFC9B8FF, 0xFF7651DE),
+    GOLD("Золото", 0xFFF5C518, 0xFFFFE07A, 0xFFB98C00),
+}
+
 /** How the interface is laid out: picked from the device, or forced by the user. */
 enum class UiMode(val label: String) { AUTO("Авто"), TV("Пульт"), TOUCH("Сенсор") }
 
@@ -21,6 +34,8 @@ enum class TorrEngineMode(val label: String) { BUILT_IN("Встроенный"),
 
 data class Prefs(
     val theme: ThemeMode = ThemeMode.DARK,
+    val accent: Accent = Accent.POPCORN,
+    val banner: Banner = Banner.NEW,
     val uiMode: UiMode = UiMode.AUTO,
     val sort: SortOrder = SortOrder.RECENTLY_WATCHED,
     val torrEngine: TorrEngineMode = TorrEngineMode.BUILT_IN,
@@ -54,6 +69,8 @@ private val Context.store by preferencesDataStore("settings")
 
 class Settings(private val context: Context) {
     private val theme = stringPreferencesKey("theme")
+    private val accent = stringPreferencesKey("accent")
+    private val banner = stringPreferencesKey("banner")
     private val uiMode = stringPreferencesKey("ui_mode")
     private val sort = stringPreferencesKey("sort")
     private val torrEngine = stringPreferencesKey("torr_engine")
@@ -76,6 +93,8 @@ class Settings(private val context: Context) {
     val prefs: Flow<Prefs> = context.store.data.map { p ->
         Prefs(
             theme = enumOr(p[theme], ThemeMode.DARK),
+            accent = enumOr(p[accent], Accent.POPCORN),
+            banner = enumOr(p[banner], Banner.NEW),
             uiMode = enumOr(p[uiMode], UiMode.AUTO),
             sort = enumOr(p[sort], SortOrder.RECENTLY_WATCHED),
             torrEngine = enumOr(p[torrEngine], TorrEngineMode.BUILT_IN),
@@ -98,6 +117,8 @@ class Settings(private val context: Context) {
     }
 
     suspend fun setTheme(value: ThemeMode) = context.store.edit { it[theme] = value.name }
+    suspend fun setAccent(value: Accent) = context.store.edit { it[accent] = value.name }
+    suspend fun setBanner(value: Banner) = context.store.edit { it[banner] = value.name }
     suspend fun setUiMode(value: UiMode) = context.store.edit { it[uiMode] = value.name }
     suspend fun setSort(value: SortOrder) = context.store.edit { it[sort] = value.name }
     suspend fun setTorrEngine(mode: TorrEngineMode, address: String) = context.store.edit {

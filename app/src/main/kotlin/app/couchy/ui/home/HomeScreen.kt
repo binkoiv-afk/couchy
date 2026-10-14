@@ -86,6 +86,8 @@ class HomeActions(
     val onPick: (() -> Unit)? = null,
     /** The episode calendar of followed series; null hides it. */
     val onCalendar: (() -> Unit)? = null,
+    /** «Смотреть вместе» with friends elsewhere; null hides it. */
+    val onTogether: (() -> Unit)? = null,
     /** A muted trailer for the banner: link and user agent; null where trailers are off. */
     val trailer: (suspend (Title) -> Pair<String, String>?)? = null,
 )
@@ -103,17 +105,30 @@ fun HomeContent(
     saved: app.couchy.data.SavedTitles = app.couchy.data.SavedTitles(),
     /** A new version: shown as a strip at the top of Home until it is installed. */
     update: (@Composable () -> Unit)? = null,
+    banner: app.couchy.data.Banner = app.couchy.data.Banner.NEW,
 ) {
     val form = LocalFormFactor.current
     val kids = LocalKidsMode.current
     val side = if (form.wide) 40.dp else 18.dp
     val searchFocus = remember { FocusRequester() }
     val continueFocus = remember { FocusRequester() }
-    val featured = if (kids) emptyList() else feed.featured
+    // The person's own loved, saved and high-scored titles with a wide still, in a new order each visit.
+    val mine = remember(saved) {
+        (saved.loved + saved.rated.filter { (saved.scores[it.key] ?: 0) >= 8 } + saved.later)
+            .filter { it.backdrop != null }.distinctBy { it.key }.shuffled().take(8)
+    }
+    val featured = when {
+        kids -> emptyList()
+        banner == app.couchy.data.Banner.MINE -> mine.ifEmpty { feed.featured }
+        banner == app.couchy.data.Banner.MIXED -> (feed.featured.zip(mine) { a, b -> listOf(a, b) }.flatten() +
+            feed.featured.drop(mine.size) + mine.drop(feed.featured.size)).distinctBy { it.key }.take(8)
+        else -> feed.featured
+    }
+    val mineKeys = remember(mine) { mine.map { it.key }.toSet() }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = if (form.wide) 40.dp else 120.dp)) {
         item("hero") {
             if (featured.isNotEmpty()) {
-                Hero(featured, actions, side, searchFocus)
+                Hero(featured, actions, side, searchFocus, mineKeys)
             } else {
                 Column(Modifier.statusBarsPadding().padding(horizontal = side).padding(top = 14.dp, bottom = 6.dp)) {
                     if (!kids) TopBar(actions, searchFocus, onImage = false)
@@ -207,7 +222,7 @@ fun HomeContent(
 
 /** The new films, one at a time, turning by themselves; search and logo sit over the picture. */
 @Composable
-private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus: FocusRequester) {
+private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus: FocusRequester, mine: Set<String> = emptySet()) {
     val form = LocalFormFactor.current
     val pager = rememberPagerState { items.size }
     var interacted by remember { mutableStateOf(false) }
@@ -262,9 +277,13 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        if (t.kind == TitleKind.SERIES) "ПОПУЛЯРНЫЙ СЕРИАЛ" else "СЕЙЧАС СМОТРЯТ",
+                        when {
+                            t.key in mine -> "ИЗ ВАШЕГО ЛЮБИМОГО"
+                            t.kind == TitleKind.SERIES -> "ПОПУЛЯРНЫЙ СЕРИАЛ"
+                            else -> "СЕЙЧАС СМОТРЯТ"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFFB070),
+                        color = app.couchy.ui.theme.LocalCouchyColors.current.accentLight,
                     )
                     Text(
                         t.name,
@@ -388,6 +407,20 @@ private fun Genres(side: Dp, actions: HomeActions) {
                     modifier = Modifier
                         .couchyClickable(shape, onClick = open)
                         .background(MaterialTheme.colorScheme.onBackground, shape)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
+        actions.onTogether?.let { open ->
+            item("together") {
+                val shape = RoundedCornerShape(999.dp)
+                Text(
+                    "Смотреть вместе",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .couchyClickable(shape, onClick = open)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 )
             }

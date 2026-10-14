@@ -1,6 +1,7 @@
 package app.couchy.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Box
@@ -118,7 +119,7 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
         "Профили", Icons.Rounded.People,
         "У каждого в семье своя история, места остановки, «Смотреть позже», «Любимое» и подписки YouTube. Настройки, плейлисты и загрузки общие.",
     ),
-    APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема и то, чем вы управляете: пультом или пальцем."),
+    APPEARANCE("Оформление", Icons.Rounded.Palette, "Тема, цвет, баннер на главной и то, чем вы управляете: пультом или пальцем."),
     PLAYBACK("Просмотр", Icons.Rounded.PlayCircle, "Качество, в котором начинается видео, и каким плеером его смотреть."),
     SOURCES("Источники и инфо", Icons.Rounded.Language, "Откуда брать описания и каталог, и рабочие адреса HDrezka, Kinogo и LordFilm, если основные не открываются."),
     TORRENTS(
@@ -173,7 +174,7 @@ fun SettingsContent(
     var page by rememberSaveable { mutableStateOf(initialPage) }
     fun summary(p: SettingsPage): String = when (p) {
         SettingsPage.PROFILES -> profileName
-        SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.uiMode.label}"
+        SettingsPage.APPEARANCE -> "${prefs.theme.label} · ${prefs.accent.label} · ${prefs.uiMode.label}"
         SettingsPage.PLAYBACK -> app.couchy.QualityChoice.name(app.couchy.QualityChoice.label) + " · " + if (app.couchy.ExternalPlayer.always) "внешний плеер" else "плеер Couchy"
         SettingsPage.SOURCES -> (if (prefs.tmdbKey.isNotBlank() || app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) "Инфо: TMDB" else "Инфо: Cinemeta") + " · HDrezka: " + prefs.rezkaHost.ifBlank { "rezka.ag" }.substringAfter("://")
         SettingsPage.TORRENTS -> if (prefs.torrEngine == TorrEngineMode.REMOTE) "TorrServe · ${prefs.torrAddress}" else "Встроенный движок"
@@ -191,6 +192,14 @@ fun SettingsContent(
         when (p) {
             SettingsPage.APPEARANCE -> Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Group("Тема") { ThemeMode.entries.forEach { Chip(it.label, it == prefs.theme, onClick = { actions.onTheme(it) }) } }
+                Group("Цвет акцента", "Кнопки, полоса просмотра и отметки.") { AccentPicker(prefs.accent) }
+                Group("Баннер на главной", "«Моё любимое»: кадры из того, что вы отметили сердцем, оценили на 8+ или отложили.") {
+                    val bannerScope = androidx.compose.runtime.rememberCoroutineScope()
+                    val bannerContext = androidx.compose.ui.platform.LocalContext.current
+                    app.couchy.data.Banner.entries.forEach { b ->
+                        Chip(b.label, b == prefs.banner, onClick = { bannerScope.launch { (bannerContext.applicationContext as app.couchy.CouchyApp).settings.setBanner(b) } })
+                    }
+                }
                 Group("Управление", "Пульт: крупные карточки и рамка фокуса. Сенсор: жесты и нижнее меню. Авто: по устройству.") {
                     UiMode.entries.forEach { Chip(it.label, it == prefs.uiMode, onClick = { actions.onUiMode(it) }) }
                 }
@@ -432,6 +441,28 @@ private fun KinoPubLogin() {
                     }
                 })
             }
+        }
+    }
+}
+
+/** Round swatches of the accent colours; the chosen one has a ring. */
+@Composable
+private fun AccentPicker(current: app.couchy.data.Accent) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    app.couchy.data.Accent.entries.forEach { a ->
+        Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .size(44.dp)
+                    .couchyClickable(androidx.compose.foundation.shape.CircleShape) {
+                        scope.launch { (context.applicationContext as app.couchy.CouchyApp).settings.setAccent(a) }
+                    }
+                    .border(if (a == current) 3.dp else 0.dp, if (a == current) MaterialTheme.colorScheme.onBackground else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.CircleShape)
+                    .padding(if (a == current) 6.dp else 0.dp)
+                    .background(androidx.compose.ui.graphics.Color(a.main), androidx.compose.foundation.shape.CircleShape),
+            )
+            Text(a.label, style = MaterialTheme.typography.labelMedium, color = if (a == current) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

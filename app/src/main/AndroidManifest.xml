@@ -120,6 +120,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="couchy" android:host="pair" />
             </intent-filter>
+            <!-- An invitation to watch together, sent by a friend. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="couchy" android:host="together" />
+            </intent-filter>
             <!-- Magnet links from browsers and trackers open the torrent screen. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

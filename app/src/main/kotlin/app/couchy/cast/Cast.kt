@@ -42,6 +42,9 @@ class Cast(private val context: Context) {
     /** Requests from other devices, to be played here. */
     val incoming: SharedFlow<CastRequest> = _incoming.asSharedFlow()
 
+    /** Plays [request] here as if another device sent it: for friends watching together. */
+    fun deliver(request: CastRequest) { _incoming.tryEmit(request) }
+
     /** This device's name as other devices see it. */
     val deviceName: String by lazy {
         runCatching { Settings.Global.getString(context.contentResolver, "device_name") }.getOrNull()?.takeIf { it.isNotBlank() }

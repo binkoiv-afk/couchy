@@ -39,6 +39,8 @@ data class CouchyColors(
     val success: Color,
     val danger: Color,
     val isDark: Boolean,
+    /** The light shade of the accent, for small labels over dark pictures. */
+    val accentLight: Color = Brand.OrangeLight,
 )
 
 val LocalCouchyColors = staticCompositionLocalOf {
@@ -135,19 +137,36 @@ private val CouchyShapes = Shapes(
 )
 
 @Composable
-fun CouchyTheme(mode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Unit) {
+fun CouchyTheme(mode: ThemeMode = ThemeMode.DARK, accent: app.couchy.data.Accent = app.couchy.data.Accent.POPCORN, content: @Composable () -> Unit) {
     val dark = when (mode) {
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    val scheme = if (dark) Dark else Light
+    val main = Color(accent.main)
+    val light = Color(accent.light)
+    val deep = Color(accent.deep)
+    // The chosen accent over the base scheme; containers are the accent mixed into the background.
+    val scheme = if (dark) Dark.copy(
+        primary = main,
+        onPrimary = Color(0xFF111111),
+        primaryContainer = androidx.compose.ui.graphics.lerp(Dark.background, main, 0.28f),
+        onPrimaryContainer = light,
+        secondary = light,
+        onSecondary = Color(0xFF111111),
+    ) else Light.copy(
+        primary = deep,
+        primaryContainer = androidx.compose.ui.graphics.lerp(Color.White, main, 0.22f),
+        onPrimaryContainer = androidx.compose.ui.graphics.lerp(Color.Black, deep, 0.45f),
+        secondary = androidx.compose.ui.graphics.lerp(Color.Black, deep, 0.75f),
+    )
     val extra = CouchyColors(
         focusRing = scheme.onBackground,
         textMuted = if (dark) Color(0xFF6D7280) else Color(0xFF8D919B),
         success = if (dark) Brand.Green else Color(0xFF1FA765),
         danger = scheme.error,
         isDark = dark,
+        accentLight = light,
     )
     CompositionLocalProvider(LocalCouchyColors provides extra) {
         MaterialTheme(colorScheme = scheme, typography = CouchyTypography, shapes = CouchyShapes) {

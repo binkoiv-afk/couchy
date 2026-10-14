@@ -91,6 +91,8 @@ data class RemoteState(
     val durationMs: Long,
     val playing: Boolean,
     val hasNext: Boolean,
+    /** Library key of what plays; empty for live channels. Not sent to the phone remote. */
+    val key: String = "",
 ) {
     fun toJson(): String = JSONObject()
         .put("title", title).put("position", positionMs).put("duration", durationMs)
@@ -108,6 +110,8 @@ data class RemoteState(
 /** Buttons of the phone remote, sent as POST /control {"action": …, "value": …}. */
 object RemoteAction {
     const val TOGGLE = "toggle"
+    const val PLAY = "play"
+    const val PAUSE = "pause"
     const val SEEK_BY = "seekBy"
     const val SEEK_TO = "seekTo"
     const val NEXT = "next"

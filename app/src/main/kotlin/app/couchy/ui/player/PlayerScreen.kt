@@ -426,7 +426,7 @@ fun PlayerScreen(
         while (true) {
             val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0
             ui = ui.copy(positionMs = player.currentPosition, durationMs = duration, bufferedMs = player.bufferedPosition)
-            app.couchy.cast.RemoteBridge.state = app.couchy.core.cast.RemoteState(playback.title, player.currentPosition, duration, player.isPlaying, hasNext)
+            app.couchy.cast.RemoteBridge.state = app.couchy.core.cast.RemoteState(playback.title, player.currentPosition, duration, player.isPlaying, hasNext, key = if (playback.live == null) playback.key else "")
             delay(500)
             sinceSave += 500
             if (player.isPlaying && playback.live == null) stats.played(playback.title, 500)
@@ -462,6 +462,8 @@ fun PlayerScreen(
         app.couchy.cast.RemoteBridge.handler = { action, value ->
             when (action) {
                 app.couchy.core.cast.RemoteAction.TOGGLE -> if (player.isPlaying) player.pause() else player.play()
+                app.couchy.core.cast.RemoteAction.PLAY -> player.play()
+                app.couchy.core.cast.RemoteAction.PAUSE -> player.pause()
                 app.couchy.core.cast.RemoteAction.SEEK_BY -> player.seekTo((player.currentPosition + value).coerceAtLeast(0))
                 app.couchy.core.cast.RemoteAction.SEEK_TO -> player.seekTo(value.coerceAtLeast(0))
                 app.couchy.core.cast.RemoteAction.NEXT -> if (hasNext) { save(); onFinished() }

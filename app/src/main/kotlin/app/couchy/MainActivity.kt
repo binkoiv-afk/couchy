@@ -129,7 +129,9 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalFormFactor provides rememberFormFactor(loaded.uiMode), LocalKidsMode provides loaded.kidsMode) {
                     val fresh by freshStart.collectAsStateWithLifecycle()
                     // A Box, so the small YouTube player can float over every screen.
-                    Box(Modifier.fillMaxSize()) { MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh, openTitle) }
+                    app.couchy.ui.theme.TvReadable(LocalFormFactor.current.isTv) {
+                        Box(Modifier.fillMaxSize()) { MainScreen(vm, tvVm, torrentVm, searchVm, ytVm, fresh, openTitle) }
+                    }
                 }
             }
         }
@@ -638,6 +640,14 @@ private fun MainScreen(
                 }
             },
             onUnplayable = unplayable,
+            // HDrezka series: every episode in the same voice-over, one press from the player.
+            episodes = app.couchy.core.sources.Rezka.parseRef(current.key)?.takeIf { it.season > 0 }?.let { ref ->
+                titlePage?.rezka?.page?.takeIf { it.id == app.couchy.core.sources.Rezka.idFromUrl(ref.pageUrl) }?.episodes.orEmpty().map { e ->
+                    app.couchy.ui.player.EpisodeItem(e.season, e.episode, e.name, e.season == ref.season && e.episode == ref.episode) {
+                        searchVm.playRef(app.couchy.core.sources.Rezka.ref(ref.pageUrl, ref.translator, e.season, e.episode))
+                    }
+                }
+            }.orEmpty(),
             onNumber = onAir?.takeIf { it.zapOrder.isNotEmpty() }?.let { l ->
                 { n: Int ->
                     scope.launch { tvVm.byNumber(l, n)?.let(vm::playDirect) }

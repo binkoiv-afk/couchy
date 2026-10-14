@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +44,8 @@ fun MediaCard(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     caption: String? = captionFor(item),
+    /** For the screen that wants the remote to start on this card. */
+    focus: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     Column(
         modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()),
@@ -52,6 +55,7 @@ fun MediaCard(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
+                .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
                 .couchyClickable(CardShape, onLongClick = onLongClick, memoryKey = item.uri, onClick = onClick)
                 .clip(CardShape),
         ) {

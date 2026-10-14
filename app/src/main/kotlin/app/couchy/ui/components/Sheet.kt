@@ -25,6 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,10 +50,23 @@ fun CouchySheet(
     scroll: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // Back goes one step back where there is one; a tap outside still closes the whole sheet.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = onBack == null)) {
+        if (onBack != null) androidx.activity.compose.BackHandler(onBack = onBack)
         val shape = RoundedCornerShape(28.dp)
+        // On a remote something is always focused when a sheet opens, so OK works at once.
+        val tv = LocalFormFactor.current.isTv
+        var hasFocus by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        val body = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            if (!tv) return@LaunchedEffect
+            kotlinx.coroutines.delay(150)
+            // Nothing took the focus itself: the first choice gets it, not the close button.
+            if (!hasFocus) runCatching { body.requestFocus() }
+        }
         Column(
             Modifier
+                .onFocusChanged { hasFocus = it.hasFocus }
                 .padding(horizontal = 16.dp, vertical = 24.dp)
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
@@ -71,6 +89,8 @@ fun CouchySheet(
             }
             Column(
                 Modifier
+                    .focusRequester(body)
+                    .focusGroup()
                     .padding(top = 12.dp)
                     .heightIn(max = 560.dp)
                     .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)

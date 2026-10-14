@@ -107,7 +107,10 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE, EPISODES }
+
+/** One episode in the player's «Серии» list. */
+data class EpisodeItem(val season: Int, val episode: Int, val name: String, val current: Boolean, val play: () -> Unit)
 
 private val sleepMinutes = listOf(15, 30, 45, 60, 90)
 
@@ -139,6 +142,8 @@ fun PlayerScreen(
     hasNext: Boolean = false,
     /** The video would not start: another source is tried instead of showing the error; false when there is none. */
     onUnplayable: (() -> Boolean)? = null,
+    /** The series' episodes, to jump to any of them without leaving the player. */
+    episodes: List<EpisodeItem> = emptyList(),
     /** Stars or unstars the live channel. */
     onFavorite: (() -> Unit)? = null,
     /** Back to the channel watched before; also the remote's "last channel" key. */
@@ -585,6 +590,7 @@ fun PlayerScreen(
         onRotate = if (phone) ({ poke(); upright = !upright }) else null,
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onMore = { poke(); sheet = Sheet.MORE },
+        onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
         onDownload = onDownload?.let { d -> { poke(); d(); flash("Скачивается. Найдёте в «Моё» → «Загрузки»") } },
@@ -869,6 +875,18 @@ fun PlayerScreen(
                     }
                 }),
             ),
+            onDismiss = { sheet = null },
+        )
+        Sheet.EPISODES -> OptionsDialog(
+            "Серии",
+            episodes.groupBy { it.season }.map { (season, list) ->
+                OptionSection(
+                    if (episodes.map { it.season }.distinct().size > 1) "СЕЗОН $season" else null,
+                    list.map { e ->
+                        Option("${e.episode}. " + e.name.ifBlank { "Серия ${e.episode}" }, e.current, icon = Icons.Rounded.PlayArrow) { if (!e.current) { save(); e.play() } }
+                    },
+                )
+            },
             onDismiss = { sheet = null },
         )
         Sheet.QUEUE -> OptionsDialog(

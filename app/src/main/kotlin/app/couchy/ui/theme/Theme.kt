@@ -158,6 +158,26 @@ fun CouchyTheme(mode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Uni
     }
 }
 
+/** From the sofa small text is hard to read: on a TV the small styles grow by about a sixth. */
+@Composable
+fun TvReadable(tv: Boolean, content: @Composable () -> Unit) {
+    if (!tv) return content()
+    val t = MaterialTheme.typography
+    fun TextStyle.up() = copy(fontSize = fontSize * 1.15f, lineHeight = lineHeight * 1.15f)
+    MaterialTheme(
+        colorScheme = MaterialTheme.colorScheme,
+        shapes = MaterialTheme.shapes,
+        typography = t.copy(
+            titleSmall = t.titleSmall.up(),
+            bodyMedium = t.bodyMedium.up(),
+            bodySmall = t.bodySmall.up(),
+            labelMedium = t.labelMedium.up(),
+            labelSmall = t.labelSmall.up(),
+        ),
+        content = content,
+    )
+}
+
 object CouchyTheme {
     val colors: CouchyColors @Composable get() = LocalCouchyColors.current
 }

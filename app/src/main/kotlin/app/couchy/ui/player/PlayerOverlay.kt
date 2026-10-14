@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import app.couchy.ui.components.LocalFormFactor
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Refresh
@@ -160,6 +162,8 @@ class PlayerControls(
     val onMore: () -> Unit = {},
     /** Back to the title page's sources; null when the video did not come from one. */
     val onOtherSource: (() -> Unit)? = null,
+    /** The series' episode list; null for a film. */
+    val onEpisodes: (() -> Unit)? = null,
     /** The same video in another player app; null where none fits. */
     val onExternal: (() -> Unit)? = null,
 )
@@ -245,6 +249,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
         val tools = buildList {
             if (!touch) add(Tool(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (ui.playing) "Пауза" else "Играть", highlighted = true, focus = playFocus, onClick = controls.onTogglePlay))
             if (ui.hasNext && ui.live == null) add(Tool(Icons.Rounded.SkipNext, "Далее", onClick = controls.onNextNow))
+            controls.onEpisodes?.let { add(Tool(Icons.AutoMirrored.Rounded.FormatListBulleted, "Серии", onClick = it)) }
             if (touch) controls.onCast?.let { add(Tool(Icons.Rounded.Cast, "На ТВ", onClick = it)) }
             add(Tool(Icons.Rounded.Subtitles, "Озвучка", onClick = controls.onTracks))
             add(Tool(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality))
@@ -495,7 +500,7 @@ private fun ToolButton(t: Tool, caption: Boolean, modifier: Modifier, short: Boo
             Text(
                 if (short) t.label.substringAfterLast(" · ") else t.label,
                 color = Color.White.copy(alpha = 0.85f),
-                fontSize = 11.sp,
+                fontSize = if (LocalFormFactor.current.isTv) 13.sp else 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

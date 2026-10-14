@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -105,6 +106,7 @@ fun HomeContent(
     val kids = LocalKidsMode.current
     val side = if (form.wide) 40.dp else 18.dp
     val searchFocus = remember { FocusRequester() }
+    val continueFocus = remember { FocusRequester() }
     val featured = if (kids) emptyList() else feed.featured
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = if (form.wide) 40.dp else 120.dp)) {
         item("hero") {
@@ -125,7 +127,7 @@ fun HomeContent(
             if (items.isEmpty()) return
             item(key) { Shelf(title, side, all?.let { f -> { actions.onCatalog(f) } }) { PosterRow(items, side, actions.onTitle) } }
         }
-        fun media(key: String, title: String, items: List<MediaEntity>) {
+        fun media(key: String, title: String, items: List<MediaEntity>, first: FocusRequester? = null) {
             if (items.isEmpty()) return
             item(key) {
                 Shelf(title, side) {
@@ -139,15 +141,17 @@ fun HomeContent(
                         horizontalArrangement = Arrangement.spacedBy(if (form.isTv) 18.dp else 12.dp),
                     ) {
                         items(items, key = { it.uri }) { m ->
-                            MediaCard(m, width, onClick = { actions.onPlay(m) }, onLongClick = { actions.onMore(m) })
+                            MediaCard(m, width, onClick = { actions.onPlay(m) }, onLongClick = { actions.onMore(m) }, focus = first?.takeIf { m == items.first() })
                         }
                     }
                 }
             }
         }
+        // On a TV what you were watching comes right under the banner, and the remote starts on it.
+        if (form.isTv) media("continue", "Продолжить", state.continueWatching, continueFocus)
         if (update != null && !kids) item("update") { Box(Modifier.padding(horizontal = side, vertical = 8.dp)) { update() } }
         if (!kids && feed.loaded) item("genres") { Genres(side, actions) }
-        media("continue", "Продолжить", state.continueWatching)
+        if (!form.isTv) media("continue", "Продолжить", state.continueWatching)
         if (!kids) {
             posters("later", "Смотреть позже", saved.later)
             posters("loved", "Любимое", saved.loved)
@@ -185,7 +189,10 @@ fun HomeContent(
     var startFocused by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(form, state.loaded) {
         if (form.isTv && state.loaded && !kids && !startFocused && app.couchy.ui.components.FocusMemory.key == null) {
-            runCatching { searchFocus.requestFocus() }
+            if (state.continueWatching.isNotEmpty()) {
+                kotlinx.coroutines.delay(100)
+                runCatching { continueFocus.requestFocus() }.onFailure { runCatching { searchFocus.requestFocus() } }
+            } else runCatching { searchFocus.requestFocus() }
             startFocused = true
         }
     }
@@ -218,7 +225,7 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
     val height = when (form) {
         FormFactor.PHONE -> 560.dp
         FormFactor.TABLET -> 480.dp
-        FormFactor.TV -> 430.dp
+        FormFactor.TV -> 330.dp
     }
     val bg = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxWidth().height(height)) {
@@ -252,15 +259,20 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
                     )
                     Text(
                         t.name,
-                        style = if (form == FormFactor.PHONE) MaterialTheme.typography.displaySmall else MaterialTheme.typography.displayMedium,
+                        style = if (form == FormFactor.TABLET) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displaySmall,
                         color = Color.White,
-                        maxLines = 2,
+                        maxLines = if (form.isTv) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     val meta = listOfNotNull(t.info ?: t.year?.toString(), t.rating).joinToString(" · ")
                     if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(6.dp))
-                    PrimaryButton("Смотреть", Icons.Rounded.PlayArrow, onClick = { interacted = true; actions.onTitle(t) })
+                    // While the remote is on the button the banners stay put, so it never opens a film that scrolled away.
+                    PrimaryButton(
+                        "Смотреть", Icons.Rounded.PlayArrow,
+                        onClick = { interacted = true; actions.onTitle(t) },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) interacted = true },
+                    )
                 }
             }
         }

@@ -230,9 +230,35 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (key.trim() != prefs.tmdbKey) SecondaryButton("Сохранить", null, onClick = { actions.onTmdbKey(key) })
-                    app.couchy.pair.PhoneInputButton("Источники", listOf(app.couchy.core.pair.PhoneForm.Field("Адрес HDrezka", value = host), app.couchy.core.pair.PhoneForm.Field("Ключ TMDB", value = key))) { v ->
+                    var kp by rememberSaveable(prefs.kpKey) { mutableStateOf(prefs.kpKey) }
+                    val kpScope = androidx.compose.runtime.rememberCoroutineScope()
+                    val kpContext = androidx.compose.ui.platform.LocalContext.current
+                    Text(
+                        "Рейтинг Кинопоиска и русское описание на странице фильма. Бесплатный ключ: kinopoiskapiunofficial.tech → регистрация → Профиль → API key.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    OutlinedTextField(
+                        kp, { kp = it },
+                        label = { Text("Ключ Кинопоиска") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (kp.trim() != prefs.kpKey) SecondaryButton("Сохранить", null, onClick = {
+                        kpScope.launch { (kpContext.applicationContext as app.couchy.CouchyApp).settings.setKpKey(kp) }
+                    })
+                    app.couchy.pair.PhoneInputButton(
+                        "Источники",
+                        listOf(
+                            app.couchy.core.pair.PhoneForm.Field("Адрес HDrezka", value = host),
+                            app.couchy.core.pair.PhoneForm.Field("Ключ TMDB", value = key),
+                            app.couchy.core.pair.PhoneForm.Field("Ключ Кинопоиска", value = kp),
+                        ),
+                    ) { v ->
                         v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { host = it }
                         v.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }?.let { key = it }
+                        v.getOrNull(2)?.trim()?.takeIf { it.isNotEmpty() }?.let { kp = it }
                     }
                     // TMDB asks apps that use its API to say so.
                     Text(

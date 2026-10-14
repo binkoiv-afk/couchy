@@ -461,7 +461,8 @@ private fun mergedDetails(state: TitleUi): TitleDetails {
 
 private fun description(state: TitleUi): String? {
     val info = state.info
-    return if (info?.russian == true) info.description ?: state.description else state.description ?: info?.description
+    return if (info?.russian == true) info.description ?: state.description ?: state.kp?.description
+    else state.description ?: state.kp?.description ?: info?.description
 }
 
 /** The description, cut to a few lines until tapped. */
@@ -624,7 +625,9 @@ private fun Heading(state: TitleUi, details: TitleDetails) {
         details.age,
     ).joinToString(" · ")
     Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val chips = listOfNotNull(t.rating, state.rezka.page?.rating, state.info?.rating).distinct()
+    // Kinopoisk's own score first when there is one; one chip per source.
+    val chips = listOfNotNull(state.kp?.chip, t.rating, state.rezka.page?.rating, state.info?.rating)
+        .distinctBy { it.substringBefore(' ').uppercase().replace("KP", "КП") }
     if (chips.isNotEmpty()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { chips.forEach { RatingChip(it) } }
     }

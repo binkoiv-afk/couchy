@@ -29,6 +29,7 @@ import app.couchy.core.sources.TorrentHits
 import app.couchy.core.sources.Translator
 import app.couchy.core.sources.Sites
 import app.couchy.data.MediaEntity
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -151,6 +152,8 @@ data class TitleUi(
     val description: String? = null,
     /** From TMDB or Cinemeta: description, cast with photos, recommendations. */
     val info: app.couchy.core.sources.MetaInfo? = null,
+    /** Kinopoisk's rating and description, when the person gave a key. */
+    val kp: app.couchy.core.sources.KpFilm? = null,
     val rezka: RezkaUi = RezkaUi(),
     val torrents: List<TorrentGroup> = emptyList(),
     val torrentsLoading: Boolean = true,
@@ -603,7 +606,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             launch { loadTorrents(title) }
             launch { loadRezka(title) }
             launch { loadSites(title) }
-            launch { loadInfo(title) }
+            launch { loadInfo(title); loadKinopoisk() }
         }
     }
 
@@ -625,6 +628,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 ),
             )
         }
+    }
+
+    /** Kinopoisk's own rating and description, once the film database has told the IMDb id. */
+    private suspend fun loadKinopoisk() {
+        val key = couchy.settings.prefs.first().kpKey.ifBlank { return }
+        val title = _title.value?.title ?: return
+        val k = app.couchy.core.sources.Kinopoisk
+        val h = k.headers(key)
+        val film = runCatching {
+            val id = title.imdbId?.let { k.parseByImdb(web.get(k.byImdbUrl(it), h)) }
+                ?: k.parseSearch(web.get(k.searchUrl(title.name), h), title.year)
+                ?: return
+            k.parseFilm(web.get(k.filmUrl(id), h))
+        }.getOrNull() ?: return
+        patch { if (it.title.key == title.key) it.copy(kp = film) else it }
     }
 
     /** An actor's or director's films, or the catalogue narrowed some way. */

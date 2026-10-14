@@ -553,6 +553,37 @@ private fun MainScreen(
         val mini = miniWanted && youTube
         // Music from YouTube: the queue of songs, while one of them is playing.
         val songs = musicQueue?.takeIf { q -> q.current.url == current.key }
+        // Sources already tried for this film, so a broken one is never offered twice.
+        val tried = remember(titlePage?.title?.key) { mutableSetOf<String>() }
+        val unplayable: (() -> Boolean)? = titlePage?.takeIf { route is app.couchy.sources.Route.TitlePage && live == null }?.let { pg ->
+            {
+                tried += when {
+                    current.torrent != null -> "torrent"
+                    app.couchy.core.sources.NativeRef.isRef(current.key) -> current.key.substringAfter("#couchy-src=").substringBefore(':')
+                    app.couchy.core.sources.SiteRef.isRef(current.key) -> current.key.substringAfter("#couchy-site=")
+                    else -> "rezka"
+                }
+                val site = pg.sites.firstOrNull { it.site in app.couchy.sources.NativeClient.ids && it.site !in tried }
+                val torrent = (pg.torrents.firstOrNull { it.label.contains("1080") } ?: pg.torrents.firstOrNull())?.hits?.maxByOrNull { it.seeds }
+                when {
+                    site != null -> {
+                        tried += site.site
+                        android.widget.Toast.makeText(context, "Не запустилось, включаю ${app.couchy.sources.NativeClient.name(site.site) ?: site.site}", android.widget.Toast.LENGTH_SHORT).show()
+                        vm.closePlayer()
+                        searchVm.openSite(site)
+                        true
+                    }
+                    torrent != null && "torrent" !in tried -> {
+                        tried += "torrent"
+                        android.widget.Toast.makeText(context, "Не запустилось, включаю торрент", android.widget.Toast.LENGTH_SHORT).show()
+                        vm.closePlayer()
+                        torrentVm.open(torrent.magnet)
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
         PlayerScreen(
             queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }.orEmpty(),
             queueAt = songs?.index ?: 0,
@@ -606,6 +637,7 @@ private fun MainScreen(
                     { scope.launch { tvVm.jump(l, prev)?.let(vm::playDirect) }; Unit }
                 }
             },
+            onUnplayable = unplayable,
             onNumber = onAir?.takeIf { it.zapOrder.isNotEmpty() }?.let { l ->
                 { n: Int ->
                     scope.launch { tvVm.byNumber(l, n)?.let(vm::playDirect) }

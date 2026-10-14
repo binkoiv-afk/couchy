@@ -137,6 +137,8 @@ fun PlayerScreen(
     onVariant: ((url: String, positionMs: Long) -> Unit)? = null,
     /** Set when [onFinished] starts the next episode: a countdown card shows over the credits. */
     hasNext: Boolean = false,
+    /** The video would not start: another source is tried instead of showing the error; false when there is none. */
+    onUnplayable: (() -> Boolean)? = null,
     /** Stars or unstars the live channel. */
     onFavorite: (() -> Unit)? = null,
     /** Back to the channel watched before; also the remote's "last channel" key. */
@@ -171,6 +173,32 @@ fun PlayerScreen(
     val context = LocalContext.current
     val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
 
+    // The system knows what plays: "Окей Гугл, пауза", the Now Playing card, TV and Bluetooth media keys.
+    val nextNow by androidx.compose.runtime.rememberUpdatedState(if (hasNext && playback.live == null) ({ onFinished() }) else null)
+    androidx.compose.runtime.DisposableEffect(player) {
+        val shown = object : androidx.media3.common.ForwardingPlayer(player) {
+            private fun canNext() = nextNow != null
+            override fun getAvailableCommands(): androidx.media3.common.Player.Commands =
+                super.getAvailableCommands().buildUpon().apply {
+                    if (canNext()) addAll(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT, androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                }.build()
+            override fun isCommandAvailable(command: Int): Boolean =
+                (canNext() && (command == androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT || command == androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)) ||
+                    super.isCommandAvailable(command)
+            override fun seekToNext() { nextNow?.invoke() ?: super.seekToNext() }
+            override fun seekToNextMediaItem() { nextNow?.invoke() ?: super.seekToNextMediaItem() }
+            override fun getMediaMetadata(): androidx.media3.common.MediaMetadata =
+                super.getMediaMetadata().buildUpon()
+                    .setTitle(playback.title)
+                    .apply { playback.artwork?.let { setArtworkUri(android.net.Uri.parse(it)) } }
+                    .build()
+        }
+        val session = runCatching {
+            androidx.media3.session.MediaSession.Builder(context, shown).setId("couchy-${System.nanoTime()}").build()
+        }.getOrNull()
+        onDispose { session?.release() }
+    }
+    val fallback by androidx.compose.runtime.rememberUpdatedState(onUnplayable)
     var ui by remember(playback.uri) { mutableStateOf(PlayerUi(playback.title)) }
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
     var overlay by remember { mutableStateOf(true) }
@@ -322,6 +350,10 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // A source that never started (not a dropped connection) gives way to the next one by itself.
+                val offline = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                if (!offline && player.currentPosition < 5_000 && fallback?.invoke() == true) return
                 ui = ui.copy(error = errorText(error), buffering = false)
                 overlay = true
             }
@@ -595,6 +627,9 @@ fun PlayerScreen(
                     Key.MediaPlay -> { player.play(); poke(); true }
                     Key.Search, Key.VoiceAssist, Key.Assist -> { if (canListen && playback.live == null) { listening = true; true } else false }
                     Key.MediaPause -> { player.pause(); poke(); true }
+                    Key.MediaNext -> { if (hasNext && playback.live == null) { save(); onFinished() }; hasNext && playback.live == null }
+                    Key.Captions -> { poke(); sheet = Sheet.TRACKS; true }
+                    Key.Info -> { poke(); true }
                     Key.MediaFastForward -> { controls.onSeekBy(30_000); true }
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
                     Key.ChannelUp -> { onZap?.invoke(1); onZap != null }
@@ -745,6 +780,7 @@ fun PlayerScreen(
         PlayerOverlay(
             ui.copy(
                 seeking = seekingByKey,
+                hasNext = hasNext,
                 live = live,
                 status = status,
                 hint = if (boosting) "2× пока держите" else hint,

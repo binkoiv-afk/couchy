@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -102,6 +103,8 @@ data class PlayerUi(
     val night: Boolean = false,
     /** The overlay came up because the remote seeks: focus goes to the timeline, so the next presses seek too. */
     val seeking: Boolean = false,
+    /** A next episode or track is known: the bottom row gets «Далее». */
+    val hasNext: Boolean = false,
 )
 
 /** What a live channel shows instead of a timeline: the programme now and the next one. */
@@ -241,6 +244,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
         val upright = touch && maxWidth < 560.dp
         val tools = buildList {
             if (!touch) add(Tool(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (ui.playing) "Пауза" else "Играть", highlighted = true, focus = playFocus, onClick = controls.onTogglePlay))
+            if (ui.hasNext && ui.live == null) add(Tool(Icons.Rounded.SkipNext, "Далее", onClick = controls.onNextNow))
             if (touch) controls.onCast?.let { add(Tool(Icons.Rounded.Cast, "На ТВ", onClick = it)) }
             add(Tool(Icons.Rounded.Subtitles, "Озвучка", onClick = controls.onTracks))
             add(Tool(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality))
@@ -255,7 +259,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 controls.onFavorite?.let { add(Tool(if (ui.live.favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, "Избранное", highlighted = ui.live.favorite, top = true, onClick = it)) }
                 controls.onPrevious?.let { add(Tool(Icons.Rounded.History, "Предыдущий", top = true, onClick = it)) }
             }
-            controls.onRotate?.let { add(Tool(Icons.Rounded.ScreenRotation, "Поворот", onClick = it)) }
+            controls.onRotate?.let { add(Tool(Icons.Rounded.ScreenRotation, "Поворот", top = true, onClick = it)) }
         }
         val bottom = if (upright) tools.filter { !it.top } else tools
         val up = if (upright) tools.filter { it.top } else emptyList()

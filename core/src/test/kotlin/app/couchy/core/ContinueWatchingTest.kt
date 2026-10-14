@@ -31,6 +31,18 @@ class ContinueWatchingTest {
     }
 
     @Test
+    fun finishedEpisodeGivesWayToNext() {
+        val list = listOf(
+            Item("Тьма · S1E4", 10),
+            Item("Тьма · S1E5", 30, positionMs = 2_990_000),
+            Item("Дюна", 20, positionMs = 2_990_000),
+        )
+        val next = { i: Item -> if (i.title == "Тьма · S1E5") Item("Тьма · S1E6", i.lastWatchedAt, positionMs = 0) else null }
+        assertEquals(listOf("Тьма · S1E6"), LibrarySort.continueWatching(list, next).map { it.title })
+        assertEquals(emptyList<String>(), LibrarySort.continueWatching(list).map { it.title })
+    }
+
+    @Test
     fun seriesName() {
         assertEquals("тьма", LibrarySort.seriesOf("Тьма · S2E10"))
         assertNull(LibrarySort.seriesOf("Тьма"))

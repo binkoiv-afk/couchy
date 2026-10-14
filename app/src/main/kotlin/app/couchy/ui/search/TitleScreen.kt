@@ -405,7 +405,7 @@ private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Uni
     when (r.status) {
         SourceStatus.READY -> {
             val n = r.page?.translators?.size ?: 0
-            SheetRow("HDrezka", onClick = onRezka, icon = Icons.Rounded.PlayCircle, tag = if (n > 1) "озвучек: $n" else "1080p", badge = badge())
+            SheetRow("HDrezka", onClick = onRezka, icon = Icons.Rounded.PlayCircle, tag = if (n > 1) "1080p · озвучек: $n" else "1080p", badge = badge())
         }
         SourceStatus.LOADING -> { loadingAbove = true; SheetRow("HDrezka", onClick = {}, icon = Icons.Rounded.PlayCircle, enabled = false, trailing = { Spinner() }) }
         SourceStatus.BLOCKED -> SheetRow("HDrezka", onClick = { onClose(); actions.onChallenge() }, icon = Icons.Rounded.VerifiedUser, tag = "проверка")
@@ -422,7 +422,9 @@ private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Uni
         SheetRow("Онлайн-кинотеатры", onClick = {}, icon = Icons.Rounded.Language, enabled = false, trailing = { Spinner() })
     }
     bestTorrent(state)?.let { (label, _) ->
-        SheetRow("Торрент", onClick = onTorrents, icon = Icons.Rounded.Download, tag = label, badge = badge())
+        // The best picture on offer, so 4K is seen before opening the list.
+        val uhd = state.torrents.any { it.label.contains("2160") || it.label.contains("4K", ignoreCase = true) }
+        SheetRow("Торрент", onClick = onTorrents, icon = Icons.Rounded.Download, tag = if (uhd) "до 4K" else label, badge = badge())
     } ?: run {
         if (state.torrentsLoading) SheetRow("Торрент", onClick = {}, icon = Icons.Rounded.Download, enabled = false, trailing = { Spinner() })
     }

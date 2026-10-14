@@ -13,6 +13,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -166,6 +169,8 @@ class PlayerControls(
     val onEpisodes: (() -> Unit)? = null,
     /** The same video in another player app; null where none fits. */
     val onExternal: (() -> Unit)? = null,
+    /** A small frame of the video at a position, shown over the timeline while seeking; null where frames cannot be read. */
+    val thumbnail: (suspend (Long) -> androidx.compose.ui.graphics.ImageBitmap?)? = null,
 )
 
 /**
@@ -389,6 +394,45 @@ private fun Timeline(ui: PlayerUi, controls: PlayerControls, focus: FocusRequest
     var dragging by remember { mutableStateOf<Float?>(null) }
     val duration = ui.durationMs.coerceAtLeast(1)
     val value = dragging ?: (ui.positionMs.toFloat() / duration).coerceIn(0f, 1f)
+    // While a finger drags or the remote seeks, a frame from where it lands floats over the timeline.
+    val target = when {
+        dragging != null -> (dragging!! * duration).toLong()
+        ui.seeking && ui.buffering -> ui.positionMs
+        else -> null
+    }
+    var thumb by remember { mutableStateOf<Pair<Long, androidx.compose.ui.graphics.ImageBitmap>?>(null) }
+    val bucket = target?.let { it / 10_000 }
+    LaunchedEffect(bucket) {
+        if (bucket == null) {
+            kotlinx.coroutines.delay(400)
+            thumb = null
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(150)
+        val frame = controls.thumbnail?.invoke(target) ?: return@LaunchedEffect
+        thumb = target to frame
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+    thumb?.takeIf { target != null }?.let { (at, image) ->
+        val w = 176.dp
+        val x = ((maxWidth - w) * (at.toFloat() / duration).coerceIn(0f, 1f))
+        Column(
+            Modifier
+                .align(Alignment.TopStart)
+                .offset(x = x, y = (-128).dp)
+                .width(w)
+                .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                .padding(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            androidx.compose.foundation.Image(
+                image, null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)),
+            )
+            Text(Time.clock(target ?: at), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
     Slider(
         value = value,
         onValueChange = { dragging = it; controls.onInteract() },
@@ -412,7 +456,7 @@ private fun Timeline(ui: PlayerUi, controls: PlayerControls, focus: FocusRequest
                 else -> false
             }
         },
-    )
+    )    }
 }
 
 @Composable

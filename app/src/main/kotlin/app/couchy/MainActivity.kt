@@ -542,6 +542,8 @@ private fun MainScreen(
     }
 
     val current = playback
+    // Remembered so «Продолжить» can offer the next episode once this one is finished.
+    LaunchedEffect(current?.key, current?.nextRef) { current?.let { app.couchy.data.NextUp.remember(context, it.key, it.nextRef) } }
     // "Внешний плеер" in "Просмотр": every video that fits goes to the chosen app instead.
     LaunchedEffect(current) {
         if (current != null && ExternalPlayer.always && current.live == null && ExternalPlayer.fits(current) &&

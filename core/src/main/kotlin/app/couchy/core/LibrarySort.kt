@@ -39,11 +39,20 @@ object LibrarySort {
     /**
      * Titles that are started and not finished, most recent first: the "continue watching" row.
      * A series shows once, with the episode watched last, not a card per episode or voice-over.
+     * When that episode is finished, the series shows with the one after it from [next], or leaves
+     * the row when the next one is not known.
      */
-    fun <T : Sortable> continueWatching(items: List<T>): List<T> =
-        items.filter { it.positionMs >= Progress.MIN_RESUME_MS && !Progress.isWatched(it.positionMs, it.durationMs) }
+    fun <T : Sortable> continueWatching(items: List<T>, next: (T) -> T? = { null }): List<T> =
+        items.filter { it.positionMs >= Progress.MIN_RESUME_MS }
             .sortedByDescending { it.lastWatchedAt }
             .distinctBy { seriesOf(it.title) ?: it }
+            .mapNotNull { item ->
+                when {
+                    !Progress.isWatched(item.positionMs, item.durationMs) -> item
+                    seriesOf(item.title) != null -> next(item)
+                    else -> null
+                }
+            }
 
     private val episodeTail = Regex(""" · S\d+E\d+$""")
 

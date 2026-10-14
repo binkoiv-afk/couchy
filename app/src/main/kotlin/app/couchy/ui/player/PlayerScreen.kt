@@ -208,6 +208,10 @@ fun PlayerScreen(
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
     var overlay by remember { mutableStateOf(true) }
     var seekingByKey by remember { mutableStateOf(false) }
+    val thumbs = remember(playback.uri) {
+        if (playback.live == null && Thumbs.supported(playback.uri)) Thumbs(context, playback.uri, playback.headers) else null
+    }
+    DisposableEffect(thumbs) { onDispose { thumbs?.release() } }
     var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -591,6 +595,7 @@ fun PlayerScreen(
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onMore = { poke(); sheet = Sheet.MORE },
         onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
+        thumbnail = thumbs?.let { t -> { ms: Long -> t.at(ms) } },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
         onDownload = onDownload?.let { d -> { poke(); d(); flash("Скачивается. Найдёте в «Моё» → «Загрузки»") } },

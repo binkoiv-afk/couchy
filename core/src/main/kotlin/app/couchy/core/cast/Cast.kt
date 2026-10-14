@@ -63,10 +63,10 @@ object CastHttp {
         return Request(parts[0], parts[1], String(raw, bodyStart, length, Charsets.UTF_8))
     }
 
-    fun response(code: Int, body: String): ByteArray {
+    fun response(code: Int, body: String, type: String = "application/json; charset=utf-8"): ByteArray {
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = if (code == 200) "OK" else "Error"
-        return ("HTTP/1.1 $code $reason\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n")
+        return ("HTTP/1.1 $code $reason\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n")
             .toByteArray() + bytes
     }
 }

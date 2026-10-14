@@ -94,6 +94,27 @@ fun AddPlaylistDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                // Long addresses and passwords are a pain on a remote: type them on the phone.
+                app.couchy.pair.PhoneInputButton(
+                    "Плейлист",
+                    if (xtream) listOf(
+                        app.couchy.core.pair.PhoneForm.Field("Сервер", value = server),
+                        app.couchy.core.pair.PhoneForm.Field("Логин", value = user),
+                        app.couchy.core.pair.PhoneForm.Field("Пароль", secret = true),
+                    ) else listOf(
+                        app.couchy.core.pair.PhoneForm.Field("Ссылка на плейлист", value = url),
+                        app.couchy.core.pair.PhoneForm.Field("Телепрограмма XMLTV (необязательно)", value = epg),
+                    ),
+                ) { v ->
+                    if (xtream) {
+                        server = v.getOrNull(0)?.trim() ?: server
+                        user = v.getOrNull(1)?.trim() ?: user
+                        v.getOrNull(2)?.takeIf { it.isNotEmpty() }?.let { password = it }
+                    } else {
+                        url = v.getOrNull(0)?.trim() ?: url
+                        epg = v.getOrNull(1)?.trim() ?: epg
+                    }
+                }
             }
         },
         confirmButton = {

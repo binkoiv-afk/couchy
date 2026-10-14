@@ -1,0 +1,150 @@
+package app.couchy.ui.settings
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import app.couchy.core.bypass.BypassMode
+import app.couchy.core.sources.Cinemeta
+import app.couchy.core.sources.Sites
+import app.couchy.data.Prefs
+import app.couchy.data.TorrEngineMode
+import app.couchy.sources.ChallengeException
+import app.couchy.sources.Web
+import app.couchy.ui.components.SecondaryButton
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+
+private enum class Health { RUNNING, OK, WARN, FAIL }
+
+private data class Check(val name: String, val health: Health = Health.RUNNING, val text: String = "Проверяю…")
+
+/**
+ * «Проверка связи»: one look at everything Couchy needs from the network, each with what to do
+ * in plain words when it does not work.
+ */
+@Composable
+internal fun ConnectionDoctor(prefs: Prefs, actions: SettingsActions) {
+    val context = LocalContext.current
+    val web = remember { Web(context) }
+    val checks = remember { mutableStateListOf<Check>() }
+    var round by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(round) {
+        val rezka = prefs.rezkaHost.ifBlank { "https://rezka.ag" }.trimEnd('/')
+        val sites = listOf("Интернет" to "https://www.gstatic.com/generate_204", "Каталог и описания" to "${Cinemeta.BASE}/manifest.json", "HDrezka" to rezka) +
+            Sites.mirrors.keys.map { id -> (Sites.all.firstOrNull { it.id == id }?.name ?: id) to Sites.host(id) }
+        val extra = buildList {
+            if (prefs.bypassMode != BypassMode.OFF) add("Обход блокировок")
+            if (prefs.torrEngine == TorrEngineMode.REMOTE) add("TorrServe")
+        }
+        checks.clear()
+        checks.addAll((sites.map { it.first } + extra).map { Check(it) })
+        fun put(name: String, health: Health, text: String) {
+            val i = checks.indexOfFirst { it.name == name }
+            if (i >= 0) checks[i] = Check(name, health, text)
+        }
+        coroutineScope {
+            val internet = async { site(web, sites[0].second) }
+            sites.drop(1).forEach { (name, url) ->
+                async {
+                    val error = site(web, url)
+                    when {
+                        error == null -> put(name, Health.OK, "Открывается")
+                        error is ChallengeException -> put(name, Health.WARN, "Просит проверку «я не робот». Откройте любой фильм с этого сайта и пройдите её один раз.")
+                        internet.await() != null -> put(name, Health.FAIL, "Нет интернета, поэтому не открывается.")
+                        name == "Каталог и описания" -> put(name, Health.FAIL, "Не открывается. Включите обход блокировок или добавьте ключ TMDB в «Источники и инфо».")
+                        else -> put(
+                            name, Health.FAIL,
+                            "Не открывается: ${error.message ?: "нет ответа"}. Найдите рабочий адрес в поисковике и впишите его в «Источники и инфо»" +
+                                if (prefs.bypassMode == BypassMode.OFF) " или включите обход блокировок." else ".",
+                        )
+                    }
+                }
+            }
+            put(
+                "Интернет",
+                if (internet.await() == null) Health.OK else Health.FAIL,
+                if (internet.await() == null) "Есть" else "Нет связи. Проверьте Wi‑Fi или кабель и роутер.",
+            )
+            if (prefs.bypassMode != BypassMode.OFF) async {
+                val text = report { actions.onCheckBypass(it) }
+                val ok = text.startsWith("Работает")
+                put("Обход блокировок", if (ok) Health.OK else Health.FAIL, if (ok) text else "$text Попробуйте другой тип обхода или свой конфиг в «Обход блокировок».")
+            }
+            if (prefs.torrEngine == TorrEngineMode.REMOTE) async {
+                val text = report { actions.onCheckTorr(prefs.torrAddress, it) }
+                put("TorrServe", if (text.startsWith("Работает")) Health.OK else Health.FAIL, text)
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val bad = checks.count { it.health == Health.FAIL || it.health == Health.WARN }
+        val running = checks.any { it.health == Health.RUNNING }
+        Text(
+            when {
+                running -> "Проверяю…"
+                bad == 0 -> "Всё работает."
+                else -> "Нужно поправить: $bad."
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
+        checks.forEach { CheckRow(it) }
+        if (!running) SecondaryButton("Проверить ещё раз", Icons.Rounded.Refresh, onClick = { round++ })
+    }
+}
+
+@Composable
+private fun CheckRow(check: Check) {
+    val (icon, tint) = when (check.health) {
+        Health.RUNNING -> Icons.Rounded.HourglassTop to MaterialTheme.colorScheme.onSurfaceVariant
+        Health.OK -> Icons.Rounded.CheckCircle to Color(0xFF4CAF50)
+        Health.WARN -> Icons.Rounded.Warning to Color(0xFFFFB300)
+        Health.FAIL -> Icons.Rounded.Error to MaterialTheme.colorScheme.error
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, null, tint = tint, modifier = Modifier.padding(top = 2.dp).size(22.dp))
+        Column {
+            Text(check.name, style = MaterialTheme.typography.titleSmall)
+            Text(check.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Null when [url] opens, else what went wrong. */
+private suspend fun site(web: Web, url: String): Exception? = try {
+    web.get(url)
+    null
+} catch (e: Exception) {
+    e
+}
+
+/** Waits for a check that answers through a callback. */
+private suspend fun report(start: ((String) -> Unit) -> Unit): String = suspendCancellableCoroutine { c ->
+    start { if (c.isActive) c.resume(it) }
+}

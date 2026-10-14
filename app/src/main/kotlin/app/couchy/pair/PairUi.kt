@@ -133,7 +133,7 @@ private fun Busy(text: String) {
     }
 }
 
-private fun qrBitmap(text: String, size: Int = 600): Bitmap {
+internal fun qrBitmap(text: String, size: Int = 600): Bitmap {
     val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 0))
     val pixels = IntArray(size * size) { i -> if (matrix.get(i % size, i / size)) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
     return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)

@@ -107,6 +107,9 @@ class Cast(private val context: Context) {
             }
             // A phone moving its settings over, with the code from this TV's QR.
             r.method == "POST" && r.path == "/pair" -> if (app.couchy.pair.Transfer.receive(r.body)) CastHttp.response(200, "{}") else CastHttp.response(403, "{}")
+            // Typing on the phone for a field on this TV.
+            r.method == "GET" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.page(r.path).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
+            r.method == "POST" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.receive(r.body).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             r.method == "POST" && r.path == "/play" -> {
                 val cast = CastRequest.fromJson(r.body)
                 if (cast != null && _incoming.tryEmit(cast)) CastHttp.response(200, "{}") else CastHttp.response(400, "{}")

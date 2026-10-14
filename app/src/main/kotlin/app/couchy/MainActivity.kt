@@ -271,6 +271,7 @@ private fun MainScreen(
     var remoteOpen by remember { mutableStateOf<app.couchy.cast.CastDevice?>(null) }
     var statsOpen by remember { mutableStateOf(false) }
     var pickOpen by remember { mutableStateOf(false) }
+    var calendarOpen by remember { mutableStateOf(false) }
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
     LaunchedEffect(kids) {
@@ -498,6 +499,9 @@ private fun MainScreen(
             onTitle = { t -> pickOpen = false; searchVm.openTitle(t) },
             onDismiss = { pickOpen = false },
         )
+    }
+    if (calendarOpen) {
+        app.couchy.episodes.CalendarDialog(onTitle = searchVm::openTitle, onDismiss = { calendarOpen = false })
     }
     if (statsOpen) {
         val stats = (LocalContext.current.applicationContext as CouchyApp).stats
@@ -845,6 +849,7 @@ private fun MainScreen(
                     onTitle = searchVm::openTitle,
                     onCatalog = { f -> searchVm.openListing(ListQuery.Catalog(f)) },
                     onPick = { pickOpen = true },
+                    onCalendar = if (kids) null else ({ calendarOpen = true }),
                     trailer = if (kids) null else searchVm::trailerClip,
                 ),
                 feed = feed,

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.QrCode
+import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.VpnLock
@@ -144,6 +145,10 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
         "Перенос на приставку", Icons.Rounded.QrCode,
         "Приставка показывает QR, телефон его сканирует, и все входы, настройки, история и избранное переезжают сами.",
     ),
+    DOCTOR(
+        "Проверка связи", Icons.Rounded.NetworkCheck,
+        "Couchy по очереди проверяет интернет, сайты с фильмами, обход блокировок и TorrServe и подсказывает, что поправить.",
+    ),
     ABOUT("О приложении", Icons.Rounded.Info, "Версия и обновления."),
 }
 
@@ -177,6 +182,7 @@ fun SettingsContent(
         SettingsPage.KIDS -> if (prefs.kidsPin.isEmpty()) "Не настроен" else "PIN задан"
         SettingsPage.CAST -> castInfo.orEmpty()
         SettingsPage.TRANSFER -> if (form.isTv) "Показать QR для телефона" else "Сканировать QR с приставки"
+        SettingsPage.DOCTOR -> "Если что-то не открывается"
         SettingsPage.ABOUT -> "Couchy $version"
     }
 
@@ -224,6 +230,10 @@ fun SettingsContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (key.trim() != prefs.tmdbKey) SecondaryButton("Сохранить", null, onClick = { actions.onTmdbKey(key) })
+                    app.couchy.pair.PhoneInputButton("Источники", listOf(app.couchy.core.pair.PhoneForm.Field("Адрес HDrezka", value = host), app.couchy.core.pair.PhoneForm.Field("Ключ TMDB", value = key))) { v ->
+                        v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { host = it }
+                        v.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }?.let { key = it }
+                    }
                     // TMDB asks apps that use its API to say so.
                     Text(
                         "Данные о фильмах: TMDB и Cinemeta. This product uses the TMDB API but is not endorsed or certified by TMDB.",
@@ -248,6 +258,7 @@ fun SettingsContent(
                 SecondaryButton("Пульт для ТВ", Icons.Rounded.Cast, onClick = actions.onRemote)
             }
             SettingsPage.TRANSFER -> app.couchy.pair.TransferSettings(form.isTv)
+            SettingsPage.DOCTOR -> ConnectionDoctor(prefs, actions)
             SettingsPage.ABOUT -> when (update) {
                 UpdateState.Idle -> SecondaryButton("Проверить обновления", null, onClick = actions.onCheckUpdate)
                 UpdateState.Checking -> Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)
@@ -473,6 +484,9 @@ private fun TorrSettings(prefs: Prefs, actions: SettingsActions) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
+            app.couchy.pair.PhoneInputButton("TorrServe", listOf(app.couchy.core.pair.PhoneForm.Field("Адрес TorrServe", value = address))) { v ->
+                v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { address = it; result = null }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 SecondaryButton("Сохранить и проверить", null, onClick = {
                     actions.onTorrEngine(TorrEngineMode.REMOTE, address)
@@ -672,6 +686,17 @@ private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
+            app.couchy.pair.PhoneInputButton(
+                "Синхронизация",
+                (if (kind == 1) emptyList() else listOf(app.couchy.core.pair.PhoneForm.Field("Адрес WebDAV", value = url))) +
+                    listOf(app.couchy.core.pair.PhoneForm.Field(if (kind == 1) "Логин Яндекса" else "Логин", value = login), app.couchy.core.pair.PhoneForm.Field(if (kind == 1) "Пароль приложения" else "Пароль", secret = true)),
+            ) { v ->
+                val rest = if (kind == 1) v else v.drop(1)
+                if (kind != 1) v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { url = it }
+                rest.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { login = it }
+                rest.getOrNull(1)?.takeIf { it.isNotEmpty() }?.let { password = it }
+                result = null
+            }
             SecondaryButton("Подключить", null, onClick = {
                 val address = if (kind == 1) YANDEX_DAV else normalizeHost(url)
                 if (login.isBlank() || password.isBlank() || address.isBlank()) {
@@ -717,6 +742,9 @@ private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActi
                 maxLines = 10,
                 modifier = Modifier.fillMaxWidth(),
             )
+            app.couchy.pair.PhoneInputButton("Обход блокировок", listOf(app.couchy.core.pair.PhoneForm.Field("Конфиг или ссылка VLESS", multiline = true, value = config))) { v ->
+                v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { config = it; result = null }
+            }
             if (config.trim() != prefs.bypassConfig) {
                 val problem = TunnelConfig.problem(config)
                 if (problem != null && config.isNotBlank()) Text(problem, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

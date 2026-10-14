@@ -84,6 +84,8 @@ class HomeActions(
     val onCatalog: (CatalogFilter) -> Unit = {},
     /** «Что посмотреть?»: three titles for a mood; null hides it. */
     val onPick: (() -> Unit)? = null,
+    /** The episode calendar of followed series; null hides it. */
+    val onCalendar: (() -> Unit)? = null,
     /** A muted trailer for the banner: link and user agent; null where trailers are off. */
     val trailer: (suspend (Title) -> Pair<String, String>?)? = null,
 )
@@ -379,6 +381,20 @@ private fun Genres(side: Dp, actions: HomeActions) {
                     modifier = Modifier
                         .couchyClickable(shape, onClick = open)
                         .background(MaterialTheme.colorScheme.onBackground, shape)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
+        actions.onCalendar?.let { open ->
+            item("calendar") {
+                val shape = RoundedCornerShape(999.dp)
+                Text(
+                    "Календарь серий",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .couchyClickable(shape, onClick = open)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 )
             }

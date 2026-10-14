@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.couchy.CouchyApp
+import app.couchy.core.cast.CastHttp
 import app.couchy.core.pair.PairLink
 import app.couchy.ui.components.CouchySheet
 import app.couchy.ui.components.PrimaryButton
@@ -61,7 +62,7 @@ fun TvPairDialog(onDismiss: () -> Unit) {
     val link = remember(address) {
         address?.let {
             val host = it.substringBefore(':')
-            val port = it.substringAfter(':', "").toIntOrNull() ?: app.couchy.core.cast.CastHttp.PORT
+            val port = it.substringAfter(':', "").toIntOrNull() ?: CastHttp.PORT
             PairLink(host, port, code, android.os.Build.MODEL.orEmpty().ifBlank { "Приставка" })
         }
     }

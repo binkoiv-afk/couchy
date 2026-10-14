@@ -92,6 +92,8 @@ fun SiteWindowDialog(
     // A film page plays without being seen: Couchy presses ▶ in the site's player itself and only
     // shows the site when that does not start the video.
     var hidden by remember { mutableStateOf(window.key != null) }
+    // Once the person asked to see the site, it is not hidden again behind their back.
+    var shownByPerson by remember { mutableStateOf(false) }
     // The site is shown only when the person asks for it, never on its own.
     var failed by remember { mutableStateOf(false) }
     var attempt by remember { mutableStateOf(0) }
@@ -149,7 +151,7 @@ fun SiteWindowDialog(
                         settings.userAgentString = userAgent
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = Catcher(window.url, userAgent, onVideo, onBlocked)
+                        webViewClient = Catcher(window.url, userAgent, onVideo, onBlocked, onPlayerPage = { if (!hidden && !shownByPerson) hidden = true })
                         loadUrl(window.url)
                         web = this
                     }
@@ -158,6 +160,10 @@ fun SiteWindowDialog(
                     v.stopLoading()
                     v.loadUrl("about:blank")
                     v.destroy()
+                },
+                update = { v ->
+                    // Hidden for real, not only covered: a playing video draws on its own layer and could show through.
+                    v.alpha = if (hidden) 0f else 1f
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -182,7 +188,7 @@ fun SiteWindowDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (failed) PrimaryButton("Другой источник", null, onClick = onDismiss)
                         if (failed) SecondaryButton("Ещё раз", null, onClick = { web?.reload(); attempt += 1 })
-                        SecondaryButton("Показать сайт", null, onClick = { hidden = false })
+                        SecondaryButton("Показать сайт", null, onClick = { shownByPerson = true; hidden = false })
                     }
                 }
             }
@@ -228,10 +234,12 @@ private fun pressPlay(view: WebView) {
 }
 
 private class Catcher(
-    start: String,
+    private val start: String,
     private val userAgent: String,
     private val onVideo: (String, Map<String, String>, String) -> Unit,
     private val onBlocked: (WebView, String) -> Unit,
+    /** A film page with a player opened, from the site's own search: Couchy takes over from here. */
+    private val onPlayerPage: () -> Unit = {},
 ) : WebViewClient() {
     private val main = Handler(Looper.getMainLooper())
     private val startHost = SiteRef.hostOf(start)
@@ -282,6 +290,11 @@ private class Catcher(
 
     override fun onPageFinished(view: WebView, url: String?) {
         if (url != null && url.startsWith("http")) page = url
+        if (url == null || url.substringBefore('#') == start.substringBefore('#') || done) return
+        // A page with a big player on it is a film page: hide the site and start the video.
+        view.evaluateJavascript(
+            "(function(){var e=document.querySelector('video,iframe[allowfullscreen],iframe[src*=player],iframe[src*=embed],[id*=player] iframe');if(!e)return false;var r=e.getBoundingClientRect();return r.width>200&&r.height>100;})()",
+        ) { answer -> if (answer == "true") main.post { onPlayerPage() } }
     }
 }
 

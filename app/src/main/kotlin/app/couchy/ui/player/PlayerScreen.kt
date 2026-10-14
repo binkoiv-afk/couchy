@@ -595,7 +595,7 @@ fun PlayerScreen(
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onMore = { poke(); sheet = Sheet.MORE },
         onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
-        thumbnail = thumbs?.let { t -> { ms: Long -> t.at(ms) } },
+        thumbnail = thumbs?.let { t -> t::at },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
         onDownload = onDownload?.let { d -> { poke(); d(); flash("Скачивается. Найдёте в «Моё» → «Загрузки»") } },

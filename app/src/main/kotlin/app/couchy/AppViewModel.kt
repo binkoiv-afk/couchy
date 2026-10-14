@@ -1,5 +1,6 @@
 package app.couchy
 
+import app.couchy.data.NextUp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -200,7 +201,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val home: StateFlow<HomeState> = visible.map { all ->
         HomeState(
-            continueWatching = LibrarySort.continueWatching(all) { app.couchy.data.NextUp.after(couchy, it, all) }.take(12),
+            continueWatching = LibrarySort.continueWatching(all) { NextUp.after(couchy, it, all) }.take(12),
             favorites = all.filter { it.favorite }.sortedByDescending { it.lastWatchedAt.coerceAtLeast(it.addedAt) },
             recent = all.sortedByDescending { it.addedAt }.take(12),
             loaded = true,

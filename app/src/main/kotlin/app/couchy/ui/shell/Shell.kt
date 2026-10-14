@@ -66,7 +66,8 @@ fun Shell(current: Destination, onNavigate: (Destination) -> Unit, onOpen: () ->
     if (form.wide) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             // Labels stay on TV too: icons alone left people guessing where search is.
-            Rail(current, onNavigate, onOpen, compact = false)
+            // The TV section needs the width for its three columns: the rail shrinks to icons there.
+            Rail(current, onNavigate, onOpen, compact = current == Destination.TV)
             Box(Modifier.fillMaxSize().then(if (current == Destination.HOME) Modifier else Modifier.statusBarsPadding())) { Themed(content) }
         }
     } else {
@@ -119,9 +120,25 @@ private fun Rail(current: Destination, onNavigate: (Destination) -> Unit, onOpen
 private fun RailItem(icon: ImageVector, label: String, selected: Boolean, compact: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val fg = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+    if (compact) {
+        // Narrow rail: the name stays, small, under the icon.
+        androidx.compose.foundation.layout.Column(
+            Modifier
+                .width(68.dp)
+                .couchyClickable(shape, focusScale = 1.08f, onClick = onClick)
+                .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else androidx.compose.ui.graphics.Color.Transparent, shape)
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.primary else fg, modifier = Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1)
+        }
+        return
+    }
     Row(
         Modifier
-            .then(if (compact) Modifier else Modifier.fillMaxWidth())
+            .fillMaxWidth()
             .couchyClickable(shape, focusScale = 1.08f, onClick = onClick)
             .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else androidx.compose.ui.graphics.Color.Transparent, shape)
             .padding(12.dp),
@@ -129,7 +146,7 @@ private fun RailItem(icon: ImageVector, label: String, selected: Boolean, compac
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.primary else fg, modifier = Modifier.size(24.dp))
-        if (!compact) Text(label, style = MaterialTheme.typography.titleSmall, color = fg)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = fg)
     }
 }
 

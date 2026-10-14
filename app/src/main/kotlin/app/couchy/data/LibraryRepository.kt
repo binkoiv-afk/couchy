@@ -23,9 +23,12 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
      * Finds the entry for [link] or adds a new one. A known link keeps its history; a fresh
      * one gets a title from [title], the file's display name, or the link itself.
      */
-    suspend fun open(link: String, title: String? = null): MediaEntity = withContext(Dispatchers.IO) {
+    suspend fun open(link: String, title: String? = null, poster: String? = null): MediaEntity = withContext(Dispatchers.IO) {
         val uri = link.trim()
-        dao.get(uri)?.let { return@withContext it }
+        dao.get(uri)?.let { known ->
+            if (poster != null && known.poster != poster) dao.setPoster(uri, poster)
+            return@withContext known
+        }
         val parsed = Uri.parse(uri)
         if (parsed.scheme == "content") keepAccess(parsed)
         val entity = MediaEntity(
@@ -33,6 +36,7 @@ class LibraryRepository(private val context: Context, private val dao: MediaDao)
             title = title?.takeIf { it.isNotBlank() } ?: displayName(parsed) ?: Links.titleFor(uri),
             kind = Links.classify(uri).name,
             addedAt = System.currentTimeMillis(),
+            poster = poster,
         )
         dao.upsert(entity)
         entity

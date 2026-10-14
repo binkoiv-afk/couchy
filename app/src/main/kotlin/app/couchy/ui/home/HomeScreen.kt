@@ -181,8 +181,13 @@ fun HomeContent(
         }
     }
     // The remote starts on the search, so OK immediately opens it.
+    // Only once: back from the player, the card that was opened keeps the focus instead.
+    var startFocused by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(form, state.loaded) {
-        if (form.isTv && state.loaded && !kids) runCatching { searchFocus.requestFocus() }
+        if (form.isTv && state.loaded && !kids && !startFocused && app.couchy.ui.components.FocusMemory.key == null) {
+            runCatching { searchFocus.requestFocus() }
+            startFocused = true
+        }
     }
 }
 

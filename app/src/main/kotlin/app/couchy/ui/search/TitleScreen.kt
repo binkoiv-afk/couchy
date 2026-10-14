@@ -397,7 +397,9 @@ private fun WhereToWatch(state: TitleUi, actions: TitleActions, onStep: (Step) -
 private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Unit, onRezka: () -> Unit, onTorrents: () -> Unit) {
     val r = state.rezka
     var bestGiven = false
-    fun badge(): String? = if (bestGiven) null else { bestGiven = true; "ЛУЧШИЙ" }
+    // The mark waits until everything above has loaded, so it does not jump from row to row.
+    var loadingAbove = false
+    fun badge(): String? = if (bestGiven || loadingAbove) null else { bestGiven = true; "ЛУЧШИЙ" }
     val kp = state.sites.firstOrNull { it.site == app.couchy.core.sources.KinoPub.ID }
     kp?.let { SheetRow("Kino.pub", onClick = { onClose(); actions.onSite(it) }, icon = Icons.Rounded.PlayCircle, tag = "до 4K", badge = badge()) }
     when (r.status) {
@@ -405,26 +407,27 @@ private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Uni
             val n = r.page?.translators?.size ?: 0
             SheetRow("HDrezka", onClick = onRezka, icon = Icons.Rounded.PlayCircle, tag = if (n > 1) "озвучек: $n" else "1080p", badge = badge())
         }
-        SourceStatus.LOADING -> SheetRow("HDrezka", onClick = {}, icon = Icons.Rounded.PlayCircle, enabled = false, trailing = { Spinner() })
+        SourceStatus.LOADING -> { loadingAbove = true; SheetRow("HDrezka", onClick = {}, icon = Icons.Rounded.PlayCircle, enabled = false, trailing = { Spinner() }) }
         SourceStatus.BLOCKED -> SheetRow("HDrezka", onClick = { onClose(); actions.onChallenge() }, icon = Icons.Rounded.VerifiedUser, tag = "проверка")
         SourceStatus.ERROR -> SheetRow("HDrezka", onClick = actions.onRetryRezka, icon = Icons.Rounded.Refresh, tag = "повторить")
         SourceStatus.NOT_FOUND -> Unit
     }
-    state.sites.filter { it != kp }.forEach { hit ->
-        val native = hit.site in app.couchy.sources.NativeClient.ids
-        SheetRow(
-            siteName(hit.site),
-            onClick = { onClose(); actions.onSite(hit) },
-            icon = if (native) Icons.Rounded.PlayCircle else Icons.Rounded.Language,
-            tag = if (native) "1080p" else "плеер сайта",
-            badge = if (native) badge() else null,
-        )
+    // Sources that play in Couchy's own player first, then the torrent, and the sites' own players last.
+    val (native, embedded) = state.sites.filter { it != kp }.partition { it.site in app.couchy.sources.NativeClient.ids }
+    native.forEach { hit ->
+        SheetRow(siteName(hit.site), onClick = { onClose(); actions.onSite(hit) }, icon = Icons.Rounded.PlayCircle, tag = "1080p", badge = badge())
     }
-    if (state.sitesLoading) SheetRow("Онлайн-кинотеатры", onClick = {}, icon = Icons.Rounded.Language, enabled = false, trailing = { Spinner() })
+    if (state.sitesLoading) {
+        loadingAbove = true
+        SheetRow("Онлайн-кинотеатры", onClick = {}, icon = Icons.Rounded.Language, enabled = false, trailing = { Spinner() })
+    }
     bestTorrent(state)?.let { (label, _) ->
         SheetRow("Торрент", onClick = onTorrents, icon = Icons.Rounded.Download, tag = label, badge = badge())
     } ?: run {
         if (state.torrentsLoading) SheetRow("Торрент", onClick = {}, icon = Icons.Rounded.Download, enabled = false, trailing = { Spinner() })
+    }
+    embedded.forEach { hit ->
+        SheetRow(siteName(hit.site), onClick = { onClose(); actions.onSite(hit) }, icon = Icons.Rounded.Language, tag = "плеер сайта")
     }
     val legal = state.info?.providers.orEmpty()
     if (legal.isNotEmpty()) {

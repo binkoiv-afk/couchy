@@ -33,6 +33,8 @@ data class MediaEntity(
     val subtitleLanguage: String? = null,
     /** A parent allowed it in kids mode. */
     val kids: Boolean = false,
+    /** A still or poster of the film, so the cards in «Продолжить» and «Моё» show a picture. */
+    val poster: String? = null,
 ) : Sortable
 
 @Dao
@@ -64,21 +66,30 @@ interface MediaDao {
     @Query("UPDATE media SET kids = :kids WHERE uri = :uri")
     suspend fun setKids(uri: String, kids: Boolean)
 
+    @Query("UPDATE media SET poster = :poster WHERE uri = :uri")
+    suspend fun setPoster(uri: String, poster: String)
+
     @Query("DELETE FROM media WHERE uri = :uri")
     suspend fun delete(uri: String)
 }
 
-@Database(entities = [MediaEntity::class], version = 2, exportSchema = true)
+@Database(entities = [MediaEntity::class], version = 3, exportSchema = true)
 abstract class CouchyDatabase : RoomDatabase() {
     abstract fun media(): MediaDao
 
     companion object {
         fun create(context: Context): CouchyDatabase =
-            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy${Profiles.suffix(context)}.db").addMigrations(KIDS).build()
+            Room.databaseBuilder(context, CouchyDatabase::class.java, "couchy${Profiles.suffix(context)}.db").addMigrations(KIDS, POSTER).build()
 
         private val KIDS = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE media ADD COLUMN kids INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val POSTER = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media ADD COLUMN poster TEXT")
             }
         }
     }

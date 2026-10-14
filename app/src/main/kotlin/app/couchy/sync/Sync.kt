@@ -207,6 +207,7 @@ class Sync(
                     kids = item.kids,
                     audioLanguage = item.audioLanguage ?: current?.audioLanguage,
                     subtitleLanguage = item.subtitleLanguage ?: current?.subtitleLanguage,
+                    poster = current?.poster,
                 ),
             )
         }

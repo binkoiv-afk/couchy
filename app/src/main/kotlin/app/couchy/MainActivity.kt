@@ -220,6 +220,8 @@ private fun MainScreen(
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    // Each tab and title page keeps its scroll while the player covers it, so Back returns to the same place.
+    val screens = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showOpen by rememberSaveable { mutableStateOf(false) }
     var searchFocus by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
@@ -710,7 +712,7 @@ private fun MainScreen(
                     },
                 )
             }
-            TitleContent(
+            screens.SaveableStateProvider("title:" + page.title.key) { TitleContent(
                 page.copy(
                     later = saved.later.any { it.key == page.title.key },
                     loved = saved.loved.any { it.key == page.title.key },
@@ -750,7 +752,7 @@ private fun MainScreen(
                         }
                     },
                 ),
-            )
+            ) }
             if (sourceBusy || ytBusy) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -780,12 +782,15 @@ private fun MainScreen(
         onPlaylists = { showPlaylists = true },
     )
 
+    // Back on another tab goes home first; only on Главная does it leave the app.
+    BackHandler(enabled = destination != Destination.HOME) { destination = Destination.HOME }
+
     Shell(
         destination,
         onNavigate = { if (kids && it == Destination.SETTINGS) askPin = true else destination = it },
         onOpen = { showOpen = true },
     ) {
-        when (destination) {
+        screens.SaveableStateProvider(destination.name) { when (destination) {
             Destination.HOME -> HomeContent(
                 home,
                 HomeActions(
@@ -952,7 +957,7 @@ private fun MainScreen(
                     castInfo = "Это устройство: ${cast.deviceName}" + (cast.address()?.let { ", адрес $it" } ?: ""),
                 )
             }
-        }
+        } }
     }
 
     if (showOpen) {

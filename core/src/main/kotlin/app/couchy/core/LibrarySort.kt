@@ -36,8 +36,17 @@ object LibrarySort {
         else -> 1
     }
 
-    /** Titles that are started and not finished, most recent first: the "continue watching" row. */
+    /**
+     * Titles that are started and not finished, most recent first: the "continue watching" row.
+     * A series shows once, with the episode watched last, not a card per episode or voice-over.
+     */
     fun <T : Sortable> continueWatching(items: List<T>): List<T> =
         items.filter { it.positionMs >= Progress.MIN_RESUME_MS && !Progress.isWatched(it.positionMs, it.durationMs) }
             .sortedByDescending { it.lastWatchedAt }
+            .distinctBy { seriesOf(it.title) ?: it }
+
+    private val episodeTail = Regex(""" · S\d+E\d+$""")
+
+    /** "Тьма · S2E5" → "Тьма"; null for a film. */
+    fun seriesOf(title: String): String? = episodeTail.find(title)?.let { title.substring(0, it.range.first).lowercase() }
 }

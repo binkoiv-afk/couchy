@@ -90,8 +90,9 @@ fun TvContent(
     }
     if (form.wide) {
         Row(modifier.fillMaxSize()) {
-            Groups(state, actions, Modifier.width(210.dp).fillMaxHeight())
-            Channels(state, actions, Modifier.width(if (form.isTv) 400.dp else 360.dp).fillMaxHeight())
+            // The guide keeps at least a third of the screen for programme names.
+            Groups(state, actions, Modifier.width(180.dp).fillMaxHeight())
+            Channels(state, actions, Modifier.width(320.dp).fillMaxHeight())
             Guide(state, focused ?: state.channels.firstOrNull()?.channel, schedule, actions, Modifier.weight(1f).fillMaxHeight())
         }
     } else {

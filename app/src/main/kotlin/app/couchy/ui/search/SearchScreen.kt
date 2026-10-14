@@ -381,7 +381,7 @@ fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier,
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .couchyClickable(PosterShape, onClick = onClick)
+                .couchyClickable(PosterShape, memoryKey = title.key, onClick = onClick)
                 .clip(PosterShape),
         ) {
             Artwork(title.name, Modifier.fillMaxSize()) {

@@ -277,6 +277,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     val search: StateFlow<SearchState> = _search.asStateFlow()
 
     private val _title = MutableStateFlow<TitleUi?>(null)
+
+    /** The open title page's picture, for a library entry of that film: wide still first, poster otherwise. */
+    private fun artworkFor(name: String): String? =
+        _title.value?.title?.takeIf { name.startsWith(it.name) }?.let { it.backdrop ?: it.poster }
     val title: StateFlow<TitleUi?> = combine(_title, library.all) { t, all -> t?.withProgress(all) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -816,7 +820,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val e = release.episodes.getOrNull(i) ?: throw IllegalStateException("Нет такой серии")
             val key = app.couchy.core.sources.NativeRef.of(release.source, release.id, season, episode)
             val title = if (release.series) "${release.name} · S${season}E$episode" else release.name
-            val entry = library.open(key, title)
+            val entry = library.open(key, title, artworkFor(title))
             rememberTaste(entry.title)
             if (fromStart) library.clearProgress(key)
             val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
@@ -849,7 +853,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun siteCaught(window: SiteWindow, video: String, headers: Map<String, String>, pageUrl: String): Playback {
         _siteWindow.value = null
         val key = window.key ?: SiteRef.siteOf(pageUrl)?.let { SiteRef.of(pageUrl, it.id) } ?: SiteRef.of(pageUrl, window.site?.id ?: "web")
-        val entry = library.open(key, window.title)
+        val entry = library.open(key, window.title, artworkFor(window.title))
         rememberTaste(entry.title)
         // A series page plays whichever episode was picked in the site's player, so it starts where the site does.
         val start = if (window.series) 0L else Progress.resumeFrom(entry.positionMs, entry.durationMs)
@@ -952,7 +956,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             targets.forEach { e ->
                 if (watched) {
                     val key = Rezka.ref(url, translator, e.season, e.episode)
-                    library.open(key, "${t.title.name} · S${e.season}E${e.episode}")
+                    library.open(key, "${t.title.name} · S${e.season}E${e.episode}", t.title.backdrop ?: t.title.poster)
                     // A full mark: the episode counts as seen and is not offered to continue.
                     library.saveProgress(key, MARKED_MS, MARKED_MS)
                 } else {
@@ -1100,7 +1104,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
-        val entry = if (quiet) library.get(key) else library.open(key, title)
+        val entry = if (quiet) library.get(key) else library.open(key, title, artworkFor(title))
         if (!quiet) rememberTaste(title)
         if (fromStart) library.clearProgress(key)
         val next = if (series) {

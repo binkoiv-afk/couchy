@@ -174,6 +174,7 @@ fun PlayerScreen(
     var ui by remember(playback.uri) { mutableStateOf(PlayerUi(playback.title)) }
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
     var overlay by remember { mutableStateOf(true) }
+    var seekingByKey by remember { mutableStateOf(false) }
     var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -441,7 +442,7 @@ fun PlayerScreen(
             overlay = false
         }
     }
-    LaunchedEffect(overlay) { if (!overlay) runCatching { rootFocus.requestFocus() } }
+    LaunchedEffect(overlay) { if (!overlay) { seekingByKey = false; runCatching { rootFocus.requestFocus() } } }
     // A new channel shows its name and programme for a moment.
     LaunchedEffect(playback.uri) { if (playback.live != null) poke() }
 
@@ -529,6 +530,8 @@ fun PlayerScreen(
     }
 
     val controls = PlayerControls(
+        onOtherSource = onSources?.let { back -> { save(); back() } },
+        onExternal = onExternal?.let { open -> { save(); open(player.currentPosition) } },
         onBack = ::leave,
         onTogglePlay = { poke(); if (player.isPlaying) player.pause() else player.play() },
         onSeekTo = { poke(); player.seekTo(it) },
@@ -614,8 +617,8 @@ fun PlayerScreen(
                 if (overlay || event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { controls.onTogglePlay(); true }
-                    Key.DirectionLeft -> { controls.onSeekBy(-10_000); true }
-                    Key.DirectionRight -> { controls.onSeekBy(10_000); true }
+                    Key.DirectionLeft -> { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)); true }
+                    Key.DirectionRight -> { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)); true }
                     Key.DirectionUp -> { if (onZap != null) onZap(-1) else poke(); true }
                     Key.DirectionDown -> { if (onZap != null) onZap(1) else poke(); true }
                     Key.Menu -> { poke(); true }
@@ -741,6 +744,7 @@ fun PlayerScreen(
         }
         PlayerOverlay(
             ui.copy(
+                seeking = seekingByKey,
                 live = live,
                 status = status,
                 hint = if (boosting) "2× пока держите" else hint,
@@ -1327,6 +1331,6 @@ private fun errorText(error: PlaybackException): String = when (error.errorCode)
     PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> "Это не видео или формат не поддерживается."
     PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
     PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> "Устройство не умеет декодировать это видео."
-    else -> error.errorCodeName.lowercase().replace('_', ' ')
+    else -> "Видео не загрузилось. Попробуйте другой источник или повторите."
 }
 

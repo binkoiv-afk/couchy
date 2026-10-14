@@ -24,6 +24,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Forward10
@@ -97,6 +100,8 @@ data class PlayerUi(
     val sleepLabel: String? = null,
     /** "Ночной звук" is on: loud parts quieter, voices louder. */
     val night: Boolean = false,
+    /** The overlay came up because the remote seeks: focus goes to the timeline, so the next presses seek too. */
+    val seeking: Boolean = false,
 )
 
 /** What a live channel shows instead of a timeline: the programme now and the next one. */
@@ -150,6 +155,10 @@ class PlayerControls(
     val onLock: (() -> Unit)? = null,
     /** Night sound, sleep timer, download and the small window, in one list. */
     val onMore: () -> Unit = {},
+    /** Back to the title page's sources; null when the video did not come from one. */
+    val onOtherSource: (() -> Unit)? = null,
+    /** The same video in another player app; null where none fits. */
+    val onExternal: (() -> Unit)? = null,
 )
 
 /**
@@ -215,6 +224,7 @@ private fun NextCard(seconds: Int, controls: PlayerControls, modifier: Modifier)
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
     val playFocus = remember { FocusRequester() }
+    val timelineFocus = remember { FocusRequester() }
     androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -297,7 +307,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 4.dp),
             )
-            if (ui.live != null) LiveInfo(ui.live, touch) else Timeline(ui, controls)
+            if (ui.live != null) LiveInfo(ui.live, touch) else Timeline(ui, controls, timelineFocus)
             // One row, always: the buttons share the width, with captions when there is room for them.
             androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 val cell = maxWidth / bottom.size.coerceAtLeast(1)
@@ -309,7 +319,16 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
             }
         }
     }
-    LaunchedEffect(Unit) { if (!touch) runCatching { playFocus.requestFocus() } }
+    LaunchedEffect(Unit) {
+        if (!touch) runCatching { if (ui.seeking && ui.live == null) timelineFocus.requestFocus() else playFocus.requestFocus() }
+    }
+}
+
+/** Holding a seek key goes faster: 10 s steps, then 30 s, then a minute. */
+internal fun seekStep(repeat: Int): Long = when {
+    repeat < 6 -> 10_000L
+    repeat < 20 -> 30_000L
+    else -> 60_000L
 }
 
 @Composable
@@ -357,7 +376,7 @@ private fun LiveInfo(live: LiveUi, touch: Boolean) {
 }
 
 @Composable
-private fun Timeline(ui: PlayerUi, controls: PlayerControls) {
+private fun Timeline(ui: PlayerUi, controls: PlayerControls, focus: FocusRequester) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val duration = ui.durationMs.coerceAtLeast(1)
     val value = dragging ?: (ui.positionMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -375,11 +394,12 @@ private fun Timeline(ui: PlayerUi, controls: PlayerControls) {
             inactiveTrackColor = Color.White.copy(alpha = 0.3f),
         ),
         // A remote moves by 10 seconds per press instead of the slider's own tiny steps.
-        modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+        modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            val step = seekStep(event.nativeKeyEvent.repeatCount)
             when (event.key) {
-                Key.DirectionLeft -> { controls.onSeekBy(-10_000); true }
-                Key.DirectionRight -> { controls.onSeekBy(10_000); true }
+                Key.DirectionLeft -> { controls.onSeekBy(-step); true }
+                Key.DirectionRight -> { controls.onSeekBy(step); true }
                 else -> false
             }
         },
@@ -417,6 +437,7 @@ private fun RoundIcon(icon: ImageVector, label: String, size: androidx.compose.u
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ErrorPanel(message: String, controls: PlayerControls, modifier: Modifier) {
     val retry = remember { FocusRequester() }
@@ -427,8 +448,11 @@ private fun ErrorPanel(message: String, controls: PlayerControls, modifier: Modi
     ) {
         Text("Не получается воспроизвести", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(message, color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Pill(Icons.Rounded.PlayArrow, "Повторить", Modifier.focusRequester(retry), highlighted = true, onClick = controls.onRetry)
+        // Never a dead end: another source or another player is one press away.
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            controls.onOtherSource?.let { Pill(Icons.Rounded.SwapHoriz, "Другой источник", Modifier.focusRequester(retry), highlighted = true, onClick = it) }
+            Pill(Icons.Rounded.Refresh, "Повторить", if (controls.onOtherSource == null) Modifier.focusRequester(retry) else Modifier, highlighted = controls.onOtherSource == null, onClick = controls.onRetry)
+            controls.onExternal?.let { Pill(Icons.AutoMirrored.Rounded.OpenInNew, "Внешний плеер", onClick = it) }
             Pill(Icons.AutoMirrored.Rounded.ArrowBack, "Назад", onClick = controls.onBack)
         }
     }

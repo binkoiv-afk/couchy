@@ -52,10 +52,19 @@ fun MediaCard(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .couchyClickable(CardShape, onLongClick = onLongClick, onClick = onClick)
+                .couchyClickable(CardShape, onLongClick = onLongClick, memoryKey = item.uri, onClick = onClick)
                 .clip(CardShape),
         ) {
-            Artwork(item.title, Modifier.fillMaxSize())
+            Artwork(item.title, Modifier.fillMaxSize()) {
+                item.poster?.let { url ->
+                    coil.compose.AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             Box(
                 Modifier
                     .fillMaxSize()

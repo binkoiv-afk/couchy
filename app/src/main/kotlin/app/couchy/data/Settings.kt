@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.first
 import app.couchy.core.SortOrder
 import app.couchy.core.bypass.BypassKind
 import app.couchy.core.bypass.BypassMode
@@ -126,6 +127,21 @@ class Settings(private val context: Context) {
         it[syncUrl] = url.trim()
         it[syncLogin] = login.trim()
         it[syncPassword] = password
+    }
+
+    /** What moves to a new TV with the phone's QR: sign-ins, bypass and sources, not this device's look. */
+    private val transferable get() = listOf(rezkaHost, tmdbKey, bypassMode, bypassKind, bypassConfig, warpAccount, bypassHosts, syncUrl, syncLogin, syncPassword, kidsPin, torrEngine, torrAddress)
+
+    suspend fun exportTransfer(): Map<String, String> {
+        val p = context.store.data.first()
+        // Google Drive works through the account on this phone; the TV signs in on its own.
+        val google = p[syncUrl] == app.couchy.sync.WebDav.GOOGLE_ACCOUNT
+        return transferable.mapNotNull { k -> p[k]?.let { v -> k.name to v } }.toMap()
+            .filterKeys { !(google && it.startsWith("sync_")) }
+    }
+
+    suspend fun importTransfer(values: Map<String, String>) = context.store.edit { e ->
+        transferable.forEach { k -> values[k.name]?.let { e[k] = it } }
     }
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =

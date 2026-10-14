@@ -91,6 +91,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.work)
+    // The TV's QR for moving settings over, and the phone's scanner from Play services (no camera permission).
+    implementation(libs.zxing.core)
+    implementation(libs.gms.code.scanner)
     implementation(libs.androidx.tvprovider)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

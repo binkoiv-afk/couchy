@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.QrCode
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.VpnLock
@@ -139,6 +140,10 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
         "Смотреть на ТВ", Icons.Rounded.Cast,
         "На телефоне нажмите кнопку ТВ в плеере или «Смотреть на ТВ» в медиатеке, и видео продолжится здесь с того же места. Couchy на приставке должен быть открыт.",
     ),
+    TRANSFER(
+        "Перенос на приставку", Icons.Rounded.QrCode,
+        "Приставка показывает QR, телефон его сканирует, и все входы, настройки, история и избранное переезжают сами.",
+    ),
     ABOUT("О приложении", Icons.Rounded.Info, "Версия и обновления."),
 }
 
@@ -171,6 +176,7 @@ fun SettingsContent(
         SettingsPage.SYNC -> sync.status
         SettingsPage.KIDS -> if (prefs.kidsPin.isEmpty()) "Не настроен" else "PIN задан"
         SettingsPage.CAST -> castInfo.orEmpty()
+        SettingsPage.TRANSFER -> if (form.isTv) "Показать QR для телефона" else "Сканировать QR с приставки"
         SettingsPage.ABOUT -> "Couchy $version"
     }
 
@@ -241,6 +247,7 @@ fun SettingsContent(
                 )
                 SecondaryButton("Пульт для ТВ", Icons.Rounded.Cast, onClick = actions.onRemote)
             }
+            SettingsPage.TRANSFER -> app.couchy.pair.TransferSettings(form.isTv)
             SettingsPage.ABOUT -> when (update) {
                 UpdateState.Idle -> SecondaryButton("Проверить обновления", null, onClick = actions.onCheckUpdate)
                 UpdateState.Checking -> Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)

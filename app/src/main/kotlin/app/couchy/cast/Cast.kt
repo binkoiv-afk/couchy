@@ -75,10 +75,10 @@ class Cast(private val context: Context) {
     private fun handle(client: Socket) = client.use { c ->
         c.soTimeout = 5_000
         val buffer = ByteArrayOutputStream()
-        val chunk = ByteArray(8192)
+        val chunk = ByteArray(65536)
         var request: CastHttp.Request? = null
         runCatching {
-            while (buffer.size() < 256_000) {
+            while (buffer.size() < 8_000_000) {
                 val n = c.getInputStream().read(chunk)
                 if (n < 0) break
                 buffer.write(chunk, 0, n)
@@ -105,6 +105,8 @@ class Cast(private val context: Context) {
                     CastHttp.response(200, "{}")
                 } else CastHttp.response(409, "{}")
             }
+            // A phone moving its settings over, with the code from this TV's QR.
+            r.method == "POST" && r.path == "/pair" -> if (app.couchy.pair.Transfer.receive(r.body)) CastHttp.response(200, "{}") else CastHttp.response(403, "{}")
             r.method == "POST" && r.path == "/play" -> {
                 val cast = CastRequest.fromJson(r.body)
                 if (cast != null && _incoming.tryEmit(cast)) CastHttp.response(200, "{}") else CastHttp.response(400, "{}")

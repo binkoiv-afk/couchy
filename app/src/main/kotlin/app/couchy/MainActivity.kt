@@ -191,6 +191,10 @@ class MainActivity : ComponentActivity() {
                 ?.let { text -> Regex("""(https?|magnet)\S+""").find(text)?.value }
             else -> null
         } ?: return
+        if (link.startsWith("couchy://pair")) {
+            app.couchy.pair.incomingPair.value = app.couchy.core.pair.PairLink.parse(link)
+            return
+        }
         if (Links.looksLikeLink(link)) vm.open(link)
     }
 
@@ -445,6 +449,20 @@ private fun MainScreen(
             onVideo = { url, headers, pageUrl -> scope.launch { vm.playDirect(searchVm.siteCaught(w, url, headers, pageUrl)) } },
             onDismiss = searchVm::closeSite,
         )
+    }
+
+    // Moving to a new TV: the phone's camera opened a Couchy QR, or the TV offers its QR on first start.
+    val pairLink by app.couchy.pair.incomingPair.collectAsStateWithLifecycle()
+    pairLink?.let { link -> app.couchy.pair.PhonePairDialog(link, onDismiss = { app.couchy.pair.incomingPair.value = null }) }
+    if (form.isTv) {
+        val pairPrefs = remember { context.getSharedPreferences("pair", android.content.Context.MODE_PRIVATE) }
+        // Offered once: marked at once, so the restart after a transfer does not show it again.
+        var offerPair by remember {
+            val first = !pairPrefs.getBoolean("offered", false)
+            if (first) pairPrefs.edit().putBoolean("offered", true).commit()
+            mutableStateOf(first)
+        }
+        if (offerPair) app.couchy.pair.TvPairDialog(onDismiss = { offerPair = false })
     }
 
     // The phone as the TV's remote: opened after sending a video, or from the settings with a device to pick.

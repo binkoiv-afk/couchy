@@ -144,6 +144,16 @@ class Sync(
         _status.value = SyncStatus.Off
     }
 
+    /** Everything this device has, for moving to a new TV in one go. */
+    suspend fun snapshot(): String = localState(settings.prefs.first()).toJson()
+
+    /** A phone's library, playlists and marks, added to what this device has; nothing is deleted. */
+    suspend fun absorb(text: String) = lock.withLock {
+        val incoming = SyncState.fromJson(text)
+        val local = localState(settings.prefs.first())
+        apply(local, LibrarySync.merge(SyncState(), local, incoming))
+    }
+
     suspend fun syncNow() {
         val p = settings.prefs.first()
         if (p.syncUrl.isBlank()) {

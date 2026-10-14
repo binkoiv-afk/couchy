@@ -113,6 +113,13 @@
                 <data android:pathPattern=".*\\.m3u8" />
                 <data android:pathPattern=".*/get.php" />
             </intent-filter>
+            <!-- The TV's QR for moving settings over, scanned with the phone's camera. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="couchy" android:host="pair" />
+            </intent-filter>
             <!-- Magnet links from browsers and trackers open the torrent screen. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

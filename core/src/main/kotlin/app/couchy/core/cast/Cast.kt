@@ -63,6 +63,19 @@ object CastHttp {
         return Request(parts[0], parts[1], String(raw, bodyStart, length, Charsets.UTF_8))
     }
 
+    /** Header and body length in bytes once the headers are in; -1 while they are not. */
+    fun totalLength(raw: ByteArray): Int {
+        var end = -1
+        for (i in 0..raw.size - 4) {
+            if (raw[i] == '\r'.code.toByte() && raw[i + 1] == '\n'.code.toByte() && raw[i + 2] == '\r'.code.toByte() && raw[i + 3] == '\n'.code.toByte()) { end = i; break }
+        }
+        if (end < 0) return -1
+        val head = String(raw, 0, end, Charsets.ISO_8859_1)
+        val length = head.split("\r\n").firstOrNull { it.startsWith("content-length:", ignoreCase = true) }
+            ?.substringAfter(':')?.trim()?.toIntOrNull() ?: 0
+        return end + 4 + length
+    }
+
     fun response(code: Int, body: String, type: String = "application/json; charset=utf-8"): ByteArray {
         val bytes = body.toByteArray(Charsets.UTF_8)
         val reason = if (code == 200) "OK" else "Error"

@@ -613,7 +613,11 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadInfo(start: Title) {
         var title = start
         if (title.imdbId == null && title.tmdbId == null && !meta.tmdb) catalog.findImdb(title)?.let { title = title.copy(imdbId = it) }
-        val info = runCatching { meta.info(title) }.getOrNull() ?: return
+        val info = runCatching { meta.info(title) }.getOrNull() ?: run {
+            // The id found on the way still helps Kinopoisk find the right film.
+            title.imdbId?.let { id -> patch { it.copy(title = it.title.copy(imdbId = it.title.imdbId ?: id)) } }
+            return
+        }
         patch {
             it.copy(
                 info = info,

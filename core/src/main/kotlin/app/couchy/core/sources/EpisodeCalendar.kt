@@ -37,7 +37,9 @@ object EpisodeCalendar {
             .map { (date, list) -> CalendarDay(label(date, today), date, list.sortedWith(compareBy({ it.name }, { it.episode.season }, { it.episode.episode }))) }
     }
 
-    private fun dateOf(e: AiredEpisode, zone: ZoneId): LocalDate = Instant.ofEpochMilli(e.releasedMs).atZone(zone).toLocalDate()
+    /** The film database gives the air date as midnight UTC; it is a calendar date, not a moment. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dateOf(e: AiredEpisode, zone: ZoneId): LocalDate = Instant.ofEpochMilli(e.releasedMs).atZone(java.time.ZoneOffset.UTC).toLocalDate()
 
     fun label(date: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, date)) {
         0L -> "Сегодня"
@@ -59,8 +61,8 @@ object EpisodeCalendar {
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         val days = ChronoUnit.DAYS.between(today, dateOf(e, zone))
         return when {
-            e.releasedMs <= now -> "вышла"
-            days <= 0L -> "сегодня"
+            days < 0L -> "вышла"
+            days == 0L -> "сегодня"
             else -> "через $days " + plural(days, "день", "дня", "дней")
         }
     }

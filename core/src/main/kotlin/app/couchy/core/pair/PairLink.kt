@@ -23,10 +23,18 @@ data class PairLink(val host: String, val port: Int, val code: String, val name:
                 if (k.isEmpty()) null else k to runCatching { URLDecoder.decode(p.substringAfter('='), "UTF-8") }.getOrDefault("")
             }.toMap()
             val address = q["h"] ?: return null
-            val host = address.substringBeforeLast(':').takeIf { it.isNotBlank() } ?: return null
+            // Only a TV in the home network: a link from a web page must not send the settings elsewhere.
+            val host = address.substringBeforeLast(':').takeIf { isHomeAddress(it) } ?: return null
             val port = address.substringAfterLast(':', "").toIntOrNull() ?: return null
             val code = q["c"]?.takeIf { it.length in 4..12 && it.all(Char::isDigit) } ?: return null
             return PairLink(host, port, code, q["n"].orEmpty().ifBlank { "Приставка" })
+        }
+
+        /** A literal private or link-local IPv4 address (10/8, 172.16/12, 192.168/16, 169.254/16). */
+        fun isHomeAddress(host: String): Boolean {
+            val o = host.split('.').map { it.toIntOrNull() ?: return false }
+            if (o.size != 4 || o.any { it !in 0..255 }) return false
+            return o[0] == 10 || (o[0] == 172 && o[1] in 16..31) || (o[0] == 192 && o[1] == 168) || (o[0] == 169 && o[1] == 254)
         }
     }
 }

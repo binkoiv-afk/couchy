@@ -252,8 +252,8 @@ fun SettingsContent(
                         "Источники",
                         listOf(
                             app.couchy.core.pair.PhoneForm.Field("Адрес HDrezka", value = host),
-                            app.couchy.core.pair.PhoneForm.Field("Ключ TMDB", value = key),
-                            app.couchy.core.pair.PhoneForm.Field("Ключ Кинопоиска", value = kp),
+                            app.couchy.core.pair.PhoneForm.Field("Ключ TMDB", secret = true),
+                            app.couchy.core.pair.PhoneForm.Field("Ключ Кинопоиска", secret = true),
                         ),
                     ) { v ->
                         v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { host = it }
@@ -768,7 +768,7 @@ private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActi
                 maxLines = 10,
                 modifier = Modifier.fillMaxWidth(),
             )
-            app.couchy.pair.PhoneInputButton("Обход блокировок", listOf(app.couchy.core.pair.PhoneForm.Field("Конфиг или ссылка VLESS", multiline = true, value = config))) { v ->
+            app.couchy.pair.PhoneInputButton("Обход блокировок", listOf(app.couchy.core.pair.PhoneForm.Field("Конфиг или ссылка VLESS", multiline = true))) { v ->
                 v.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { config = it; result = null }
             }
             if (config.trim() != prefs.bypassConfig) {

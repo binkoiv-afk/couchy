@@ -20,7 +20,11 @@ object NextUp {
     fun after(context: Context, finished: MediaEntity, all: List<MediaEntity>): MediaEntity? {
         val ref = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(finished.uri, null) ?: return null
         val (season, episode) = episodeOf(ref) ?: return null
-        all.firstOrNull { it.uri == ref }?.let { return it.copy(lastWatchedAt = finished.lastWatchedAt, poster = it.poster ?: finished.poster) }
+        all.firstOrNull { it.uri == ref }?.let {
+            // Already watched too: nothing to offer.
+            if (app.couchy.core.Progress.isWatched(it.positionMs, it.durationMs)) return null
+            return it.copy(lastWatchedAt = finished.lastWatchedAt, poster = it.poster ?: finished.poster)
+        }
         val name = finished.title.substringBefore(" · ")
         return MediaEntity(
             uri = ref,
@@ -31,6 +35,13 @@ object NextUp {
             kids = finished.kids,
             poster = finished.poster,
         )
+    }
+
+    /** Removing a card from «Продолжить»: the series stops offering this episode as the next one. */
+    fun forget(context: Context, ref: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val keys = prefs.all.filter { (k, v) -> k == ref || v == ref }.keys
+        if (keys.isNotEmpty()) prefs.edit().apply { keys.forEach { remove(it) } }.apply()
     }
 
     private fun episodeOf(ref: String): Pair<Int, Int>? =

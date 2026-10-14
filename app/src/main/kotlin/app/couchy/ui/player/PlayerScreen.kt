@@ -336,7 +336,11 @@ fun PlayerScreen(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            /** The video played at least once; a failure after that is a dropped stream, not a broken source. */
+            var started = false
+
             override fun onEvents(p: Player, events: Player.Events) {
+                if (p.isPlaying) started = true
                 ui = ui.copy(
                     playing = p.isPlaying,
                     buffering = p.playbackState == Player.STATE_BUFFERING || p.playbackState == Player.STATE_IDLE && ui.error == null,
@@ -362,7 +366,7 @@ fun PlayerScreen(
                 // A source that never started (not a dropped connection) gives way to the next one by itself.
                 val offline = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-                if (!offline && player.currentPosition < 5_000 && fallback?.invoke() == true) return
+                if (!offline && !started && fallback?.invoke() == true) return
                 ui = ui.copy(error = errorText(error), buffering = false)
                 overlay = true
             }

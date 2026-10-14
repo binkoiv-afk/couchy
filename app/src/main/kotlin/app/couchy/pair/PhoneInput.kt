@@ -37,6 +37,9 @@ import app.couchy.ui.components.SecondaryButton
 /** The form on the TV's screen right now, waiting for the phone. */
 object PhoneType {
     @Volatile var code: String? = null
+        set(value) { synchronized(this) { field = value; misses = 0 } }
+    /** Wrong codes; after a few the QR stops working, so it cannot be guessed. */
+    private var misses = 0
     @Volatile var title: String = ""
     @Volatile var fields: List<PhoneForm.Field> = emptyList()
     @Volatile var onText: ((List<String>) -> Unit)? = null
@@ -44,16 +47,23 @@ object PhoneType {
     /** GET /type?c=…: the page for the phone's browser. */
     fun page(path: String): Pair<Int, String> {
         val c = path.substringAfter("c=", "").substringBefore('&')
-        val expected = code
-        return if (expected != null && c == expected) 200 to PhoneForm.page(title, fields, expected) else 403 to PhoneForm.expired()
+        val expected = check(c) ?: return 403 to PhoneForm.expired()
+        return 200 to PhoneForm.page(title, fields, expected)
+    }
+
+    /** The code when [c] is it; a wrong one counts towards closing the QR. */
+    private fun check(c: String): String? = synchronized(this) {
+        val expected = code ?: return null
+        if (c == expected) return expected
+        if (++misses >= 5) code = null
+        null
     }
 
     /** POST /type: the typed text, handed to the TV's screen. */
     fun receive(body: String): Pair<Int, String> {
         val (c, values) = PhoneForm.parse(body)
-        val expected = code
-        val handler = onText
-        if (expected == null || c != expected || handler == null) return 403 to PhoneForm.expired()
+        val handler = onText ?: return 403 to PhoneForm.expired()
+        check(c) ?: return 403 to PhoneForm.expired()
         code = null
         android.os.Handler(android.os.Looper.getMainLooper()).post { handler(values) }
         return 200 to PhoneForm.done()

@@ -401,6 +401,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun remove(item: MediaEntity) {
+        NextUp.forget(couchy, item.uri)
         viewModelScope.launch { library.delete(item.uri) }
     }
 

@@ -387,8 +387,8 @@ private fun MainScreen(
     LaunchedEffect(Unit) {
         val pairPrefs = context.getSharedPreferences("pair", android.content.Context.MODE_PRIVATE)
         if (pairPrefs.getBoolean(app.couchy.pair.Transfer.ASK_GOOGLE, false)) {
-            pairPrefs.edit().putBoolean(app.couchy.pair.Transfer.ASK_GOOGLE, false).apply()
             val problem = googleSync()
+            pairPrefs.edit().putBoolean(app.couchy.pair.Transfer.ASK_GOOGLE, false).apply()
             vm.showNotice(problem?.let { "Синхронизация с Google не включилась: $it Её можно включить в Настройки → Синхронизация." }
                 ?: "Синхронизация с Google включена: медиатека будет такой же, как на телефоне.")
         }
@@ -552,6 +552,8 @@ private fun MainScreen(
     val miniWanted by vm.mini.collectAsStateWithLifecycle()
     // A new video always opens full screen.
     LaunchedEffect(current?.key) { vm.mini.value = false }
+    // Sources already tried for this film, so a broken one is never offered twice; kept while the player closes and reopens.
+    val tried = remember(titlePage?.title?.key) { mutableSetOf<String>() }
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
@@ -561,9 +563,10 @@ private fun MainScreen(
         val mini = miniWanted && youTube
         // Music from YouTube: the queue of songs, while one of them is playing.
         val songs = musicQueue?.takeIf { q -> q.current.url == current.key }
-        // Sources already tried for this film, so a broken one is never offered twice.
-        val tried = remember(titlePage?.title?.key) { mutableSetOf<String>() }
-        val unplayable: (() -> Boolean)? = titlePage?.takeIf { route is app.couchy.sources.Route.TitlePage && live == null }?.let { pg ->
+        // Only the film itself switches sources: a trailer or a song that fails just shows its error.
+        val film = current.torrent != null || app.couchy.core.sources.NativeRef.isRef(current.key) ||
+            app.couchy.core.sources.SiteRef.isRef(current.key) || app.couchy.core.sources.Rezka.isRef(current.key)
+        val unplayable: (() -> Boolean)? = titlePage?.takeIf { route is app.couchy.sources.Route.TitlePage && live == null && film }?.let { pg ->
             {
                 tried += when {
                     current.torrent != null -> "torrent"

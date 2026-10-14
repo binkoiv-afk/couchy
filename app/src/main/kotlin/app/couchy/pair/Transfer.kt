@@ -25,9 +25,11 @@ object Transfer {
 
     /** The code on the TV's screen right now; null when it shows no QR. */
     @Volatile var code: String? = null
-        set(value) { field = value; misses = 0 }
+        set(value) { synchronized(this) { field = value; misses = 0 } }
     /** Wrong codes in a row; after a few the QR stops working, so the code cannot be guessed. */
     private var misses = 0
+    /** Set when wrong codes closed the QR: the TV shows a fresh one. */
+    @Volatile var onExpired: (() -> Unit)? = null
     /** Called on the TV when a phone sent its settings with the right code. */
     @Volatile var onReceived: ((String) -> Unit)? = null
 
@@ -67,13 +69,14 @@ object Transfer {
         // Google Drive needs this device's own account: Couchy asks for it right after the restart.
         if (o.optBoolean("google")) context.getSharedPreferences("pair", Context.MODE_PRIVATE).edit().putBoolean(ASK_GOOGLE, true).commit()
         o.optString("state").takeIf { it.isNotBlank() }?.let { runCatching { app.sync.absorb(it) } }
-        runCatching { app.sync.syncNow() }
+        // In the background: a slow sync server must not keep the TV waiting on this screen.
+        runCatching { app.sync.syncSoon() }
     }
 
     /** On the phone: sends to the TV from the QR. True when the TV took it. */
     suspend fun send(context: Context, link: PairLink): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().put("c", link.code).put("b", bundle(context)).toString().toByteArray()
-        val c = URL("http://${link.host}:${link.port}/pair").openConnection() as HttpURLConnection
+        val c = URL("http://${link.host}:${link.port}/pair").openConnection(java.net.Proxy.NO_PROXY) as HttpURLConnection
         try {
             c.requestMethod = "POST"
             c.connectTimeout = 8_000
@@ -91,13 +94,19 @@ object Transfer {
     /** On the TV, from the cast server: the phone's request, checked against the code on screen. */
     fun receive(body: String): Boolean {
         val o = runCatching { JSONObject(body) }.getOrNull() ?: return false
-        val expected = code ?: return false
-        if (o.optString("c") != expected) {
-            if (++misses >= 5) code = null
-            return false
+        val handler = synchronized(this) {
+            val expected = code ?: return false
+            if (o.optString("c") != expected) {
+                if (++misses >= 5) {
+                    code = null
+                    onExpired?.let { e -> android.os.Handler(android.os.Looper.getMainLooper()).post { e() } }
+                }
+                return false
+            }
+            val h = onReceived ?: return false
+            code = null
+            h
         }
-        val handler = onReceived ?: return false
-        code = null
         val bundle = o.optString("b")
         android.os.Handler(android.os.Looper.getMainLooper()).post { handler(bundle) }
         return true

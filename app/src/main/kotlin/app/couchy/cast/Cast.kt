@@ -78,16 +78,25 @@ class Cast(private val context: Context) {
         val chunk = ByteArray(65536)
         var request: CastHttp.Request? = null
         runCatching {
+            // The headers once, then exactly the body they announce: no re-reading the whole buffer per chunk.
+            var need = -1
             while (buffer.size() < 8_000_000) {
                 val n = c.getInputStream().read(chunk)
                 if (n < 0) break
                 buffer.write(chunk, 0, n)
-                request = CastHttp.parse(buffer.toByteArray())
-                if (request != null) break
+                if (need < 0) need = CastHttp.totalLength(buffer.toByteArray())
+                if (need >= 0 && buffer.size() >= need) break
             }
+            request = CastHttp.parse(buffer.toByteArray())
         }
         val r = request
-        val answer = when {
+        // A malformed request gets an error back; it never takes Couchy down.
+        val answer = runCatching { answer(r) }.getOrElse { CastHttp.response(500, "{}") }
+        runCatching { c.getOutputStream().apply { write(answer); flush() } }
+    }
+
+    private fun answer(r: CastHttp.Request?): ByteArray =
+        when {
             r == null -> CastHttp.response(400, "{}")
             r.method == "GET" && r.path == "/hello" -> CastHttp.response(200, "{\"name\":\"${deviceName.replace("\"", "")}\"}")
             // The phone remote: what plays here, and its buttons.
@@ -116,8 +125,6 @@ class Cast(private val context: Context) {
             }
             else -> CastHttp.response(404, "{}")
         }
-        runCatching { c.getOutputStream().apply { write(answer); flush() } }
-    }
 
     private fun announce(port: Int) {
         val manager = nsd ?: return

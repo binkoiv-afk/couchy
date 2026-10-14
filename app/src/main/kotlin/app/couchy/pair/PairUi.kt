@@ -56,10 +56,9 @@ private enum class Phase { WAITING, APPLYING, DONE, FAILED }
 fun TvPairDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as CouchyApp
-    val scope = rememberCoroutineScope()
-    val code = remember { PairLink.newCode() }
+    var code by remember { mutableStateOf(PairLink.newCode()) }
     val address = remember { app.cast.start(); app.cast.address() }
-    val link = remember(address) {
+    val link = remember(address, code) {
         address?.let {
             val host = it.substringBefore(':')
             val port = it.substringAfter(':', "").toIntOrNull() ?: CastHttp.PORT
@@ -69,9 +68,12 @@ fun TvPairDialog(onDismiss: () -> Unit) {
     var phase by remember { mutableStateOf(Phase.WAITING) }
     DisposableEffect(code) {
         Transfer.code = code
+        // Too many wrong codes closed this one: a new QR, so a real phone still gets in.
+        Transfer.onExpired = { code = PairLink.newCode() }
         Transfer.onReceived = { bundle ->
             phase = Phase.APPLYING
-            scope.launch {
+            // The app's own scope: leaving this screen must not stop a transfer halfway.
+            app.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
                 runCatching { Transfer.apply(context, bundle) }
                     .onSuccess { phase = Phase.DONE; delay(1_800); Transfer.restart(context) }
                     .onFailure { phase = Phase.FAILED }
@@ -79,6 +81,7 @@ fun TvPairDialog(onDismiss: () -> Unit) {
         }
         onDispose {
             Transfer.code = null
+            Transfer.onExpired = null
             Transfer.onReceived = null
         }
     }

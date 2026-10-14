@@ -11,7 +11,8 @@ object PhoneForm {
 
     fun page(title: String, fields: List<Field>, code: String): String {
         val inputs = fields.mapIndexed { i, f ->
-            val v = escape(f.value)
+            // What is secret stays on the TV: the phone gets an empty field to fill.
+            val v = if (f.secret) "" else escape(f.value)
             val input = if (f.multiline) "<textarea name=\"f$i\" rows=\"6\">$v</textarea>"
             else "<input name=\"f$i\" value=\"$v\" type=\"${if (f.secret) "password" else "text"}\" autocapitalize=\"off\" autocorrect=\"off\"${if (i == 0) " autofocus" else ""}>"
             "<label>${escape(f.label)}$input</label>"
@@ -29,10 +30,10 @@ object PhoneForm {
 
     /** The form's body: the code and the fields in order. */
     fun parse(body: String): Pair<String, List<String>> {
-        val values = body.split('&').filter { '=' in it }.associate { pair ->
+        val values = body.split('&').filter { '=' in it }.mapNotNull { pair ->
             val (k, v) = pair.split('=', limit = 2)
-            URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(v, "UTF-8")
-        }
+            runCatching { URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(v, "UTF-8").replace("\r\n", "\n") }.getOrNull()
+        }.toMap()
         val fields = generateSequence(0) { it + 1 }.map { values["f$it"] }.takeWhile { it != null }.map { it!! }.toList()
         return values["c"].orEmpty() to fields
     }

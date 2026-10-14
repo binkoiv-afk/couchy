@@ -189,6 +189,11 @@ fun HomeContent(
     // The remote starts on the search, so OK immediately opens it.
     // Only once: back from the player, the card that was opened keeps the focus instead.
     var startFocused by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    // A card remembered from before that is not on Home any more must not grab the focus later.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1_500)
+        app.couchy.ui.components.FocusMemory.key = null
+    }
     LaunchedEffect(form, state.loaded) {
         if (form.isTv && state.loaded && !kids && !startFocused && app.couchy.ui.components.FocusMemory.key == null) {
             if (state.continueWatching.isNotEmpty()) {
@@ -206,6 +211,8 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
     val form = LocalFormFactor.current
     val pager = rememberPagerState { items.size }
     var interacted by remember { mutableStateOf(false) }
+    // The banners wait while the remote rests on «Смотреть», and move on once it leaves.
+    var buttonFocused by remember { mutableStateOf(false) }
     // After a moment on a banner its trailer plays silently; the banners wait for it to end.
     var clip by remember { mutableStateOf<Pair<String, String>?>(null) }
     var clipPage by remember { mutableStateOf(-1) }
@@ -217,8 +224,8 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
         clipPage = pager.settledPage
         clip = found
     }
-    LaunchedEffect(items, interacted, clip) {
-        while (!interacted && clip == null && items.size > 1) {
+    LaunchedEffect(items, interacted, clip, buttonFocused) {
+        while (!interacted && !buttonFocused && clip == null && items.size > 1) {
             delay(7_000)
             if (clip != null) break
             pager.animateScrollToPage((pager.currentPage + 1) % items.size)
@@ -273,7 +280,7 @@ private fun Hero(items: List<Title>, actions: HomeActions, side: Dp, searchFocus
                     PrimaryButton(
                         "Смотреть", Icons.Rounded.PlayArrow,
                         onClick = { interacted = true; actions.onTitle(t) },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) interacted = true },
+                        modifier = Modifier.onFocusChanged { buttonFocused = it.isFocused },
                     )
                 }
             }

@@ -5,6 +5,7 @@ import android.content.Intent
 import app.couchy.CouchyApp
 import app.couchy.core.pair.PairLink
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,6 +30,9 @@ object Transfer {
     /** Called on the TV when a phone sent its settings with the right code. */
     @Volatile var onReceived: ((String) -> Unit)? = null
 
+    /** Set on the TV when the phone synced through Google Drive. */
+    const val ASK_GOOGLE = "ask_google"
+
     /** On the phone: everything to send, as one JSON. */
     suspend fun bundle(context: Context): String {
         val app = context.applicationContext as CouchyApp
@@ -41,6 +45,7 @@ object Transfer {
             .put("settings", JSONObject(app.settings.exportTransfer()))
             .put("prefs", prefs)
             .put("state", runCatching { app.sync.snapshot() }.getOrNull())
+            .put("google", app.settings.prefs.first().syncUrl == app.couchy.sync.WebDav.GOOGLE_ACCOUNT)
             .toString()
     }
 
@@ -58,6 +63,8 @@ object Transfer {
                 edit.commit()
             }
         }
+        // Google Drive needs this device's own account: Couchy asks for it right after the restart.
+        if (o.optBoolean("google")) context.getSharedPreferences("pair", Context.MODE_PRIVATE).edit().putBoolean(ASK_GOOGLE, true).commit()
         o.optString("state").takeIf { it.isNotBlank() }?.let { runCatching { app.sync.absorb(it) } }
         runCatching { app.sync.syncNow() }
     }

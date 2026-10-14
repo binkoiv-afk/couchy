@@ -366,6 +366,28 @@ private fun MainScreen(
     val scope = rememberCoroutineScope()
     var googleAnswer by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<androidx.activity.result.ActivityResult>?>(null) }
     val googleScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { googleAnswer?.complete(it) }
+    /** Google's account screen, then sync through that account; an error message, or null when it works. */
+    suspend fun googleSync(): String? {
+        val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>().first()
+        val problem = app.couchy.sync.GoogleAuth.signIn(activity) { request ->
+            val answer = kotlinx.coroutines.CompletableDeferred<androidx.activity.result.ActivityResult>()
+            googleAnswer = answer
+            googleScreen.launch(request)
+            answer.await()
+        }
+        return problem ?: runCatching { sync.connectGoogle(); null }.getOrElse { it.message ?: "Не удалось подключиться." }
+    }
+    // Right after a transfer from a phone that syncs through Google: the account choice opens by itself.
+    LaunchedEffect(Unit) {
+        val pairPrefs = context.getSharedPreferences("pair", android.content.Context.MODE_PRIVATE)
+        if (pairPrefs.getBoolean(app.couchy.pair.Transfer.ASK_GOOGLE, false)) {
+            pairPrefs.edit().putBoolean(app.couchy.pair.Transfer.ASK_GOOGLE, false).apply()
+            val problem = googleSync()
+            vm.showNotice(problem?.let { "Синхронизация с Google не включилась: $it Её можно включить в Настройки → Синхронизация." }
+                ?: "Синхронизация с Google включена: медиатека будет такой же, как на телефоне.")
+        }
+    }
     var yandexReport by remember { mutableStateOf<((String?) -> Unit)?>(null) }
     // The Yandex SDK reads its id from the manifest; without one it is not created at all.
     val yandexContract = remember {
@@ -878,19 +900,7 @@ private fun MainScreen(
                             }
                         },
                         onSyncNow = { sync.syncSoon() },
-                        onGoogleSync = { report ->
-                            scope.launch {
-                                val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
-                                    .filterIsInstance<android.app.Activity>().first()
-                                val problem = app.couchy.sync.GoogleAuth.signIn(activity) { request ->
-                                    val answer = kotlinx.coroutines.CompletableDeferred<androidx.activity.result.ActivityResult>()
-                                    googleAnswer = answer
-                                    googleScreen.launch(request)
-                                    answer.await()
-                                }
-                                report(problem ?: runCatching { sync.connectGoogle(); null }.getOrElse { it.message ?: "Не удалось подключиться." })
-                            }
-                        },
+                        onGoogleSync = { report -> scope.launch { report(googleSync()) } },
                         onYandexSync = { report ->
                             if (!app.couchy.sync.YandexAuth.configured) {
                                 report("Вход через Яндекс заработает после регистрации Couchy на oauth.yandex.ru. Пока можно по паролю приложения.")

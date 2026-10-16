@@ -55,8 +55,23 @@ object Sites {
         val u = url.lowercase()
         if (!u.startsWith("http") || isAd(u)) return false
         val path = u.substringBefore('?')
+        if (adClips.any { it in path }) return false
+        // Segments and subtitles are parts of a video, not the video.
+        if (path.endsWith(".ts") || path.endsWith(".m4s") || path.endsWith(".vtt") || path.endsWith(".srt")) return false
         return ".m3u8" in path || path.endsWith(".mpd") || path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".webm") ||
-            "/hls/" in path && path.endsWith("/index") || "manifest.m3u8" in u
+            "/hls/" in path && path.endsWith("/index") || "manifest.m3u8" in u ||
+            // VK and OK serve files without an extension, the format in the query.
+            (("okcdn.ru" in path || "vkuser" in path || "mycdn.me" in path) && ("type=" in u || "/video" in path)) ||
+            "mime=video" in u || "format=m3u8" in u
+    }
+
+    /** Pre-rolls and banners that players load as video files. */
+    private val adClips = listOf("reklam", "preroll", "/creatives/", "/creative/", "/vast/", "/ad/", "/ads/", "/adv/", "_ad_", "-ad-", "commercial")
+
+    /** A stream that is the film itself rather than a single file, which is more often an advert. */
+    fun isStream(url: String): Boolean {
+        val u = url.lowercase().substringBefore('?')
+        return ".m3u8" in u || u.endsWith(".mpd") || "/hls/" in u || "format=m3u8" in url.lowercase()
     }
 
     /** Several requests for one video (variants, segments' playlists) count as one. */
@@ -64,7 +79,8 @@ object Sites {
 
     /** A master playlist is better than a single quality's playlist. */
     fun preferred(urls: List<String>): String? =
-        urls.firstOrNull { "master" in it.lowercase() || "manifest" in it.lowercase() } ?: urls.firstOrNull { ".m3u8" in it } ?: urls.firstOrNull()
+        urls.firstOrNull { isStream(it) && ("master" in it.lowercase() || "manifest" in it.lowercase()) }
+            ?: urls.firstOrNull { isStream(it) } ?: urls.lastOrNull()
 }
 
 /** A title found on one of the [Sites]. */

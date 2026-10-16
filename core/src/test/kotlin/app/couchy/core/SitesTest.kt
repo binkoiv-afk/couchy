@@ -65,6 +65,11 @@ class SitesTest {
         assertFalse(Sites.isVideo("https://site/player.js"))
         assertTrue(Sites.isAd("https://an.yandex.ru/meta/1"))
         assertEquals("https://c/master.m3u8", Sites.preferred(listOf("https://c/720/index.m3u8", "https://c/master.m3u8")))
+        // An advert file first, the film's stream after it.
+        assertEquals("https://c/film/index.m3u8", Sites.preferred(listOf("https://cdn.x/clip.mp4", "https://c/film/index.m3u8")))
+        assertFalse(Sites.isVideo("https://cdn.x/reklama/clip.mp4"))
+        assertFalse(Sites.isVideo("https://c/hls/seg-1.ts"))
+        assertTrue(Sites.isVideo("https://vkvd123.okcdn.ru/?expires=1&type=2&id=5"))
         assertEquals("https://filmix.gg/search/%D0%B4%D1%8E%D0%BD%D0%B0", Sites.all.first { it.id == "filmix" }.searchUrl("дюна"))
     }
 

@@ -396,10 +396,22 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** «Что посмотреть?»: three titles for the mood, skipping what was seen and what was just shown. */
-    suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength, shown: Set<String>): List<Title> {
+    suspend fun pick(o: app.couchy.core.sources.PickOptions, shown: Set<String>): List<Title> {
         val seen = (marks.titles(Marks.SEEN) + marks.titles(Marks.RATED)).map { it.key }.toSet()
-        val pool = runCatching { meta.pick(mood, length) }.getOrDefault(emptyList())
-        return app.couchy.core.sources.Pick.choose(pool, seen + shown)
+        val P = app.couchy.core.sources.Pick
+        // Only from «Смотреть позже»: the person's own list, narrowed by kind and years.
+        if (o.fromLater) {
+            val later = marks.titles(Marks.LATER).filter { P.fits(it, o) && it.key !in seen }
+            return P.choose(later, shown)
+        }
+        val pool = runCatching { meta.pick(o) }.getOrDefault(emptyList())
+        // The person's taste: what TMDB recommends for what they loved; with a mood only those the mood also found.
+        val liked = if (!o.taste) emptyList() else {
+            val forYou = _feed.value.forYou.filter { P.fits(it, o) && it.key !in seen }
+            if (o.mood == app.couchy.core.sources.PickMood.ANY && o.origin == app.couchy.core.sources.PickOrigin.ANY) forYou
+            else forYou.filter { t -> pool.any { it.key == t.key } }
+        }
+        return P.choose(pool, seen + shown, liked = liked)
     }
 
     /**

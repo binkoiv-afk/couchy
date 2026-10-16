@@ -263,7 +263,9 @@ private class Catcher(
         if (done) return
         found += url to headers
         // A player asks for several playlists at once; the master one arrives within a moment.
-        if (found.size == 1) main.postDelayed({ finish() }, 1200)
+        // A plain file first is often an advert before the film: wait longer for the stream.
+        if (found.size == 1) main.postDelayed({ finish() }, if (Sites.isStream(url)) 1200 else 4000)
+        else if (Sites.isStream(url) && found.none { Sites.isStream(it.first) && it.first != url }) main.postDelayed({ finish() }, 1200)
     }
 
     private fun finish() {

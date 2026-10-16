@@ -233,19 +233,21 @@ class MetaClient(private val web: Web, private val key: () -> String) {
     }
 
     /** «Что посмотреть?»: a random page of well-liked titles for the mood and the time there is. */
-    suspend fun pick(mood: app.couchy.core.sources.PickMood, length: app.couchy.core.sources.PickLength): List<Title> {
+    suspend fun pick(o: app.couchy.core.sources.PickOptions): List<Title> {
         val page = kotlin.random.Random.nextInt(1, app.couchy.core.sources.Pick.PAGES + 1)
         if (tmdb) {
-            val kind = if (length.series) TitleKind.SERIES else TitleKind.MOVIE
+            val kind = if (o.length.series) TitleKind.SERIES else TitleKind.MOVIE
             suspend fun load(n: Int): List<Title> {
-                val (path, params) = app.couchy.core.sources.Pick.tmdb(mood, length, n)
+                val (path, params) = app.couchy.core.sources.Pick.tmdb(o, n)
                 return app.couchy.core.sources.Tmdb.parseList(tmdbGet(path, params), kind)
             }
             // Narrow choices have fewer pages: the first one always has something.
             return load(page).ifEmpty { if (page > 1) load(1) else emptyList() }
         }
-        val filter = app.couchy.core.sources.Pick.filter(mood, length)
-        return catalogPage(filter, kotlin.random.Random.nextInt(1, 4)).first.ifEmpty { catalogPage(filter, 1).first }
+        val filter = app.couchy.core.sources.Pick.filter(o)
+        // Without TMDB the catalogue cannot ask for years: they are narrowed here.
+        val found = catalogPage(filter, kotlin.random.Random.nextInt(1, 4)).first.ifEmpty { catalogPage(filter, 1).first }
+        return found.filter { app.couchy.core.sources.Pick.fits(it.copy(kind = if (o.length.series) TitleKind.SERIES else TitleKind.MOVIE), o) }.ifEmpty { found }
     }
 
     /** One page as shown, and how many titles the page had before narrowing (zero: the end). */

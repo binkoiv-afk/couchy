@@ -169,6 +169,8 @@ class PlayerControls(
     val onEpisodes: (() -> Unit)? = null,
     /** The same video in another player app; null where none fits. */
     val onExternal: (() -> Unit)? = null,
+    /** TV channels: the list of channels and groups; null for videos. */
+    val onChannels: (() -> Unit)? = null,
     /** A small frame of the video at a position, shown over the timeline while seeking; null where frames cannot be read. */
     val thumbnail: (suspend (Long) -> androidx.compose.ui.graphics.ImageBitmap?)? = null,
 )
@@ -255,6 +257,7 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
             if (!touch) add(Tool(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (ui.playing) "Пауза" else "Играть", highlighted = true, focus = playFocus, onClick = controls.onTogglePlay))
             if (ui.hasNext && ui.live == null) add(Tool(Icons.Rounded.SkipNext, "Далее", onClick = controls.onNextNow))
             controls.onEpisodes?.let { add(Tool(Icons.AutoMirrored.Rounded.FormatListBulleted, "Серии", onClick = it)) }
+            controls.onChannels?.let { add(Tool(Icons.AutoMirrored.Rounded.FormatListBulleted, "Каналы", onClick = it)) }
             if (touch) controls.onCast?.let { add(Tool(Icons.Rounded.Cast, "На ТВ", onClick = it)) }
             add(Tool(Icons.Rounded.Subtitles, "Озвучка", onClick = controls.onTracks))
             add(Tool(Icons.Rounded.HighQuality, ui.qualityLabel, onClick = controls.onQuality))

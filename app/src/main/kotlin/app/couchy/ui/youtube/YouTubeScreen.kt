@@ -219,11 +219,12 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
             modifier = Modifier.fillMaxWidth(),
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                Chip("Подписки", state.shelf == YtShelf.Subscriptions, onClick = { actions.onShelf(YtShelf.Subscriptions) }, icon = Icons.Rounded.Subscriptions)
-            }
+            // YouTube Music comes first: it is easy to miss further along the row.
             item {
                 Chip("Музыка", state.shelf is YtShelf.Music, onClick = { actions.onShelf(YtShelf.Music()) }, icon = Icons.Rounded.MusicNote)
+            }
+            item {
+                Chip("Подписки", state.shelf == YtShelf.Subscriptions, onClick = { actions.onShelf(YtShelf.Subscriptions) }, icon = Icons.Rounded.Subscriptions)
             }
             item {
                 val later = YtShelf.Saved(app.couchy.youtube.YouTubeViewModel.LATER, "Смотреть позже")

@@ -32,6 +32,8 @@ data class TvState(
     val group: String = GROUP_ALL,
     val channels: List<ChannelNow> = emptyList(),
     val favorites: List<ChannelNow> = emptyList(),
+    /** Every channel, numbered, for the list inside the player. */
+    val all: List<ChannelNow> = emptyList(),
     val refreshing: Boolean = false,
     val loaded: Boolean = false,
     val nowMs: Long = System.currentTimeMillis(),
@@ -79,6 +81,7 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
             group = active,
             channels = filter(numbered, active),
             favorites = numbered.filter { it.channel.favorite },
+            all = numbered,
             refreshing = busy,
             loaded = true,
             nowMs = now,
@@ -178,6 +181,9 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFavorite(channelId: Long) = viewModelScope.launch {
         repo.channel(channelId)?.let { repo.setFavorite(it, !it.favorite) }
     }
+
+    /** The channels of [group], as the list inside the player shows them. */
+    fun inGroup(group: String): List<ChannelNow> = filter(state.value.all, group)
 
     private fun filter(all: List<ChannelNow>, group: String) = when (group) {
         GROUP_ALL -> all

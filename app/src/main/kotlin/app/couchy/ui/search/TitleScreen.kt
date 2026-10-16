@@ -3,6 +3,7 @@ package app.couchy.ui.search
 import app.couchy.ui.components.SheetHeader
 import app.couchy.ui.components.SheetRow
 import app.couchy.ui.components.CouchySheet
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Replay
@@ -77,6 +78,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -820,52 +822,68 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
     if (picking) FolderDialog(state, actions, onDismiss = { picking = false })
 }
 
-/** The person's folders with a tick where the title is, and a field for a new one. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+/**
+ * The person's folders as a list of rows, one tap puts the title in or takes it out; a row at the
+ * end makes a new folder with the title already in it. Rows, not chips, so a remote reaches each.
+ */
 @Composable
 private fun FolderDialog(state: TitleUi, actions: TitleActions, onDismiss: () -> Unit) {
+    var creating by remember { mutableStateOf(state.folders.isEmpty()) }
     var name by remember { mutableStateOf("") }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Папки") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.folders.isEmpty()) {
-                    Text(
-                        "Свои списки: «На Новый год», «С детьми», «Ужасы на выходные». Они в «Моё» и синхронизируются.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val create = {
+        if (name.isNotBlank()) {
+            actions.onNewFolder(name)
+            name = ""
+            creating = false
+        }
+    }
+    app.couchy.ui.components.CouchySheet("В папку", onDismiss) {
+        if (state.folders.isEmpty()) {
+            Text(
+                "Свои списки: «На Новый год», «С детьми», «Ужасы на выходные». Они в «Моё» и синхронизируются.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+        state.folders.forEach { f ->
+            val inside = f.id in state.inFolders
+            app.couchy.ui.components.SheetRow(
+                f.name,
+                onClick = { actions.onFolder(f.id) },
+                icon = if (inside) Icons.Rounded.Folder else Icons.Rounded.CreateNewFolder,
+                tag = if (inside) "здесь" else f.titles.size.takeIf { it > 0 }?.toString(),
+                selected = inside,
+                trailing = {
+                    Icon(
+                        if (inside) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        null,
+                        tint = if (inside) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.folders.forEach { f ->
-                            val inside = f.id in state.inFolders
-                            app.couchy.ui.components.Chip(
-                                f.name, inside, onClick = { actions.onFolder(f.id) },
-                                icon = if (inside) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                            )
-                        }
+                },
+            )
+        }
+        if (creating) {
+            val field = remember { androidx.compose.ui.focus.FocusRequester() }
+            androidx.compose.material3.OutlinedTextField(
+                name,
+                { name = it },
+                placeholder = { Text("Название папки", maxLines = 1) },
+                singleLine = true,
+                trailingIcon = {
+                    if (name.isNotBlank()) androidx.compose.material3.IconButton(onClick = create) {
+                        Icon(Icons.Rounded.CheckCircle, "Создать")
                     }
-                }
-                androidx.compose.material3.OutlinedTextField(
-                    name,
-                    { name = it },
-                    placeholder = { Text("Новая папка", maxLines = 1) },
-                    singleLine = true,
-                    trailingIcon = {
-                        if (name.isNotBlank()) androidx.compose.material3.IconButton(onClick = { actions.onNewFolder(name); name = "" }) {
-                            Icon(Icons.Rounded.CreateNewFolder, "Создать")
-                        }
-                    },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (name.isNotBlank()) { actions.onNewFolder(name); name = "" } }),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Готово") } },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-    )
+                },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { create() }),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).focusRequester(field),
+            )
+            if (state.folders.isNotEmpty()) androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
+        } else {
+            app.couchy.ui.components.SheetRow("Новая папка", onClick = { creating = true }, icon = Icons.Rounded.Add)
+        }
+    }
 }
 
 /** An icon in a soft circle over a one-line caption; filled with the accent when on. */

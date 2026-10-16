@@ -630,6 +630,16 @@ private fun MainScreen(
             onZap = live?.takeIf { it.archiveOf == null && it.zapOrder.size > 1 }?.let { l ->
                 { delta: Int -> scope.launch { tvVm.zap(l, delta)?.let(vm::playDirect) }; Unit }
             },
+            liveGroups = if (live?.archiveOf == null && live != null) tv.groups else emptyList(),
+            liveGroup = tv.group,
+            liveChannels = { g -> tvVm.inGroup(g).map { c -> app.couchy.ui.player.LiveChoice(c.channel.id, c.number, c.channel.name, c.now?.title) } },
+            onLivePick = live?.takeIf { it.archiveOf == null }?.let {
+                { id: Long, g: String ->
+                    val list = tvVm.inGroup(g).map { it.channel }
+                    list.firstOrNull { it.id == id }?.let { vm.playDirect(tvVm.live(it, list)) }
+                    Unit
+                }
+            },
             status = current.torrent?.let { torrentVm.statusLine(torrent) },
             onCast = if (current.live != null || CastRequest.isLocalOnly(current.key)) null else ({ pos, dur ->
                 castRequest = CastRequest(

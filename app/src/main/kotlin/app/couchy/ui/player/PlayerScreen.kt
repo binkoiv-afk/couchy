@@ -107,7 +107,10 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE, EPISODES }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE, EPISODES, CHANNELS }
+
+/** One channel in the player's «Каналы» list. */
+data class LiveChoice(val id: Long, val number: Int, val name: String, val now: String?)
 
 /** One episode in the player's «Серии» list. */
 data class EpisodeItem(val season: Int, val episode: Int, val name: String, val current: Boolean, val play: () -> Unit)
@@ -130,6 +133,12 @@ fun PlayerScreen(
     live: LiveUi? = null,
     /** Switches to the neighbouring channel; null when there is nothing to zap through. */
     onZap: ((Int) -> Unit)? = null,
+    /** TV groups for the «Каналы» list: names, the one the channel came from, and the channels of a group. */
+    liveGroups: List<String> = emptyList(),
+    liveGroup: String? = null,
+    liveChannels: (String) -> List<LiveChoice> = { emptyList() },
+    /** A channel picked in the list, with the group it was picked from. */
+    onLivePick: ((Long, String) -> Unit)? = null,
     /** Torrent peers and speed for the buffering spinner. */
     status: String? = null,
     /** Called when the video plays to the end; by default the player closes. */
@@ -601,6 +610,7 @@ fun PlayerScreen(
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onMore = { poke(); sheet = Sheet.MORE },
         onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
+        onChannels = if (onLivePick != null && playback.live != null) ({ poke(); sheet = Sheet.CHANNELS }) else null,
         thumbnail = thumbs?.let { t -> t::at },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
@@ -649,6 +659,9 @@ fun PlayerScreen(
                     Key.Info -> { poke(); true }
                     Key.MediaFastForward -> { controls.onSeekBy(30_000); true }
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
+                    // Live TV: up and down switch channels whatever is on screen, like any TV.
+                    Key.DirectionUp -> { onZap?.invoke(-1); onZap != null }
+                    Key.DirectionDown -> { onZap?.invoke(1); onZap != null }
                     Key.ChannelUp -> { onZap?.invoke(1); onZap != null }
                     Key.ChannelDown -> { onZap?.invoke(-1); onZap != null }
                     Key.LastChannel -> { onPrevious?.invoke(); onPrevious != null }
@@ -668,7 +681,11 @@ fun PlayerScreen(
             .onKeyEvent { event ->
                 if (overlay || event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { controls.onTogglePlay(); true }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        // On a channel OK opens the list of channels; pausing live TV is rarely wanted.
+                        if (onLivePick != null && playback.live != null) { poke(); sheet = Sheet.CHANNELS } else controls.onTogglePlay()
+                        true
+                    }
                     Key.DirectionLeft -> { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)); true }
                     Key.DirectionRight -> { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)); true }
                     Key.DirectionUp -> { if (onZap != null) onZap(-1) else poke(); true }
@@ -900,6 +917,33 @@ fun PlayerScreen(
             },
             onDismiss = { sheet = null },
         )
+        Sheet.CHANNELS -> {
+            var group by remember { mutableStateOf(liveGroup ?: liveGroups.firstOrNull()) }
+            val shown = group
+            if (shown == null) OptionsDialog(
+                "Разделы",
+                listOf(OptionSection(null, liveGroups.map { g -> Option(g, g == liveGroup, icon = Icons.AutoMirrored.Rounded.FormatListBulleted) { group = g } })),
+                onDismiss = { sheet = null },
+            ) else {
+                val list = remember(shown) { liveChannels(shown) }
+                val currentId = playback.live?.channelId
+                OptionsDialog(
+                    shown,
+                    listOf(
+                        OptionSection(null, listOf(Option("Все разделы", false, icon = Icons.AutoMirrored.Rounded.FormatListBulleted) { group = null })),
+                        OptionSection(null, list.map { c ->
+                            Option("${c.number}. ${c.name}" + (c.now?.let { " · $it" } ?: ""), c.id == currentId, icon = Icons.Rounded.PlayArrow) {
+                                if (c.id != currentId) onLivePick?.invoke(c.id, shown)
+                                sheet = null
+                            }
+                        }),
+                    ),
+                    onDismiss = { sheet = null },
+                    step = "Разделы",
+                    onBack = { group = null },
+                )
+            }
+        }
         Sheet.QUEUE -> OptionsDialog(
             "Очередь",
             listOf(OptionSection(null, queue.mapIndexed { i, t -> Option(t, i == queueAt, icon = Icons.Rounded.MusicNote) { save(); onQueuePick?.invoke(i) } })),

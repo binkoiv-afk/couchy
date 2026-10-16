@@ -21,7 +21,7 @@ import java.net.URL
  */
 object Transfer {
     /** Settings kept in plain preference files that travel as they are. */
-    private val files = listOf("kinopub", "sources", "voices", "player", "youtube", "marks")
+    private val files = listOf("kinopub", "filmix", "sources", "voices", "player", "youtube", "marks")
 
     /** The code on the TV's screen right now; null when it shows no QR. */
     @Volatile var code: String? = null

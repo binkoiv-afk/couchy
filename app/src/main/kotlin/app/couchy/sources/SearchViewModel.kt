@@ -133,6 +133,9 @@ enum class SourceStatus { LOADING, READY, NOT_FOUND, BLOCKED, ERROR }
 /** A series from AniLibria or Kino.pub: which episodes were watched, and the one to go on with. */
 data class NativePick(val release: app.couchy.core.sources.NativeRelease, val watched: Set<Pair<Int, Int>>, val next: Pair<Int, Int>?)
 
+/** Filmix or Seasonvar with several voice-overs: one is picked before the episode and quality. */
+data class NativeVoicePick(val source: String, val id: String, val name: String, val voices: List<String>, val last: String?)
+
 /** HDrezka's part of a title page. */
 data class RezkaUi(
     val status: SourceStatus = SourceStatus.LOADING,
@@ -197,7 +200,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private var host = Rezka.DEFAULT_HOST
     private val catalog = Catalog(web, RezkaClient(web) { host })
     private val siteClient = SiteClient(web)
-    private val native = NativeClient(web, couchy.kinopub)
+    private val native = NativeClient(web, couchy.kinopub, couchy.filmix)
     private var tmdbKey = ""
     private val meta = MetaClient(web) { tmdbKey }
 
@@ -817,9 +820,28 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeNativePick() { _nativePick.value = null }
 
+    private val _nativeVoice = MutableStateFlow<NativeVoicePick?>(null)
+    val nativeVoice: StateFlow<NativeVoicePick?> = _nativeVoice.asStateFlow()
+    private val nativeVoices = app.getSharedPreferences("native_voices", android.content.Context.MODE_PRIVATE)
+
+    fun closeNativeVoice() { _nativeVoice.value = null }
+
+    /** The voice-over picked for a Filmix or Seasonvar release; remembered for next time. */
+    fun pickNativeVoice(voice: String) {
+        val v = _nativeVoice.value ?: return
+        _nativeVoice.value = null
+        nativeVoices.edit().putString("${v.source}:${v.id}", voice).apply()
+        openNative(v.source, app.couchy.core.sources.NativeVoice.of(v.id, voice))
+    }
+
     private fun openNative(source: String, id: String) {
         viewModelScope.launch {
             val release = guarded({ openNative(source, id) }) { native.release(source, id) } ?: return@launch
+            if (release.voices.size > 1 && app.couchy.core.sources.NativeVoice.voice(id) == null) {
+                val last = nativeVoices.getString("$source:$id", null)?.takeIf { it in release.voices }
+                _nativeVoice.value = NativeVoicePick(source, id, release.name, release.voices, last)
+                return@launch
+            }
             if (release.episodes.isEmpty()) {
                 _error.value = "${NativeClient.name(source)}: видео для этого тайтла нет."
                 return@launch
@@ -830,7 +852,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             // Ticks for what was watched, and the next episode to go on with.
-            val prefix = app.couchy.core.sources.NativeRef.of(source, id, 0, 0).substringBeforeLast(":0:0")
+            val prefix = app.couchy.core.sources.NativeRef.of(source, app.couchy.core.sources.NativeVoice.base(id), 0, 0).substringBeforeLast(":0:0")
             val mine = library.snapshot().filter { it.uri.startsWith(prefix) }
             val watched = mine.filter { Progress.isWatched(it.positionMs, it.durationMs) }
                 .mapNotNull { app.couchy.core.sources.NativeRef.parse(it.uri) }.map { it.season to it.episode }.toSet()
@@ -858,8 +880,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val entry = library.open(key, title, artworkFor(title))
             rememberTaste(entry.title)
             if (fromStart) library.clearProgress(key)
-            val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
-            val file = e.files.firstOrNull { it.first == wanted } ?: e.files.first()
+            val files = native.files(e)
+            val wanted = app.couchy.youtube.QualityPick.choose(files.map { it.first })
+            val file = files.firstOrNull { it.first == wanted } ?: files.first()
             Playback(
                 uri = file.second,
                 title = entry.title,
@@ -869,7 +892,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 key = key,
                 headers = mapOf("User-Agent" to web.userAgent),
                 nextRef = release.episodes.getOrNull(i + 1)?.takeIf { release.series }?.let { app.couchy.core.sources.NativeRef.of(release.source, release.id, it.season, it.episode) },
-                variants = e.files,
+                variants = files,
                 skips = e.skips.map { (start, end, label) -> app.couchy.Skip(start, end, label) },
                 imdb = release.imdbId ?: _title.value?.title?.imdbId,
             )
@@ -1087,8 +1110,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             val release = native.release(r.source, r.id) ?: return null
             val i = release.episodes.indexOfFirst { it.season == r.season && it.episode == r.episode }
             val e = release.episodes.getOrNull(i) ?: return null
-            val wanted = app.couchy.youtube.QualityPick.choose(e.files.map { it.first })
-            val file = e.files.firstOrNull { it.first == wanted } ?: e.files.firstOrNull() ?: return null
+            val files = runCatching { native.files(e) }.getOrNull() ?: return null
+            val wanted = app.couchy.youtube.QualityPick.choose(files.map { it.first })
+            val file = files.firstOrNull { it.first == wanted } ?: files.firstOrNull() ?: return null
             return Playback(
                 uri = file.second,
                 title = "${release.name} · S${r.season}E${r.episode}",

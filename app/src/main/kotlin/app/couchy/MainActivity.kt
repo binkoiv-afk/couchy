@@ -750,6 +750,17 @@ private fun MainScreen(
             onDismiss = searchVm::closeNativePick,
         )
     }
+    // Filmix or Seasonvar: the voice-over first, then the episode; the last one picked is marked.
+    val nativeVoice by searchVm.nativeVoice.collectAsStateWithLifecycle()
+    nativeVoice?.let { v ->
+        app.couchy.ui.player.OptionsDialog(
+            "Озвучка",
+            listOf(app.couchy.ui.player.OptionSection(null, v.voices.map { name ->
+                app.couchy.ui.player.Option(name, name == (v.last ?: v.voices.first())) { searchVm.pickNativeVoice(name) }
+            })),
+            onDismiss = searchVm::closeNativeVoice,
+        )
+    }
 
     val page = titlePage
     // The film or episode waiting for its voice-over and quality: season, episode, from the start.

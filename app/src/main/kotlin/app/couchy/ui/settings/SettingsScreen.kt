@@ -220,6 +220,7 @@ fun SettingsContent(
                     // Kinogo and LordFilm move often: a working address from a search engine goes here.
                     app.couchy.core.sources.Sites.mirrors.forEach { (id, default) -> MirrorField(id, default) }
                     KinoPubLogin()
+                    FilmixLogin()
                     var key by rememberSaveable(prefs.tmdbKey) { mutableStateOf(prefs.tmdbKey) }
                     Text(
                         if (app.couchy.BuildConfig.TMDB_KEY.isNotBlank()) {
@@ -449,6 +450,57 @@ private fun KinoPubLogin() {
                         runCatching { account.start() }
                             .onSuccess { code = it }
                             .onFailure { error = "Kino.pub не ответил: ${it.message}" }
+                        asking = false
+                    }
+                })
+            }
+        }
+    }
+}
+
+/** Signing in to Filmix with a code typed on its «Консоли» page; it works signed out too, in lower quality. */
+@Composable
+private fun FilmixLogin() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val account = remember { (context.applicationContext as app.couchy.CouchyApp).filmix }
+    val signedIn by account.signedIn.collectAsState()
+    var code by remember { mutableStateOf<app.couchy.core.sources.Filmix.DeviceCode?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var asking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Filmix", style = MaterialTheme.typography.titleSmall)
+        val c = code
+        when {
+            signedIn -> {
+                Text("Вы вошли: Filmix играет в Couchy в качестве вашего аккаунта, со всеми озвучками.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SecondaryButton("Выйти", null, onClick = { account.signOut() })
+            }
+            c != null -> {
+                Text("Откройте ${app.couchy.core.sources.Filmix.CONSOLES} на телефоне или компьютере, войдите в Filmix и введите код:", style = MaterialTheme.typography.bodyMedium)
+                Text(c.userCode, style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+                Text("Как только код введён, Couchy войдёт сам.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LaunchedEffect(c.token) {
+                    val until = System.currentTimeMillis() + 10 * 60_000L
+                    while (System.currentTimeMillis() < until) {
+                        kotlinx.coroutines.delay(5_000)
+                        if (account.poll(c)) { code = null; return@LaunchedEffect }
+                    }
+                    code = null
+                    error = "Время вышло. Нажмите «Войти» ещё раз."
+                }
+            }
+            else -> {
+                Text("Filmix играет в Couchy и без входа, но в низком качестве. С аккаунтом Filmix качество выше, а с PRO доступно до 4K.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                SecondaryButton(if (asking) "Получаю код…" else "Войти", null, onClick = {
+                    if (asking) return@SecondaryButton
+                    asking = true
+                    error = null
+                    scope.launch {
+                        runCatching { account.start() }
+                            .onSuccess { code = it }
+                            .onFailure { error = "Filmix не ответил: ${it.message}" }
                         asking = false
                     }
                 })

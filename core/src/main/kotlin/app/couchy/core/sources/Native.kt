@@ -19,7 +19,16 @@ data class NativeRelease(
     val poster: String?,
     val imdbId: String? = null,
     val episodes: List<NativeEpisode> = emptyList(),
+    /** Voice-overs on offer; [id] carries the chosen one after "@" (see [NativeVoice]). */
+    val voices: List<String> = emptyList(),
 )
+
+/** A release id with its voice-over: "12345@Кубик%20в%20Кубе", with no ':' so library keys stay whole. */
+object NativeVoice {
+    fun of(id: String, voice: String): String = base(id) + "@" + URLEncoder.encode(voice, "UTF-8").replace("+", "%20")
+    fun base(id: String): String = id.substringBefore('@')
+    fun voice(id: String): String? = id.substringAfter('@', "").ifEmpty { null }?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+}
 
 /** A film (season 0, episode 0) or an episode, with its files by quality, best first. */
 data class NativeEpisode(
@@ -48,10 +57,16 @@ object NativeRef {
         return Ref(parts[0], parts[1], parts[2].toIntOrNull() ?: return null, parts[3].toIntOrNull() ?: return null)
     }
 
-    private fun pageOf(source: String, id: String) = when (source) {
-        Anilibria.ID -> "https://anilibria.top/anime/releases/release/$id"
-        KinoPub.ID -> "https://kino.pub/item/view/$id"
-        else -> "https://$source/$id"
+    private fun pageOf(source: String, voiced: String): String {
+        val id = NativeVoice.base(voiced)
+        return when (source) {
+            Anilibria.ID -> "https://anilibria.top/anime/releases/release/$id"
+            KinoPub.ID -> "https://kino.pub/item/view/$id"
+            Filmix.ID -> "https://filmix.my/$id"
+            Seasonvar.ID -> "${Seasonvar.HOST}/$id"
+            Rutube.ID -> Rutube.pageOf(id)
+            else -> "https://$source/$id"
+        }
     }
 }
 

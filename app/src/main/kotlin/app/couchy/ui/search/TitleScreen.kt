@@ -417,7 +417,13 @@ private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Uni
     // Sources that play in Couchy's own player first, then the torrent, and the sites' own players last.
     val (native, embedded) = state.sites.filter { it != kp }.partition { it.site in app.couchy.sources.NativeClient.ids }
     native.forEach { hit ->
-        SheetRow(siteName(hit.site), onClick = { onClose(); actions.onSite(hit) }, icon = Icons.Rounded.PlayCircle, tag = "1080p", badge = badge())
+        val tag = when (hit.site) {
+            app.couchy.core.sources.Rutube.ID -> "авто"
+            app.couchy.core.sources.Seasonvar.ID -> "озвучки"
+            app.couchy.core.sources.Filmix.ID -> "озвучки · до 1080p"
+            else -> "1080p"
+        }
+        SheetRow(siteName(hit.site), onClick = { onClose(); actions.onSite(hit) }, icon = Icons.Rounded.PlayCircle, tag = tag, badge = badge())
     }
     if (state.sitesLoading) {
         loadingAbove = true

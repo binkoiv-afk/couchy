@@ -491,7 +491,7 @@ private fun FilmixLogin() {
                 }
             }
             else -> {
-                Text("Filmix играет в Couchy и без входа, но в низком качестве. С аккаунтом Filmix качество выше, а с PRO доступно до 4K.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Filmix играет в Couchy и без входа, но в низком качестве. С аккаунтом Filmix качество выше, а с PRO ещё выше.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 SecondaryButton(if (asking) "Получаю код…" else "Войти", null, onClick = {
                     if (asking) return@SecondaryButton

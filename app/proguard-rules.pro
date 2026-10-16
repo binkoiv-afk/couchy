@@ -12,3 +12,6 @@
 -dontwarn jdk.dynalink.**
 -dontwarn org.schabi.newpipe.extractor.**
 -dontwarn com.google.re2j.**
+
+# The FFmpeg sound decoder is found by name at run time.
+-keep class androidx.media3.decoder.ffmpeg.** { *; }

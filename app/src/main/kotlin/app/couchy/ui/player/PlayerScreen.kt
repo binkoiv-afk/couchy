@@ -108,7 +108,7 @@ private enum class Resize(val label: String, val mode: Int) {
     STRETCH("Растянуть", AspectRatioFrameLayout.RESIZE_MODE_FILL),
 }
 
-private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE, EPISODES, CHANNELS }
+private enum class Sheet { TRACKS, QUALITY, SPEED, SLEEP, INTRO, FIND_SUBS, MORE, QUEUE, EPISODES, CHANNELS, SYNC, SUBSTYLE }
 
 /** One channel in the player's «Каналы» list. */
 data class LiveChoice(val id: Long, val number: Int, val name: String, val now: String?)
@@ -186,7 +186,10 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback) }
+    // Sound moved against the picture, as set for this device.
+    val audioShift = remember(playback.uri, playback.subtitles) { AudioShift().also { it.shiftMs = PlayerTuning.audioShift(context) } }
+    val player = remember(playback.uri, playback.subtitles) { buildPlayer(context, playback, audioShift) }
+    MatchFrameRate(player, app.couchy.ui.components.LocalFormFactor.current.isTv && playback.live == null && PlayerTuning.frameRate(context))
 
     // The system knows what plays: "Окей Гугл, пауза", the Now Playing card, TV and Bluetooth media keys.
     val nextNow by androidx.compose.runtime.rememberUpdatedState(if (hasNext && playback.live == null) ({ onFinished() }) else null)
@@ -300,6 +303,67 @@ fun PlayerScreen(
             delay(150)
         }
     }
+    // Subtitles are drawn by Couchy: in the person's style, and moved in time when asked.
+    var subSize by remember { mutableStateOf(PlayerTuning.subSize(context)) }
+    var subBack by remember { mutableStateOf(PlayerTuning.subBack(context)) }
+    var subPlace by remember { mutableStateOf(PlayerTuning.subPlace(context)) }
+    var audioMs by remember { mutableStateOf(PlayerTuning.audioShift(context)) }
+    var subMs by remember(playback.key) { mutableStateOf(0L) }
+    var subCues by remember(player) { mutableStateOf<List<androidx.media3.common.text.Cue>>(emptyList()) }
+    // What the player said to show and when (by position), for showing it later.
+    val cueLog = remember(player) { ArrayDeque<Pair<Long, List<androidx.media3.common.text.Cue>>>() }
+    var fileCues by remember(player) { mutableStateOf<List<app.couchy.core.sources.Cue>?>(null) }
+    androidx.compose.runtime.DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                synchronized(cueLog) {
+                    cueLog.addLast(player.currentPosition to cueGroup.cues)
+                    while (cueLog.size > 600) cueLog.removeFirst()
+                }
+                if (subMs == 0L) subCues = cueGroup.cues
+            }
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) synchronized(cueLog) { cueLog.clear() }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    // A shifted subtitle file is read by Couchy, so it can go earlier as well as later.
+    LaunchedEffect(player, subMs != 0L, tracks) {
+        fileCues = null
+        if (subMs == 0L) return@LaunchedEffect
+        val label = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+            .flatMap { g -> (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it).label } }.firstOrNull()
+        val url = playback.subtitles.firstOrNull { it.first == label }?.second ?: return@LaunchedEffect
+        fileCues = runCatching { app.couchy.sources.SubtitleFinder.cues(context, url, playback.headers) }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
+    LaunchedEffect(player, subMs, fileCues) {
+        if (subMs == 0L) {
+            subCues = player.currentCues.cues
+            return@LaunchedEffect
+        }
+        while (true) {
+            val at = player.currentPosition - subMs
+            val file = fileCues
+            subCues = if (file != null) {
+                app.couchy.core.sources.SubCues.at(file, at)?.let { listOf(androidx.media3.common.text.Cue.Builder().setText(it).build()) } ?: emptyList()
+            } else {
+                synchronized(cueLog) { cueLog.lastOrNull { it.first <= at }?.second } ?: emptyList()
+            }
+            delay(100)
+        }
+    }
+    fun setAudioShift(ms: Long) {
+        val v = ms.coerceIn(-5_000, 5_000)
+        audioMs = v
+        audioShift.shiftMs = v
+        PlayerTuning.setAudioShift(context, v)
+        // The sound starts over from here with the new shift.
+        if (playback.live == null) player.seekTo(player.currentPosition)
+    }
+    var goTo by remember { mutableStateOf<Sheet?>(null) }
+    LaunchedEffect(goTo) { goTo?.let { sheet = it; goTo = null } }
     LaunchedEffect(hintAt) { if (hint != null) { delay(1_200); hint = null } }
     // Digits on the remote collect into a channel number, which opens after a short pause.
     LaunchedEffect(typed) {
@@ -777,12 +841,22 @@ fun PlayerScreen(
                     keepScreenOn = true
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    // Couchy draws the subtitles itself, just above.
+                    subtitleView?.visibility = android.view.View.GONE
                     this.player = player
                 }
             },
             update = { view ->
                 view.player = player
                 view.resizeMode = Resize.entries[resize].mode
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        AndroidView(
+            factory = { ctx -> androidx.media3.ui.SubtitleView(ctx) },
+            update = { v ->
+                PlayerTuning.style(v, subSize, subBack, subPlace)
+                v.setCues(subCues)
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -863,6 +937,13 @@ fun PlayerScreen(
                         playback.subtitles.map { (label, url) -> Option(label, second?.first == label) { loadSecond(label, url) } } +
                         listOf(Option("Найти в интернете…", false) { findSecond = true; findSubs = true }),
                 ) else null,
+                OptionSection(
+                    "НАСТРОЙКА",
+                    listOf(
+                        Option("Вид субтитров…", false, tag = subSize.label) { goTo = Sheet.SUBSTYLE },
+                        Option("Синхронизация…", audioMs != 0L || subMs != 0L) { goTo = Sheet.SYNC },
+                    ),
+                ),
                 listOfNotNull(
                     onSources?.let { back -> Option("Другой источник…", false) { save(); back() } },
                     onExternal?.let { open -> Option("Открыть во внешнем плеере", false) { save(); open(player.currentPosition) } },
@@ -1019,9 +1100,30 @@ fun PlayerScreen(
                     onSaveAudio?.let { a -> app.couchy.ui.components.Tile("Сохранить звук", Icons.Rounded.MusicNote, state = "Музыка, по трекам") { sheet = null; a(); flash("Сохраняю звук. Прогресс в уведомлении") } },
                     onQueuePick?.takeIf { queue.size > 1 }?.let { app.couchy.ui.components.Tile("Очередь", Icons.Rounded.QueueMusic, true, "${queueAt + 1} из ${queue.size}") { sheet = Sheet.QUEUE } },
                     controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
+                    app.couchy.ui.components.Tile("Синхронизация", androidx.compose.material.icons.Icons.Rounded.Sync, audioMs != 0L || subMs != 0L, if (audioMs != 0L || subMs != 0L) "Сдвинуто" else "Звук и субтитры") { sheet = Sheet.SYNC },
+                    app.couchy.ui.components.Tile("Вид субтитров", androidx.compose.material.icons.Icons.Rounded.ClosedCaption, state = subSize.label) { sheet = Sheet.SUBSTYLE },
+                    if (app.couchy.ui.components.LocalFormFactor.current.isTv && playback.live == null) {
+                        var on by remember { mutableStateOf(PlayerTuning.frameRate(context)) }
+                        app.couchy.ui.components.Tile("Частота кадров", androidx.compose.material.icons.Icons.Rounded.Tv, on, if (on) "Как у фильма" else "Выключено") {
+                            on = !on
+                            PlayerTuning.setFrameRate(context, on)
+                            flash(if (on) "Экран будет переключаться под фильм со следующего видео" else "Частота экрана не меняется")
+                        }
+                    } else null,
                 ),
             )
         }
+        Sheet.SYNC -> SyncSheet(
+            audioMs, subMs,
+            subNote = if (subMs < 0 && fileCues == null) "Встроенные субтитры можно только задержать. Раньше сдвигаются субтитры из файла." else null,
+            onAudio = ::setAudioShift,
+            onSub = { subMs = it.coerceIn(-10_000, 10_000) },
+            onDismiss = { sheet = null },
+        )
+        Sheet.SUBSTYLE -> SubtitleStyleSheet(subSize, subBack, subPlace, onChange = { a, b, c ->
+            subSize = a; subBack = b; subPlace = c
+            PlayerTuning.setSub(context, a, b, c)
+        }, onDismiss = { sheet = null })
         Sheet.INTRO -> {
             val at = player.currentPosition
             val from = introFrom
@@ -1261,7 +1363,7 @@ private fun digitOf(key: Key): String = when (key) {
 }
 
 @OptIn(UnstableApi::class)
-private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
+private fun buildPlayer(context: Context, playback: Playback, shift: AudioShift): ExoPlayer {
     val agent = playback.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent(agent ?: "Couchy/${BuildConfig.VERSION_NAME} (Android)")
@@ -1274,7 +1376,15 @@ private fun buildPlayer(context: Context, playback: Playback): ExoPlayer {
     val downloads = (context.applicationContext as app.couchy.CouchyApp).downloads
     val sources = DefaultMediaSourceFactory(if (downloads.has(playback.key)) downloads.readThrough(network) else network)
     // Cheap TV boxes often have a broken first decoder; falling back to the next one plays the video anyway.
-    val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+    // AC3, E-AC3, DTS and other sound the device cannot decode itself goes through FFmpeg, not silence.
+    val renderers = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+            androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf(shift))
+                .build()
+    }.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     val player = ExoPlayer.Builder(context, renderers)
         .setMediaSourceFactory(sources)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)

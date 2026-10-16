@@ -653,8 +653,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val k = app.couchy.core.sources.Kinopoisk
         val h = k.headers(key)
         val film = runCatching {
-            val id = title.imdbId?.let { k.parseByImdb(web.get(k.byImdbUrl(it), h)) }
+            val id = title.imdbId?.let { runCatching { k.parseByImdb(web.get(k.byImdbUrl(it), h)) }.getOrNull() }
                 ?: k.parseSearch(web.get(k.searchUrl(title.name), h), title.year)
+                ?: title.original?.takeIf { it != title.name }?.let { k.parseSearch(web.get(k.searchUrl(it), h), title.year) }
                 ?: return
             k.parseFilm(web.get(k.filmUrl(id), h))
         }.getOrNull() ?: return

@@ -254,9 +254,21 @@ fun SettingsContent(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    var kpCheck by remember { mutableStateOf<String?>(null) }
                     if (kp.trim() != prefs.kpKey) SecondaryButton("Сохранить", null, onClick = {
-                        kpScope.launch { (kpContext.applicationContext as app.couchy.CouchyApp).settings.setKpKey(kp) }
+                        kpScope.launch {
+                            (kpContext.applicationContext as app.couchy.CouchyApp).settings.setKpKey(kp)
+                            kpCheck = "Проверяю ключ…"
+                            kpCheck = checkKinopoisk(kpContext, kp)
+                        }
                     })
+                    else if (prefs.kpKey.isNotBlank()) SecondaryButton("Проверить ключ", null, onClick = {
+                        kpScope.launch {
+                            kpCheck = "Проверяю ключ…"
+                            kpCheck = checkKinopoisk(kpContext, prefs.kpKey)
+                        }
+                    })
+                    kpCheck?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface) }
                     app.couchy.pair.PhoneInputButton(
                         "Источники",
                         listOf(
@@ -829,4 +841,24 @@ private fun BypassSettings(prefs: Prefs, bypass: BypassUi, actions: SettingsActi
 private fun normalizeHost(text: String): String {
     val t = text.trim().trimEnd('/')
     return if (t.isEmpty() || "://" in t) t else "https://$t"
+}
+
+/** One film asked of Kinopoisk with [key]: what works, or what is wrong in plain words. */
+private suspend fun checkKinopoisk(context: android.content.Context, key: String): String {
+    val k = app.couchy.core.sources.Kinopoisk
+    return try {
+        val film = k.parseFilm(app.couchy.sources.Web(context).get(k.filmUrl(301), k.headers(key)))
+        if (film == null) "Кинопоиск ответил непонятно. Попробуйте позже."
+        else "Работает: «Матрица» — ${film.chip ?: "без оценки"}. Оценка КП появится на странице фильма."
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        val m = e.message.orEmpty()
+        when {
+            "401" in m -> "Ключ не подходит. Скопируйте его ещё раз из профиля на kinopoiskapiunofficial.tech."
+            "402" in m -> "Закончился дневной лимит запросов бесплатного ключа. Завтра заработает снова."
+            "429" in m -> "Слишком много запросов подряд. Попробуйте через минуту."
+            else -> "Кинопоиск не отвечает: ${m.ifBlank { "нет связи" }}"
+        }
+    }
 }

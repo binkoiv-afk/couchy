@@ -40,6 +40,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -1100,11 +1103,11 @@ fun PlayerScreen(
                     onSaveAudio?.let { a -> app.couchy.ui.components.Tile("Сохранить звук", Icons.Rounded.MusicNote, state = "Музыка, по трекам") { sheet = null; a(); flash("Сохраняю звук. Прогресс в уведомлении") } },
                     onQueuePick?.takeIf { queue.size > 1 }?.let { app.couchy.ui.components.Tile("Очередь", Icons.Rounded.QueueMusic, true, "${queueAt + 1} из ${queue.size}") { sheet = Sheet.QUEUE } },
                     controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
-                    app.couchy.ui.components.Tile("Синхронизация", androidx.compose.material.icons.Icons.Rounded.Sync, audioMs != 0L || subMs != 0L, if (audioMs != 0L || subMs != 0L) "Сдвинуто" else "Звук и субтитры") { sheet = Sheet.SYNC },
-                    app.couchy.ui.components.Tile("Вид субтитров", androidx.compose.material.icons.Icons.Rounded.ClosedCaption, state = subSize.label) { sheet = Sheet.SUBSTYLE },
+                    app.couchy.ui.components.Tile("Синхронизация", Icons.Rounded.Sync, audioMs != 0L || subMs != 0L, if (audioMs != 0L || subMs != 0L) "Сдвинуто" else "Звук и субтитры") { sheet = Sheet.SYNC },
+                    app.couchy.ui.components.Tile("Вид субтитров", Icons.Rounded.ClosedCaption, state = subSize.label) { sheet = Sheet.SUBSTYLE },
                     if (app.couchy.ui.components.LocalFormFactor.current.isTv && playback.live == null) {
                         var on by remember { mutableStateOf(PlayerTuning.frameRate(context)) }
-                        app.couchy.ui.components.Tile("Частота кадров", androidx.compose.material.icons.Icons.Rounded.Tv, on, if (on) "Как у фильма" else "Выключено") {
+                        app.couchy.ui.components.Tile("Частота кадров", Icons.Rounded.Tv, on, if (on) "Как у фильма" else "Выключено") {
                             on = !on
                             PlayerTuning.setFrameRate(context, on)
                             flash(if (on) "Экран будет переключаться под фильм со следующего видео" else "Частота экрана не меняется")

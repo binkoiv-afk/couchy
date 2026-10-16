@@ -219,7 +219,7 @@ private fun RoundButton(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 }
 
 /** «Вид субтитров»: size, background and height, seen at once on the film behind the sheet. */
-@OptIn(ExperimentalLayoutApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SubtitleStyleSheet(size: SubSize, back: SubBack, place: SubPlace, onChange: (SubSize, SubBack, SubPlace) -> Unit, onDismiss: () -> Unit) {
     CouchySheet("Вид субтитров", onDismiss) {

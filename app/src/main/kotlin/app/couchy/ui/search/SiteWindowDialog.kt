@@ -91,7 +91,8 @@ fun SiteWindowDialog(
     }
     // A film page plays without being seen: Couchy presses ▶ in the site's player itself and only
     // shows the site when that does not start the video.
-    var hidden by remember { mutableStateOf(window.key != null) }
+    // A series needs the person to pick the episode in the site's player, so it stays in view.
+    var hidden by remember { mutableStateOf(window.key != null && !window.series) }
     // Once the person asked to see the site, it is not hidden again behind their back.
     var shownByPerson by remember { mutableStateOf(false) }
     // The site is shown only when the person asks for it, never on its own.
@@ -125,7 +126,8 @@ fun SiteWindowDialog(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        if (window.key == null) "Откройте фильм и нажмите ▶ в плеере сайта. Дальше Couchy покажет его в своём плеере, без рекламы."
+                        if (window.series) "Выберите сезон и серию в плеере сайта и нажмите ▶. Дальше Couchy покажет видео в своём плеере, без рекламы."
+                        else if (window.key == null) "Откройте фильм и нажмите ▶ в плеере сайта. Дальше Couchy покажет его в своём плеере, без рекламы."
                         else "Нажмите ▶ в плеере сайта, если он не начал сам. Дальше Couchy покажет видео в своём плеере, без рекламы.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -151,7 +153,7 @@ fun SiteWindowDialog(
                         settings.userAgentString = userAgent
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = Catcher(window.url, userAgent, onVideo, onBlocked, onPlayerPage = { if (!hidden && !shownByPerson) hidden = true })
+                        webViewClient = Catcher(window.url, userAgent, onVideo, onBlocked, series = window.series, onPlayerPage = { if (!hidden && !shownByPerson && !window.series) hidden = true })
                         loadUrl(window.url)
                         web = this
                     }
@@ -240,7 +242,12 @@ private class Catcher(
     private val onBlocked: (WebView, String) -> Unit,
     /** A film page with a player opened, from the site's own search: Couchy takes over from here. */
     private val onPlayerPage: () -> Unit = {},
+    /** A series: the site's player is opened on its own, full window, so its season and episode menus are in reach. */
+    private val series: Boolean = false,
 ) : WebViewClient() {
+    /** Hosts the window may move to: the site and the player it opened. */
+    private val allowed = mutableSetOf<String>()
+    private var playerOpened = false
     private val main = Handler(Looper.getMainLooper())
     private val startHost = SiteRef.hostOf(start)
     private val found = mutableListOf<Pair<String, Map<String, String>>>()
@@ -281,7 +288,7 @@ private class Catcher(
         if (!request.isForMainFrame) return false
         // The page itself may move around its own site or to another known cinema; ad redirects may not.
         val host = SiteRef.hostOf(url)
-        return !(host == startHost || SiteRef.siteOf(url) != null)
+        return !(host == startHost || host in allowed || SiteRef.siteOf(url) != null)
     }
 
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
@@ -290,8 +297,29 @@ private class Catcher(
         if (blocked) onBlocked(view, request.url.toString())
     }
 
+    /**
+     * The biggest player frame on the page, opened as the page itself: a phone or a remote reaches
+     * its episode list, and nothing of the site around it is left to tap by mistake.
+     */
+    private fun openPlayer(view: WebView, pageUrl: String) {
+        view.evaluateJavascript(
+            "(function(){var best='',area=0;document.querySelectorAll('iframe').forEach(function(f){var r=f.getBoundingClientRect(),a=r.width*r.height;" +
+                "if(a>area&&r.width>240&&r.height>130&&/^https?:/.test(f.src)){area=a;best=f.src;}});return best;})()",
+        ) { answer ->
+            val src = answer?.trim('"')?.replace("\\u0026", "&")?.replace("\\/", "/").orEmpty()
+            if (playerOpened || done || !src.startsWith("http")) return@evaluateJavascript
+            playerOpened = true
+            SiteRef.hostOf(src)?.let { allowed += it }
+            view.loadUrl(src, mapOf("Referer" to pageUrl))
+        }
+    }
+
     override fun onPageFinished(view: WebView, url: String?) {
         if (url != null && url.startsWith("http")) page = url
+        // Players often load a moment after the page: asked again a little later.
+        if (series && !playerOpened && !done && url != null && url.startsWith("http")) {
+            listOf(0L, 2_500L, 6_000L).forEach { wait -> main.postDelayed({ if (!playerOpened) openPlayer(view, url) }, wait) }
+        }
         if (url == null || url.substringBefore('#') == start.substringBefore('#') || done) return
         // A page with a big player on it is a film page: hide the site and start the video.
         view.evaluateJavascript(

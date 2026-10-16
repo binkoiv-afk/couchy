@@ -156,6 +156,8 @@ object Rezka {
     /** "[720p]a.m3u8 or a.mp4,[1080p]b.m3u8 or b.mp4" to options; the plain mp4 is preferred. */
     fun parseQualities(text: String): List<StreamOption> =
         Regex("""\[([^\]]+)\]([^,\[]+)""").findAll(text).mapNotNull { m ->
+            // Qualities for signed-in or paying visitors only come wrapped in a marked span; they do not play here.
+            if (Regex("registered|premium", RegexOption.IGNORE_CASE).containsMatchIn(m.groupValues[1])) return@mapNotNull null
             val label = m.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
             val urls = m.groupValues[2].split(" or ").map { it.trim() }.filter { it.startsWith("http") }
             val url = urls.lastOrNull { it.endsWith(".mp4") } ?: urls.firstOrNull() ?: return@mapNotNull null

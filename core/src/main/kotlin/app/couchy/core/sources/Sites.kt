@@ -41,7 +41,7 @@ object Sites {
         "marketgid", "trafficstars", "hilltopads", "popads", "popcash", "onclickads", "adcash", "bongacams", "chaturbate",
         "1xbet", "1win", "vavada", "pin-up", "pinup", "joycasino", "casino", "betwinner", "melbet", "mostbet", "leon.ru",
         "buzzoola", "videoroll", "hyperadx", "adhigh", "smi2", "24smi", "lentainform", "relap.io", "yadro.ru", "acint.net",
-        "imasdk.googleapis.com", "vast", "vpaid", "/ads/", "/adv/", "/advert", "/banner", "/preroll", "/promo/",
+        "imasdk.googleapis.com", "/vast", "vast.xml", "vpaid", "/ads/", "/adv/", "/advert", "/banner", "/preroll", "/promo/",
     )
 
     /** Requests to ad networks, trackers and casino banners get an empty answer. */

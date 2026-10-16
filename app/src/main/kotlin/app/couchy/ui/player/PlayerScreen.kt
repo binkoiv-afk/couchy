@@ -220,6 +220,7 @@ fun PlayerScreen(
         onDispose { session?.release() }
     }
     val fallback by androidx.compose.runtime.rememberUpdatedState(onUnplayable)
+    val variantNow by androidx.compose.runtime.rememberUpdatedState(onVariant)
     var ui by remember(playback.uri) { mutableStateOf(PlayerUi(playback.title)) }
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
     var overlay by remember { mutableStateOf(true) }
@@ -443,6 +444,15 @@ fun PlayerScreen(
                 // A source that never started (not a dropped connection) gives way to the next one by itself.
                 val offline = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                // A quality that will not open (a paid one, a dead file) gives way to the next one down first.
+                val variants = playback.variants
+                val at = variants.indexOfFirst { it.second == playback.uri }
+                val lower = variants.getOrNull(at + 1)
+                if (!offline && !started && at >= 0 && lower != null && variantNow != null) {
+                    flash("${variants[at].first} не открылось, включаю ${lower.first}")
+                    variantNow?.invoke(lower.second, player.currentPosition)
+                    return
+                }
                 if (!offline && !started && fallback?.invoke() == true) return
                 ui = ui.copy(error = errorText(error), buffering = false)
                 overlay = true

@@ -70,7 +70,7 @@ fun ChallengeDialog(url: String, userAgent: String, onPassed: () -> Unit, onDism
                                 // Still on the check page while its markers are there.
                                 view.evaluateJavascript(
                                     "(function(){var h=document.documentElement.innerHTML;" +
-                                        "return (h.indexOf('anubis_challenge')>=0||h.indexOf('challenge-platform')>=0||document.title.indexOf('Just a moment')>=0)?'wait':'ok';})()",
+                                        "return (h.indexOf('anubis_challenge')>=0||h.indexOf('Проверяем, что вы не бот')>=0||h.indexOf('challenge-platform')>=0||document.title.indexOf('Just a moment')>=0)?'wait':'ok';})()",
                                 ) { answer ->
                                     if (!done && answer?.contains("ok") == true) {
                                         done = true

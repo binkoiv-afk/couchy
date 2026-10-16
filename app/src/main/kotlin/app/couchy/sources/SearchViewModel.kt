@@ -903,7 +903,11 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    private suspend fun loadRezka(title: Title) {
+    /**
+     * HDrezka for the title. A visitor check found while the page opens only marks the row; the
+     * check window opens when the person taps HDrezka ([interactive]), not over whatever they chose.
+     */
+    private suspend fun loadRezka(title: Title, interactive: Boolean = false) {
         patchRezka { RezkaUi(SourceStatus.LOADING) }
         try {
             val url = title.rezkaUrl ?: findOnRezka(title)
@@ -924,7 +928,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             if (remembered != null && remembered != default) selectTranslator(remembered, remember = false)
         } catch (e: ChallengeException) {
             patchRezka { RezkaUi(SourceStatus.BLOCKED, url = title.rezkaUrl) }
-            ask(e.url) { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title) } } }
+            if (interactive) ask(e.url) { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title) } } }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -945,7 +949,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         return null
     }
 
-    fun retryRezka() { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title) } } }
+    fun retryRezka() { _title.value?.let { t -> viewModelScope.launch { loadRezka(t.title, interactive = true) } } }
 
     fun selectTranslator(id: Int, remember: Boolean = true) {
         val r = _title.value?.rezka ?: return
@@ -1134,9 +1138,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val stream = if (series) catalog.rezka.episode(id, translator.id, season, episode, url) else catalog.rezka.movie(id, translator, url)
         // The site sometimes gives the same file under two names; one entry per file is enough.
         val ranked = stream.options.sortedByDescending { it.rank }.distinctBy { it.url }
-        // The quality picked last time, or the best there is.
+        // The quality picked last time, or the best there is. «Ultra» and 4K are HDrezka's paid
+        // qualities: without a subscription they do not play, so they are taken only when picked by name.
+        val paid = { o: app.couchy.core.sources.StreamOption -> "ultra" in o.quality.lowercase() || o.rank >= 14_400 }
         val wanted = app.couchy.youtube.QualityPick.choose(ranked.map { it.quality })
-        val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
+            ?.takeIf { w -> w == app.couchy.QualityChoice.label || ranked.none { it.quality == w && paid(it) } }
+            ?: app.couchy.youtube.QualityPick.choose(ranked.filterNot(paid).map { it.quality })
+        val best = ranked.firstOrNull { it.quality == wanted } ?: ranked.firstOrNull { !paid(it) } ?: ranked.firstOrNull() ?: throw IllegalStateException("Нет видео")
         val key = Rezka.ref(url, translator.id, season, episode)
         val title = if (series) "$name · S${season}E$episode" else name
         val entry = if (quiet) library.get(key) else library.open(key, title, artworkFor(title))

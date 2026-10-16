@@ -14,6 +14,7 @@ import app.couchy.core.youtube.SponsorBlock
 import app.couchy.core.youtube.YtChannel
 import app.couchy.core.youtube.YtVideo
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,7 +40,16 @@ data class YtMusicUi(
     val songs: List<YtVideo> = emptyList(),
     val albums: List<YtAlbum> = emptyList(),
     val playlists: List<YtAlbum> = emptyList(),
+    /** Signed in to YouTube Music: the person's playlists and their home shelves. */
+    val signedIn: Boolean = false,
+    val mine: List<YtAlbum> = emptyList(),
+    val shelves: List<YtMusicShelf> = emptyList(),
+    /** Why the person's own music did not load, when it did not. */
+    val accountError: String? = null,
 )
+
+/** One shelf of the person's YouTube Music home. */
+data class YtMusicShelf(val title: String, val songs: List<YtVideo>, val albums: List<YtAlbum>)
 
 /** The songs playing one after another, and which one is on now. */
 data class MusicQueue(val tracks: List<YtVideo>, val index: Int, val album: String? = null) {
@@ -86,6 +96,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
+        MusicApi.load(app)
         // Follows can arrive from another device through sync.
         viewModelScope.launch {
             marks.all.collect {
@@ -152,8 +163,11 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                         _state.update { it.copy(list = YtListUi(page.videos, page.channels, end = page.next == null)) }
                     }
                     is YtShelf.Music -> {
-                        val music = if (shelf.query == null) YtMusicUi(songs = YouTubeClient.musicCharts().map(::artistOnly))
-                        else YouTubeClient.music(shelf.query).let { m -> YtMusicUi(m.songs.map(::artistOnly), m.albums, m.playlists) }
+                        val music = when {
+                            shelf.query != null -> YouTubeClient.music(shelf.query).let { m -> YtMusicUi(m.songs.map(::artistOnly), m.albums, m.playlists, signedIn = MusicApi.signedIn) }
+                            MusicApi.signedIn -> accountMusic()
+                            else -> YtMusicUi(songs = YouTubeClient.musicCharts().map(::artistOnly))
+                        }
                         _state.update { it.copy(music = music, list = YtListUi(end = true)) }
                     }
                 }
@@ -163,6 +177,41 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(list = it.list.copy(loading = false, error = problem(e))) }
             }
         }
+    }
+
+    /** The person's playlists and home; the charts when YouTube Music would not give them. */
+    private suspend fun accountMusic(): YtMusicUi = kotlinx.coroutines.coroutineScope {
+        val mine = async { runCatching { MusicApi.playlists() } }
+        val home = async { runCatching { MusicApi.home() } }
+        val playlists = mine.await()
+        val shelves = home.await()
+        val error = (playlists.exceptionOrNull() ?: shelves.exceptionOrNull())?.let { e -> (e as? Exception)?.let(::problem) ?: e.message }
+        val ui = YtMusicUi(
+            signedIn = true,
+            mine = playlists.getOrDefault(emptyList()).map(::albumOf),
+            shelves = shelves.getOrDefault(emptyList()).map { sh -> YtMusicShelf(sh.title, sh.songs.map(::artistOnly), sh.tiles.map(::albumOf)) },
+            accountError = error,
+        )
+        if (ui.mine.isEmpty() && ui.shelves.isEmpty()) ui.copy(songs = runCatching { YouTubeClient.musicCharts().map(::artistOnly) }.getOrDefault(emptyList()))
+        else ui
+    }
+
+    private fun albumOf(t: app.couchy.core.youtube.MusicTile) = YtAlbum(t.url, t.title, t.subtitle, t.thumb, 0)
+
+    /** An album's or playlist's tracks: through the account when signed in, so private ones open too. */
+    private suspend fun tracksOf(url: String): List<YtVideo> {
+        if (MusicApi.signedIn && url.startsWith(app.couchy.core.youtube.MusicAccount.ORIGIN)) {
+            runCatching { MusicApi.tracks(url) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        return YouTubeClient.tracks(url)
+    }
+
+    /** After the sign-in window: the music section with the person's own music. */
+    fun musicSignedIn() = show(YtShelf.Music())
+
+    fun musicSignOut() {
+        MusicApi.signOut(getApplication())
+        show(YtShelf.Music())
     }
 
     fun retry() { _state.value.shelf?.let(::show) }
@@ -303,7 +352,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         _busy.value = true
         viewModelScope.launch {
             try {
-                val tracks = YouTubeClient.tracks(album.url).map(::artistOnly)
+                val tracks = tracksOf(album.url).map(::artistOnly)
                 if (tracks.isEmpty()) _error.value = "В альбоме нет треков"
                 else { _busy.value = false; playMusic(if (shuffle) tracks.shuffled() else tracks, 0, album.title) }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -332,7 +381,7 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
     fun saveAlbum(album: YtAlbum) {
         viewModelScope.launch {
             try {
-                val tracks = YouTubeClient.tracks(album.url)
+                val tracks = tracksOf(album.url)
                 AudioSave.album(getApplication(), album.title, tracks.map { it.url to it.title })
                 android.widget.Toast.makeText(getApplication(), "Сохраняю «${album.title}»: ${tracks.size} треков", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: kotlinx.coroutines.CancellationException) {

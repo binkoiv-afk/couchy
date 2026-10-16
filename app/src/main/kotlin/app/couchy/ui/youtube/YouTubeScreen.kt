@@ -98,6 +98,9 @@ class YouTubeActions(
     val onSong: (List<YtVideo>, Int) -> Unit = { _, _ -> },
     val onAlbum: (app.couchy.youtube.YtAlbum, shuffle: Boolean) -> Unit = { _, _ -> },
     val onSaveAlbum: (app.couchy.youtube.YtAlbum) -> Unit = {},
+    /** After Google's sign-in window: load the person's own music. */
+    val onMusicSignedIn: () -> Unit = {},
+    val onMusicSignOut: () -> Unit = {},
 )
 
 /**
@@ -413,6 +416,9 @@ private fun MusicList(state: YouTubeUi, actions: YouTubeActions, modifier: Modif
     val side = if (form.wide) 32.dp else 16.dp
     val music = state.music
     var albumMenu by remember { mutableStateOf<app.couchy.youtube.YtAlbum?>(null) }
+    var login by remember { mutableStateOf(false) }
+    if (login) MusicLoginDialog(onSignedIn = { login = false; actions.onMusicSignedIn() }, onDismiss = { login = false })
+    val front = (state.shelf as? YtShelf.Music)?.query == null
     androidx.compose.foundation.lazy.LazyColumn(
         modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(start = side, end = side, top = 12.dp, bottom = 120.dp),
@@ -432,16 +438,48 @@ private fun MusicList(state: YouTubeUi, actions: YouTubeActions, modifier: Modif
                 }
             }
         }
+        if (front && !music.signedIn && !state.list.loading) item("login") {
+            app.couchy.ui.components.SheetRow(
+                "Войти в YouTube Music",
+                onClick = { login = true },
+                icon = Icons.Rounded.MusicNote,
+                tag = "плейлисты и миксы",
+            )
+        }
+        music.accountError?.let { e ->
+            item("account-error") {
+                Text(e, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
+            }
+        }
+        if (music.mine.isNotEmpty()) item("mine") { AlbumRow("Мои плейлисты", music.mine, actions) { albumMenu = it } }
+        music.shelves.forEachIndexed { i, shelf ->
+            if (shelf.albums.isNotEmpty()) item("shelf-$i-albums") { AlbumRow(shelf.title, shelf.albums, actions) { albumMenu = it } }
+            if (shelf.songs.isNotEmpty()) {
+                item("shelf-$i-title") {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (shelf.albums.isEmpty()) shelf.title else "${shelf.title}: песни", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        SecondaryButton("Слушать", Icons.Rounded.PlayArrow, onClick = { actions.onSong(shelf.songs, 0) })
+                    }
+                }
+                val shown = shelf.songs.take(8)
+                itemsIndexed(shown, key = { j, v -> "shelf-$i-song-$j-" + v.id }) { j, v -> SongRow(v) { actions.onSong(shelf.songs, j) } }
+            }
+        }
         if (music.albums.isNotEmpty()) item("albums") { AlbumRow("Альбомы", music.albums, actions) { albumMenu = it } }
         if (music.playlists.isNotEmpty()) item("playlists") { AlbumRow("Плейлисты", music.playlists, actions) { albumMenu = it } }
         if (music.songs.isNotEmpty()) item("songs-title") {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if ((state.shelf as? YtShelf.Music)?.query == null) "Сейчас слушают" else "Песни", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(if (front) "Сейчас слушают" else "Песни", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 SecondaryButton("Перемешать", Icons.Rounded.Shuffle, onClick = { actions.onSong(music.songs.shuffled(), 0) })
             }
         }
         itemsIndexed(music.songs, key = { _, v -> "song-" + v.id }) { i, v -> SongRow(v) { actions.onSong(music.songs, i) } }
-        if (!state.list.loading && state.list.error == null && music.songs.isEmpty() && music.albums.isEmpty()) item("empty") {
+        if (front && music.signedIn && !state.list.loading) item("sign-out") {
+            androidx.compose.material3.TextButton(onClick = actions.onMusicSignOut, modifier = Modifier.padding(top = 12.dp)) {
+                Text("Выйти из YouTube Music", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (!state.list.loading && state.list.error == null && music.songs.isEmpty() && music.albums.isEmpty() && music.mine.isEmpty() && music.shelves.isEmpty()) item("empty") {
             Text(
                 "Найдите песню, артиста или альбом. Музыка играет без картинки, в фоне и в маленьком плеере, песни идут одна за другой.",
                 style = MaterialTheme.typography.bodyMedium,

@@ -912,6 +912,8 @@ private fun MainScreen(
                         onSong = { list, i -> ytVm.playMusic(list, i) },
                         onAlbum = { album, shuffle -> ytVm.playAlbum(album, shuffle) },
                         onSaveAlbum = ytVm::saveAlbum,
+                        onMusicSignedIn = ytVm::musicSignedIn,
+                        onMusicSignOut = ytVm::musicSignOut,
                     ),
                 )
                 if (ytBusy) {

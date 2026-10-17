@@ -604,6 +604,43 @@ fun PlayerScreen(
     // Screen lock against little hands and pockets: touches and Back do nothing until a long press.
     var locked by remember { mutableStateOf(false) }
     var lockHintAt by remember { mutableLongStateOf(0L) }
+
+    // Flipping channels: presses add up, a banner shows where they land, and the switch happens
+    // once the remote rests, so several channels go by without each one starting to load.
+    var zapSteps by remember { mutableIntStateOf(0) }
+    var zapAt by remember { mutableLongStateOf(0L) }
+    fun zapBy(delta: Int) {
+        if (onZap == null) return
+        zapSteps += delta
+        zapAt = System.currentTimeMillis()
+    }
+    LaunchedEffect(zapAt) {
+        if (zapSteps == 0) return@LaunchedEffect
+        delay(750)
+        val steps = zapSteps
+        zapSteps = 0
+        if (steps != 0) onZap?.invoke(steps)
+    }
+    val liveList = remember(liveGroup, playback.live?.channelId) { if (playback.live != null) liveChannels(liveGroup ?: liveGroups.firstOrNull().orEmpty()) else emptyList() }
+    val zapTarget = playback.live?.takeIf { zapSteps != 0 }?.let { l ->
+        val order = l.zapOrder
+        val i = order.indexOf(l.channelId)
+        if (i < 0 || order.isEmpty()) null else order[Math.floorMod(i + zapSteps, order.size)].let { id -> liveList.firstOrNull { it.id == id } }
+    }
+    // Closing the channel list hands the remote back to the player.
+    var drawerOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(sheet) {
+        if (sheet == Sheet.CHANNELS) drawerOpen = true
+        else if (drawerOpen) { drawerOpen = false; runCatching { rootFocus.requestFocus() } }
+    }
+    // After a switch the new channel's name and programme show for a moment.
+    var channelInfo by remember { mutableStateOf(false) }
+    LaunchedEffect(playback.live?.channelId) {
+        if (playback.live == null || playback.live?.archiveOf != null) return@LaunchedEffect
+        channelInfo = true
+        delay(3500)
+        channelInfo = false
+    }
     BackHandler(enabled = !mini) {
         when {
             locked -> lockHintAt = System.currentTimeMillis()
@@ -709,7 +746,7 @@ fun PlayerScreen(
         onSleep = { poke(); sheet = Sheet.SLEEP },
         onMore = { poke(); sheet = Sheet.MORE },
         onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
-        onChannels = if (onLivePick != null && playback.live != null) ({ poke(); sheet = Sheet.CHANNELS }) else null,
+        onChannels = if (onLivePick != null && playback.live != null) ({ overlay = false; sheet = Sheet.CHANNELS }) else null,
         thumbnail = thumbs?.let { t -> t::at },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,
@@ -773,6 +810,8 @@ fun PlayerScreen(
                 if (event.type == KeyEventType.KeyDown) lastTouch = System.currentTimeMillis()
                 // Media keys work whatever has focus.
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // The channel list is open: its rows take the arrows and OK.
+                if (sheet == Sheet.CHANNELS) return@onPreviewKeyEvent false
                 when (event.key) {
                     Key.MediaPlayPause -> { controls.onTogglePlay(); true }
                     Key.MediaPlay -> { player.play(); poke(); true }
@@ -784,10 +823,10 @@ fun PlayerScreen(
                     Key.MediaFastForward -> { controls.onSeekBy(30_000); true }
                     Key.MediaRewind -> { controls.onSeekBy(-30_000); true }
                     // Live TV: up and down switch channels whatever is on screen, like any TV.
-                    Key.DirectionUp -> { onZap?.invoke(-1); onZap != null }
-                    Key.DirectionDown -> { onZap?.invoke(1); onZap != null }
-                    Key.ChannelUp -> { onZap?.invoke(1); onZap != null }
-                    Key.ChannelDown -> { onZap?.invoke(-1); onZap != null }
+                    Key.DirectionUp -> { zapBy(-1); onZap != null }
+                    Key.DirectionDown -> { zapBy(1); onZap != null }
+                    Key.ChannelUp -> { zapBy(1); onZap != null }
+                    Key.ChannelDown -> { zapBy(-1); onZap != null }
                     Key.LastChannel -> { onPrevious?.invoke(); onPrevious != null }
                     Key.Zero, Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine,
                     Key.NumPad0, Key.NumPad1, Key.NumPad2, Key.NumPad3, Key.NumPad4, Key.NumPad5, Key.NumPad6, Key.NumPad7, Key.NumPad8, Key.NumPad9 -> {
@@ -803,24 +842,24 @@ fun PlayerScreen(
             .focusRequester(rootFocus)
             // With the overlay hidden, the remote controls playback directly.
             .onKeyEvent { event ->
-                if (overlay || event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                if (overlay || sheet == Sheet.CHANNELS || event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         // On a channel OK opens the list of channels; pausing live TV is rarely wanted.
-                        if (onLivePick != null && playback.live != null) { poke(); sheet = Sheet.CHANNELS } else controls.onTogglePlay()
+                        if (onLivePick != null && playback.live != null) { overlay = false; sheet = Sheet.CHANNELS } else controls.onTogglePlay()
                         true
                     }
                     // Live TV: left and right switch channels too; a held key does not race through the list.
                     Key.DirectionLeft -> {
-                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount == 0) onZap(-1) } else { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)) }
+                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount % 3 == 0) zapBy(-1) } else { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)) }
                         true
                     }
                     Key.DirectionRight -> {
-                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount == 0) onZap(1) } else { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)) }
+                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount % 3 == 0) zapBy(1) } else { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)) }
                         true
                     }
-                    Key.DirectionUp -> { if (onZap != null) onZap(-1) else poke(); true }
-                    Key.DirectionDown -> { if (onZap != null) onZap(1) else poke(); true }
+                    Key.DirectionUp -> { if (onZap != null) zapBy(-1) else poke(); true }
+                    Key.DirectionDown -> { if (onZap != null) zapBy(1) else poke(); true }
                     Key.Menu -> { poke(); true }
                     else -> false
                 }
@@ -970,6 +1009,25 @@ fun PlayerScreen(
             overlay && !pip && !locked, controls, touch,
         )
         if (locked) LockShield(lockHintAt, onTap = { lockHintAt = System.currentTimeMillis() }, onUnlock = { locked = false; poke() })
+        if (zapSteps != 0) {
+            ZapBanner(zapTarget, zapSteps, Modifier.align(Alignment.BottomStart).padding(32.dp))
+        } else if (channelInfo && !overlay && sheet == null && live != null) {
+            ZapBanner(LiveChoice(0, live.number ?: 0, live.channel, live.nowTitle), 0, Modifier.align(Alignment.BottomStart).padding(32.dp))
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = sheet == Sheet.CHANNELS && onLivePick != null,
+            enter = androidx.compose.animation.slideInHorizontally { -it / 2 } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutHorizontally { -it / 2 } + androidx.compose.animation.fadeOut(),
+        ) {
+            ChannelDrawer(
+                groups = liveGroups,
+                group = liveGroup,
+                channels = liveChannels,
+                currentId = playback.live?.channelId,
+                onPick = { id, g -> onLivePick?.invoke(id, g) },
+                onClose = { sheet = null; runCatching { rootFocus.requestFocus() } },
+            )
+        }
     }
 
     when (sheet) {
@@ -1065,33 +1123,8 @@ fun PlayerScreen(
             },
             onDismiss = { sheet = null },
         )
-        Sheet.CHANNELS -> {
-            var group by remember { mutableStateOf(liveGroup ?: liveGroups.firstOrNull()) }
-            val shown = group
-            if (shown == null) OptionsDialog(
-                "Разделы",
-                listOf(OptionSection(null, liveGroups.map { g -> Option(g, g == liveGroup, icon = Icons.AutoMirrored.Rounded.FormatListBulleted) { group = g } })),
-                onDismiss = { sheet = null },
-            ) else {
-                val list = remember(shown) { liveChannels(shown) }
-                val currentId = playback.live?.channelId
-                OptionsDialog(
-                    shown,
-                    listOf(
-                        OptionSection(null, listOf(Option("Все разделы", false, icon = Icons.AutoMirrored.Rounded.FormatListBulleted) { group = null })),
-                        OptionSection(null, list.map { c ->
-                            Option("${c.number}. ${c.name}" + (c.now?.let { " · $it" } ?: ""), c.id == currentId, icon = Icons.Rounded.PlayArrow) {
-                                if (c.id != currentId) onLivePick?.invoke(c.id, shown)
-                                sheet = null
-                            }
-                        }),
-                    ),
-                    onDismiss = { sheet = null },
-                    step = "Разделы",
-                    onBack = { group = null },
-                )
-            }
-        }
+        // Drawn over the picture as a side panel, above.
+        Sheet.CHANNELS -> Unit
         Sheet.QUEUE -> OptionsDialog(
             "Очередь",
             listOf(OptionSection(null, queue.mapIndexed { i, t -> Option(t, i == queueAt, icon = Icons.Rounded.MusicNote) { save(); onQueuePick?.invoke(i) } })),

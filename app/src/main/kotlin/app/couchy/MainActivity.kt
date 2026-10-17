@@ -281,6 +281,7 @@ private fun MainScreen(
     var pickOpen by remember { mutableStateOf(false) }
     var calendarOpen by remember { mutableStateOf(false) }
     var guideOpen by remember { mutableStateOf(false) }
+    var multiOpen by remember { mutableStateOf(false) }
     val togetherAsked by app.couchy.together.Room.sheetRequest.collectAsStateWithLifecycle()
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
@@ -871,7 +872,19 @@ private fun MainScreen(
         onRefresh = tvVm::refreshAll,
         onPlaylists = { showPlaylists = true },
         onGuide = { guideOpen = true },
+        onMulti = { multiOpen = true },
     )
+    if (multiOpen) {
+        app.couchy.ui.tv.MultiView(
+            channels = tv.channels,
+            groups = tv.groups,
+            group = tv.group,
+            inGroup = tvVm::inGroup,
+            start = tv.favorites.ifEmpty { tv.channels }.take(4).map { it.channel },
+            onFull = { ch -> multiOpen = false; vm.playDirect(tvVm.live(ch, tv.channels.map { it.channel })) },
+            onDismiss = { multiOpen = false },
+        )
+    }
     if (guideOpen) {
         app.couchy.ui.tv.GuideGrid(
             groups = tv.groups,

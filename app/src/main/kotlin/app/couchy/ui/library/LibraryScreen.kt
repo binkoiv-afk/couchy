@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Folder
 
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Download
@@ -61,6 +62,8 @@ class LibraryActions(
     val onRemoveFolder: (id: String) -> Unit = {},
     /** Opens «Итоги»: hours watched, favourite genres and actors. */
     val onStats: (() -> Unit)? = null,
+    /** «Календарь серий»: the followed series' episodes by day. */
+    val onCalendar: (() -> Unit)? = null,
 )
 
 /** Everything you have opened, filtered and sorted, as a grid of cards. */
@@ -98,6 +101,9 @@ fun LibraryContent(
             contentPadding = PaddingValues(horizontal = side, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            actions.onCalendar?.let { open ->
+                item { Chip("Календарь серий", false, onClick = open, icon = Icons.Rounded.CalendarMonth) }
+            }
             item {
                 Chip("Смотреть позже · ${state.saved.later.size}", list == "later", onClick = { list = if (list == "later") null else "later" }, icon = Icons.Rounded.Bookmark)
             }

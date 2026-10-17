@@ -58,7 +58,7 @@ object NewEpisodes {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK,
             ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<Worker>(6, TimeUnit.HOURS).setConstraints(network).build(),
+            PeriodicWorkRequestBuilder<Worker>(3, TimeUnit.HOURS).setConstraints(network).build(),
         )
     }
 
@@ -67,6 +67,10 @@ object NewEpisodes {
         val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<Worker>().setConstraints(network).build())
     }
+
+    /** Whether the phone lets Couchy run its checks in the background (Honor and Huawei stop them otherwise). */
+    fun backgroundAllowed(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 23 || context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
 
     fun canNotify(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

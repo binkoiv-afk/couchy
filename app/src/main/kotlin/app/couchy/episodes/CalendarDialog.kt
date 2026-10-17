@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +62,31 @@ fun CalendarDialog(onTitle: (Title) -> Unit, onDismiss: () -> Unit) {
     val following = remember { NewEpisodes.followed(app.marks).isNotEmpty() }
     LaunchedEffect(Unit) { if (following) days = runCatching { Calendar.load(app) }.getOrDefault(emptyList()) }
     CouchySheet("Календарь серий", onDismiss) {
+        val context = LocalContext.current
+        var notify by remember { mutableStateOf(NewEpisodes.canNotify(context)) }
+        var background by remember { mutableStateOf(NewEpisodes.backgroundAllowed(context)) }
+        val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+        ) { notify = it || NewEpisodes.canNotify(context) }
+        if (following && !notify) {
+            SheetRow("Уведомления выключены: включить", onClick = {
+                if (android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                else runCatching {
+                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+                }
+            }, icon = Icons.Rounded.NotificationsOff, selected = true)
+        }
+        if (following && !background) {
+            // Honor and Huawei stop apps in the background, and the check for new episodes with them.
+            SheetRow("Разрешить проверку в фоне, иначе уведомления не придут", onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + context.packageName)),
+                    )
+                }
+                background = true
+            }, icon = Icons.Rounded.BatteryAlert, selected = true)
+        }
         val now = System.currentTimeMillis()
         val list = days
         when {

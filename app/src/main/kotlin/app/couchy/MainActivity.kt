@@ -970,6 +970,7 @@ private fun MainScreen(
                     onRemoveSaved = { s -> downloads.remove(s.playback.key) },
                     onRemoveFolder = searchVm::removeFolder,
                     onStats = { statsOpen = true },
+                    onCalendar = { calendarOpen = true },
                 ),
             )
             Destination.SETTINGS -> prefs?.let { p ->

@@ -218,11 +218,33 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private fun keep(list: String, t: Title) {
         val adding = !marks.hasTitle(list, t)
         marks.toggleTitle(list, t)
-        if (adding && t.kind == TitleKind.SERIES && t.imdbId != null && !marks.hasTitle(Marks.FOLLOW, t)) {
-            marks.toggleTitle(Marks.FOLLOW, t)
-            NewEpisodes.checkSoon(couchy)
-        }
+        if (adding && t.kind == TitleKind.SERIES) viewModelScope.launch { follow(t) }
         couchy.sync.syncSoon()
+    }
+
+    /**
+     * Follows a series for its new episodes. The schedule comes by IMDb id, so a series found
+     * only on HDrezka gets its id looked up first; without one it cannot be followed.
+     */
+    private suspend fun follow(t: Title): Boolean {
+        val withId = if (t.imdbId != null) t else catalog.findImdb(t)?.let { t.copy(imdbId = it) } ?: return false
+        if (marks.hasTitle(Marks.FOLLOW, withId) || NewEpisodes.followed(marks).any { it.imdbId == withId.imdbId }) return true
+        marks.toggleTitle(Marks.FOLLOW, withId)
+        NewEpisodes.checkSoon(couchy)
+        return true
+    }
+
+    init {
+        // Series put in «Смотреть позже» or «Любимое» before this was followed are followed now, once.
+        viewModelScope.launch {
+            val prefs = couchy.getSharedPreferences("episodes", android.content.Context.MODE_PRIVATE)
+            if (prefs.getBoolean("lists_followed", false)) return@launch
+            (marks.titles(Marks.LATER) + marks.titles(Marks.LOVED))
+                .filter { it.kind == TitleKind.SERIES }
+                .distinctBy { it.key }
+                .forEach { runCatching { follow(it) } }
+            prefs.edit().putBoolean("lists_followed", true).apply()
+        }
     }
 
     /** Series the person hears about when a new episode is out. */

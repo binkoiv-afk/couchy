@@ -798,10 +798,21 @@ private fun Keep(state: TitleUi, actions: TitleActions) {
         )
     }
     // One even row of icons with short captions, like the actions under a film in a store.
+    // A series kept for later is followed too: its new episodes need the permission to notify.
+    val notifyContext = androidx.compose.ui.platform.LocalContext.current
+    val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+    fun keeping(on: Boolean, act: () -> Unit): () -> Unit = {
+        if (!on && state.title.kind == app.couchy.core.sources.TitleKind.SERIES && android.os.Build.VERSION.SDK_INT >= 33 &&
+            !app.couchy.episodes.NewEpisodes.canNotify(notifyContext)
+        ) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        act()
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         val cell = Modifier.weight(1f)
-        KeepAction(if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, "Позже", state.later, actions.onLater, cell)
-        KeepAction(if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Любимое", state.loved, actions.onLoved, cell)
+        KeepAction(if (state.later) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, "Позже", state.later, keeping(state.later, actions.onLater), cell)
+        KeepAction(if (state.loved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Любимое", state.loved, keeping(state.loved, actions.onLoved), cell)
         KeepAction(if (state.seen) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, "Смотрел", state.seen, actions.onSeen, cell)
         KeepAction(
             if (state.score != null) Icons.Rounded.Star else Icons.Rounded.StarBorder,

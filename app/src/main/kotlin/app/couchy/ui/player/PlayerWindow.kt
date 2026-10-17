@@ -46,16 +46,40 @@ object PlayerWindow {
 object BackgroundAudio {
     @Volatile var player: Player? = null
     @Volatile var title: String = ""
+    /** The player's session: with it the notification is the system's media card, as in music apps. */
+    @Volatile var session: androidx.media3.session.MediaSession? = null
+    private var watched: Player? = null
+    private var appContext: Context? = null
 
-    fun start(context: Context, player: Player, title: String) {
+    /** Play and pause redraw the notification's button. */
+    private val listener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) { refresh() }
+    }
+
+    fun start(context: Context, player: Player, title: String, session: androidx.media3.session.MediaSession? = null) {
         this.player = player
         this.title = title
+        if (session != null) this.session = session
+        appContext = context.applicationContext
+        if (watched !== player) {
+            watched?.removeListener(listener)
+            player.addListener(listener)
+            watched = player
+        }
         runCatching { androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, BackgroundAudioService::class.java)) }
     }
 
     fun stop(context: Context) {
+        watched?.removeListener(listener)
+        watched = null
         player = null
         runCatching { context.stopService(Intent(context, BackgroundAudioService::class.java)) }
+    }
+
+    private fun refresh() {
+        val c = appContext ?: return
+        if (player == null) return
+        runCatching { c.getSystemService(NotificationManager::class.java).notify(BackgroundAudioService.ID, BackgroundAudioService.notification(c)) }
     }
 }
 
@@ -65,6 +89,8 @@ class BackgroundAudioService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_TOGGLE -> BackgroundAudio.player?.let { if (it.isPlaying) it.pause() else it.play() }
+            ACTION_NEXT -> BackgroundAudio.session?.player?.seekToNext()
+            ACTION_PREVIOUS -> BackgroundAudio.session?.player?.seekToPrevious()
             ACTION_STOP -> {
                 BackgroundAudio.player?.pause()
                 BackgroundAudio.player = null
@@ -74,37 +100,55 @@ class BackgroundAudioService : Service() {
             }
         }
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
-        runCatching { ServiceCompat.startForeground(this, ID, notification(), type) }
+        runCatching { ServiceCompat.startForeground(this, ID, notification(this), type) }
         return START_NOT_STICKY
     }
 
-    private fun notification(): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(CHANNEL) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Фоновое воспроизведение", NotificationManager.IMPORTANCE_LOW))
-        }
-        fun action(name: String, code: Int) = PendingIntent.getService(
-            this, code, Intent(this, BackgroundAudioService::class.java).setAction(name), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE,
-        )
-        return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(BackgroundAudio.title.ifBlank { "Couchy" })
-            .setContentText("Играет в фоне")
-            .setContentIntent(open)
-            .setOngoing(true)
-            .setSilent(true)
-            .addAction(0, "Пауза / играть", action(ACTION_TOGGLE, 1))
-            .addAction(0, "Остановить", action(ACTION_STOP, 2))
-            .build()
-    }
-
     companion object {
-        private const val ID = 7302
+        const val ID = 7302
         private const val CHANNEL = "background"
         private const val ACTION_TOGGLE = "toggle"
         private const val ACTION_STOP = "stop"
+        private const val ACTION_NEXT = "next"
+        private const val ACTION_PREVIOUS = "previous"
+
+        fun notification(context: Context): Notification = with(context) {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(CHANNEL) == null) {
+                manager.createNotificationChannel(NotificationChannel(CHANNEL, "Фоновое воспроизведение", NotificationManager.IMPORTANCE_LOW))
+            }
+            fun action(name: String, code: Int) = PendingIntent.getService(
+                this, code, Intent(this, BackgroundAudioService::class.java).setAction(name), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val open = PendingIntent.getActivity(
+                this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE,
+            )
+            val session = BackgroundAudio.session
+            val playing = BackgroundAudio.player?.isPlaying == true
+            val title = BackgroundAudio.title.ifBlank { "Couchy" }
+            val (song, artist) = songParts(title)
+            val builder = NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(song)
+                .setContentText(artist.ifBlank { "Couchy" })
+                .setContentIntent(open)
+                .setOngoing(playing)
+                .setSilent(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setDeleteIntent(action(ACTION_STOP, 2))
+            if (session != null) {
+                // The system's media card: cover, timeline and buttons in the shade and on the lock screen.
+                builder
+                    .addAction(android.R.drawable.ic_media_previous, "Предыдущая", action(ACTION_PREVIOUS, 3))
+                    .addAction(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (playing) "Пауза" else "Играть", action(ACTION_TOGGLE, 1))
+                    .addAction(android.R.drawable.ic_media_next, "Следующая", action(ACTION_NEXT, 4))
+                    .setStyle(androidx.media3.session.MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2))
+            } else {
+                builder
+                    .addAction(0, "Пауза / играть", action(ACTION_TOGGLE, 1))
+                    .addAction(0, "Остановить", action(ACTION_STOP, 2))
+            }
+            builder.build()
+        }
     }
 }

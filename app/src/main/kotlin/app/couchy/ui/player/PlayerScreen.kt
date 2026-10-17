@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.MusicNote
@@ -186,6 +187,10 @@ fun PlayerScreen(
     queue: List<String> = emptyList(),
     queueAt: Int = 0,
     onQueuePick: ((Int) -> Unit)? = null,
+    /** YouTube Music: a music player instead of a video, its controls in the notification shade too. */
+    music: Boolean = false,
+    /** The album or playlist the songs come from, shown over the cover. */
+    musicAlbum: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -196,28 +201,42 @@ fun PlayerScreen(
 
     // The system knows what plays: "Окей Гугл, пауза", the Now Playing card, TV and Bluetooth media keys.
     val nextNow by androidx.compose.runtime.rememberUpdatedState(if (hasNext && playback.live == null) ({ onFinished() }) else null)
+    val previousNow by androidx.compose.runtime.rememberUpdatedState(if (music && queueAt > 0 && onQueuePick != null) ({ onQueuePick(queueAt - 1) }) else null)
     androidx.compose.runtime.DisposableEffect(player) {
         val shown = object : androidx.media3.common.ForwardingPlayer(player) {
             private fun canNext() = nextNow != null
+            private fun canPrevious() = previousNow != null
             override fun getAvailableCommands(): androidx.media3.common.Player.Commands =
                 super.getAvailableCommands().buildUpon().apply {
                     if (canNext()) addAll(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT, androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    if (canPrevious()) addAll(androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS, androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                 }.build()
             override fun isCommandAvailable(command: Int): Boolean =
                 (canNext() && (command == androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT || command == androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)) ||
+                    (canPrevious() && (command == androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS || command == androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) ||
                     super.isCommandAvailable(command)
             override fun seekToNext() { nextNow?.invoke() ?: super.seekToNext() }
             override fun seekToNextMediaItem() { nextNow?.invoke() ?: super.seekToNextMediaItem() }
+            // A song past its first seconds starts over, as in any music app; earlier, the one before.
+            override fun seekToPrevious() { if (player.currentPosition > 3_000 || previousNow == null) player.seekTo(0) else previousNow?.invoke() }
+            override fun seekToPreviousMediaItem() { previousNow?.invoke() ?: super.seekToPreviousMediaItem() }
             override fun getMediaMetadata(): androidx.media3.common.MediaMetadata =
                 super.getMediaMetadata().buildUpon()
                     .setTitle(playback.title)
                     .apply { playback.artwork?.let { setArtworkUri(android.net.Uri.parse(it)) } }
+                    .apply { if (music) songParts(playback.title).let { (t, a) -> setTitle(t); setArtist(a.ifBlank { null }); setAlbumTitle(musicAlbum) } }
                     .build()
         }
         val session = runCatching {
             androidx.media3.session.MediaSession.Builder(context, shown).setId("couchy-${System.nanoTime()}").build()
         }.getOrNull()
-        onDispose { session?.release() }
+        // Music sits in the notification shade from the first song, not only once Couchy is left.
+        session?.let { BackgroundAudio.session = it }
+        if (music) BackgroundAudio.start(context, player, playback.title, session)
+        onDispose {
+            if (BackgroundAudio.session === session) BackgroundAudio.session = null
+            session?.release()
+        }
     }
     val fallback by androidx.compose.runtime.rememberUpdatedState(onUnplayable)
     val variantNow by androidx.compose.runtime.rememberUpdatedState(onVariant)
@@ -245,7 +264,9 @@ fun PlayerScreen(
     val skipped = remember(playback.key) { mutableSetOf<app.couchy.Skip>() }
     val pip by PlayerWindow.pip.collectAsState()
     // YouTube goes on in the background, like YouTube Premium.
-    val background = playback.live == null && (playback.audioUri != null || app.couchy.core.youtube.YouTubeLinks.isVideo(playback.key))
+    val background = playback.live == null && (music || playback.audioUri != null || app.couchy.core.youtube.YouTubeLinks.isVideo(playback.key))
+    // Closing the music takes it out of the shade.
+    DisposableEffect(music) { onDispose { if (music) BackgroundAudio.stop(context) } }
     // The series' opening titles, marked once and jumped over in every episode after.
     val marks = (context.applicationContext as app.couchy.CouchyApp).marks
     val stats = (context.applicationContext as app.couchy.CouchyApp).stats
@@ -382,7 +403,7 @@ fun PlayerScreen(
     // Full screen: the status and navigation bars hide and come back with a swipe from the edge.
     val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.DisposableEffect(view, mini) {
-        if (mini) return@DisposableEffect onDispose { }
+        if (mini || music) return@DisposableEffect onDispose { if (music) stats.flush() }
         val window = (view.context as? android.app.Activity)?.window
         val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -476,7 +497,7 @@ fun PlayerScreen(
     }
     androidx.compose.runtime.LaunchedEffect(upright, phone, mini) {
         if (phone) (context as? Activity)?.requestedOrientation = when {
-            mini -> orientationBefore ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            mini || music -> orientationBefore ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             upright -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
@@ -492,13 +513,13 @@ fun PlayerScreen(
                     if (background && player.isPlaying) {
                         // The sound goes on with the screen off; the picture is not decoded meanwhile.
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
-                        BackgroundAudio.start(context, player, playback.title)
+                        if (!music) BackgroundAudio.start(context, player, playback.title)
                     } else {
                         player.pause()
                     }
                 }
                 Lifecycle.Event.ON_START -> {
-                    BackgroundAudio.stop(context)
+                    if (!music) BackgroundAudio.stop(context)
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false).build()
                 }
                 else -> Unit
@@ -715,11 +736,36 @@ fun PlayerScreen(
     )
 
     if (mini) {
-        MiniPlayer(player, ui, playback.artwork, modifier, onExpand = onExpand, onToggle = { if (player.isPlaying) player.pause() else player.play() }, onClose = ::exit)
+        MiniPlayer(
+            player, ui, playback.artwork, modifier, onExpand = onExpand, onToggle = { if (player.isPlaying) player.pause() else player.play() }, onClose = ::exit,
+            music = music, onNext = if (music && hasNext) ({ save(); onFinished() }) else null,
+        )
         return
     }
 
-    Box(
+    if (music && touch) {
+        MusicView(
+            ui = ui,
+            artwork = playback.artwork,
+            track = queue.getOrNull(queueAt) ?: playback.title,
+            album = musicAlbum,
+            queueAt = queueAt,
+            queueSize = queue.size,
+            sleepLabel = when {
+                sleepAfterEpisode -> "До конца песни"
+                sleepAt != null -> java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(sleepAt!!))
+                else -> null
+            },
+            onDown = ::leave,
+            onToggle = { if (player.isPlaying) player.pause() else player.play() },
+            onSeekTo = { player.seekTo(it) },
+            onPrevious = { if (player.currentPosition > 3_000 || queueAt == 0 || onQueuePick == null) player.seekTo(0) else { save(); onQueuePick(queueAt - 1) } },
+            onNext = if (hasNext) ({ save(); onFinished() }) else null,
+            onQueue = if (queue.size > 1 && onQueuePick != null) ({ sheet = Sheet.QUEUE }) else null,
+            onSave = onSaveAudio,
+            onSleep = { sheet = Sheet.SLEEP },
+        )
+    } else Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -1235,8 +1281,45 @@ private fun Cover(url: String, title: String) {
 
 /** The video small in a corner, over the rest of Couchy: tap to open it again, ✕ to stop. */
 @Composable
-private fun MiniPlayer(player: Player, ui: PlayerUi, artwork: String?, modifier: Modifier, onExpand: () -> Unit, onToggle: () -> Unit, onClose: () -> Unit) {
+private fun MiniPlayer(
+    player: Player, ui: PlayerUi, artwork: String?, modifier: Modifier, onExpand: () -> Unit, onToggle: () -> Unit, onClose: () -> Unit,
+    music: Boolean = false, onNext: (() -> Unit)? = null,
+) {
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    if (music) {
+        // Music: a slim bar with the cover, the song, play and next; no picture to show.
+        Row(
+            modifier
+                .width(300.dp)
+                .shadow(16.dp, shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
+                .clip(shape)
+                .pointerInput(Unit) { detectTapGestures(onTap = { onExpand() }) }
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(44.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).background(Color.Black)) {
+                artwork?.let { coil.compose.AsyncImage(it, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            }
+            val (title, artist) = songParts(ui.title)
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (artist.isNotBlank()) Text(artist, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            androidx.compose.material3.IconButton(onClick = onToggle) {
+                androidx.compose.material3.Icon(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (ui.playing) "Пауза" else "Играть", tint = MaterialTheme.colorScheme.onSurface)
+            }
+            onNext?.let { next ->
+                androidx.compose.material3.IconButton(onClick = next) {
+                    androidx.compose.material3.Icon(Icons.Rounded.SkipNext, "Следующая", tint = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            androidx.compose.material3.IconButton(onClick = onClose) {
+                androidx.compose.material3.Icon(Icons.Rounded.Close, "Закрыть", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
     Column(
         modifier
             .width(232.dp)

@@ -611,6 +611,8 @@ private fun MainScreen(
             queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }.orEmpty(),
             queueAt = songs?.index ?: 0,
             onQueuePick = songs?.let { { i: Int -> ytVm.nextTrack(i); Unit } },
+            music = songs != null,
+            musicAlbum = songs?.album,
             mini = mini,
             onMinimize = if (youTube) ({ vm.mini.value = true }) else null,
             onExpand = { vm.mini.value = false },

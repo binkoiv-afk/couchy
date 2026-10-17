@@ -24,6 +24,8 @@ class TvRepository(private val dao: TvDao) {
 
     suspend fun channel(id: Long) = dao.channel(id)
 
+    suspend fun programsBetween(from: Long, to: Long) = dao.programsBetween(from, to)
+
     suspend fun setFavorite(channel: ChannelEntity, favorite: Boolean) = dao.setFavorite(channel.id, favorite)
 
     suspend fun addM3u(name: String, url: String, epg: String?): Long {

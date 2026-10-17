@@ -106,6 +106,9 @@ class TvViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectGroup(name: String) { group.value = name }
 
+    /** The guide grid: every programme from [from] to [to], by guide id. */
+    suspend fun guide(from: Long, to: Long): Map<String, List<ProgramEntity>> = repo.programsBetween(from, to).groupBy { it.epgId }
+
     fun focus(channel: ChannelEntity?) { focused.value = channel }
 
     fun toggleFavorite(channel: ChannelEntity) = viewModelScope.launch { repo.setFavorite(channel, !channel.favorite) }

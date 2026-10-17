@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -66,6 +67,8 @@ class TvActions(
     val onPlaylists: () -> Unit,
     /** The star on a channel row: favorite in one tap. */
     val onStar: (ChannelNow) -> Unit = {},
+    /** The guide as a grid of channels and hours. */
+    val onGuide: () -> Unit = {},
 )
 
 private val time = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -113,6 +116,7 @@ fun TvContent(
 private fun Header(state: TvState, actions: TvActions, modifier: Modifier) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("ТВ", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+        SecondaryButton(null, Icons.Rounded.Schedule, onClick = actions.onGuide)
         SecondaryButton(null, Icons.AutoMirrored.Rounded.PlaylistPlay, onClick = actions.onPlaylists)
         SecondaryButton(null, Icons.Rounded.Refresh, onClick = actions.onRefresh)
         SecondaryButton(null, Icons.Rounded.Add, onClick = actions.onAdd)
@@ -124,6 +128,7 @@ private fun Header(state: TvState, actions: TvActions, modifier: Modifier) {
 private fun Groups(state: TvState, actions: TvActions, modifier: Modifier) {
     Column(modifier.background(MaterialTheme.colorScheme.surfaceContainer).padding(top = 20.dp)) {
         Text("ТВ", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 24.dp, bottom = 12.dp))
+        Column(Modifier.padding(horizontal = 12.dp)) { SideButton(Icons.Rounded.Schedule, "Телегид", actions.onGuide) }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
             items(state.groups) { g ->
                 val selected = g == state.group

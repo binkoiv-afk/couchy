@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -83,6 +84,16 @@ fun MusicView(
     onSleep: () -> Unit,
 ) {
     val (title, artist) = songParts(track.ifBlank { ui.title })
+    // The words: shown over the cover's place, the line being sung lit and kept in view.
+    var showWords by remember { mutableStateOf(false) }
+    var words by remember(track) { mutableStateOf<app.couchy.core.music.Lyrics?>(null) }
+    var wordsLoading by remember(track) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(track, showWords, ui.durationMs > 0) {
+        if (!showWords || words != null || wordsLoading) return@LaunchedEffect
+        wordsLoading = true
+        words = app.couchy.youtube.LyricsApi.find(title, artist, ui.durationMs / 1000)
+        wordsLoading = false
+    }
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0F))) {
         // The cover again, blurred, as the backdrop; older Android gets the plain dark one.
         if (artwork != null && Build.VERSION.SDK_INT >= 31) {
@@ -103,7 +114,8 @@ fun MusicView(
                 else Spacer(Modifier.size(48.dp))
             }
             Spacer(Modifier.weight(1f))
-            Box(
+            if (showWords) Words(words, wordsLoading, ui.positionMs, onSeekTo, Modifier.widthIn(max = 420.dp).fillMaxWidth().aspectRatio(1f))
+            else Box(
                 Modifier.widthIn(max = 420.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -144,11 +156,48 @@ fun MusicView(
             }
             Spacer(Modifier.height(20.dp))
             Row(Modifier.widthIn(max = 420.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Small(Icons.Rounded.Lyrics, "Текст", showWords) { showWords = !showWords }
                 Small(Icons.Rounded.Bedtime, sleepLabel ?: "Таймер", sleepLabel != null, onSleep)
                 onSave?.let { Small(Icons.Rounded.Download, "Сохранить", false, it) }
                 if (onQueue != null && queueSize > 1) Small(Icons.Rounded.QueueMusic, "${queueAt + 1} из $queueSize", false, onQueue)
             }
             Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+/** The song's words; synced ones follow the song, and a tap on a line jumps there. */
+@Composable
+private fun Words(lyrics: app.couchy.core.music.Lyrics?, loading: Boolean, positionMs: Long, onSeekTo: (Long) -> Unit, modifier: Modifier) {
+    Box(modifier.clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+        when {
+            loading -> CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp)
+            lyrics == null -> Text("Текст этой песни не нашёлся", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
+            else -> {
+                val state = androidx.compose.foundation.lazy.rememberLazyListState()
+                val at = if (lyrics.synced) app.couchy.core.music.LrcLib.lineAt(lyrics.lines, positionMs) else -1
+                androidx.compose.runtime.LaunchedEffect(at) { if (at >= 0) state.animateScrollToItem((at - 2).coerceAtLeast(0)) }
+                androidx.compose.foundation.lazy.LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = state,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(lyrics.lines.size) { i ->
+                        val (start, line) = lyrics.lines[i]
+                        Text(
+                            line.ifBlank { "♪" },
+                            style = if (lyrics.synced) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
+                            color = when {
+                                !lyrics.synced -> Color.White.copy(alpha = 0.9f)
+                                i == at -> Color.White
+                                else -> Color.White.copy(alpha = 0.4f)
+                            },
+                            modifier = if (lyrics.synced && start >= 0) Modifier.couchyClickable(RoundedCornerShape(8.dp)) { onSeekTo(start) } else Modifier,
+                        )
+                    }
+                }
+            }
         }
     }
 }

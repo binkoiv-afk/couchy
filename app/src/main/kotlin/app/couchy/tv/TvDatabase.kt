@@ -133,6 +133,10 @@ interface TvDao {
     @Query("SELECT * FROM programs WHERE stop > :now AND start < :until ORDER BY epgId, start")
     fun observeUpcoming(now: Long, until: Long): Flow<List<ProgramEntity>>
 
+    /** Every channel's programmes in a stretch of time, for the guide grid. */
+    @Query("SELECT * FROM programs WHERE stop > :from AND start < :to ORDER BY epgId, start")
+    suspend fun programsBetween(from: Long, to: Long): List<ProgramEntity>
+
     @Query("SELECT * FROM programs WHERE epgId = :epgId AND stop > :from AND start < :to ORDER BY start")
     fun observeSchedule(epgId: String, from: Long, to: Long): Flow<List<ProgramEntity>>
 

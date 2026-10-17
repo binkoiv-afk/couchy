@@ -225,6 +225,11 @@ object YouTubeClient {
         pageOf(KioskInfo.getInfo(list.getExtractorById(id, null)).relatedItems, null).videos
     }
 
+    /** YouTube's own mix of songs like this one: the first page is enough to go on with. */
+    suspend fun radio(videoId: String): List<YtVideo> = io {
+        PlaylistInfo.getInfo(service, "https://www.youtube.com/watch?v=$videoId&list=RD$videoId").relatedItems.map(::videoOf)
+    }
+
     /** An album's or playlist's tracks, in order. */
     suspend fun tracks(url: String): List<YtVideo> = io {
         val info = PlaylistInfo.getInfo(service, url)

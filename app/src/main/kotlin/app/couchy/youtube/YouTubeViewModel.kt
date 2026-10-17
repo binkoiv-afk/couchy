@@ -365,14 +365,51 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** The next song, or another one in the queue. */
+    /** The next song, or another one in the queue; past the end, the radio goes on with similar songs. */
     fun nextTrack(to: Int? = null): Boolean {
         val q = _queue.value ?: return false
         val i = to ?: (q.index + 1)
-        if (i !in q.tracks.indices) return false
-        _queue.value = q.copy(index = i)
-        playTrack()
+        if (i in q.tracks.indices) {
+            _queue.value = q.copy(index = i)
+            playTrack()
+            return true
+        }
+        if (to != null) return false
+        viewModelScope.launch {
+            extendWithRadio()
+            radioJob?.join()
+            val now = _queue.value ?: return@launch
+            if (now.index + 1 in now.tracks.indices) {
+                _queue.value = now.copy(index = now.index + 1)
+                playTrack()
+            } else {
+                _error.value = "Похожие песни не нашлись"
+            }
+        }
         return true
+    }
+
+    private var radioJob: Job? = null
+
+    /**
+     * On the last song of the queue, songs like it are added behind it, as YouTube Music's radio
+     * does, so the music does not stop.
+     */
+    private fun extendWithRadio() {
+        val q = _queue.value ?: return
+        if (q.hasNext || radioJob?.isActive == true) return
+        val seed = q.current
+        radioJob = viewModelScope.launch {
+            val id = app.couchy.core.youtube.YouTubeLinks.videoId(seed.url) ?: seed.id
+            val more = (
+                if (MusicApi.signedIn) runCatching { MusicApi.tracks("${app.couchy.core.youtube.MusicAccount.ORIGIN}/watch?v=$id&list=RDAMVM$id") }.getOrNull().orEmpty()
+                else emptyList()
+            ).ifEmpty { runCatching { YouTubeClient.radio(id) }.getOrDefault(emptyList()) }.map(::artistOnly)
+            val now = _queue.value ?: return@launch
+            val known = now.tracks.map { it.id }.toSet()
+            val fresh = more.filter { it.id !in known }.distinctBy { it.id }
+            if (fresh.isNotEmpty()) _queue.value = now.copy(tracks = now.tracks + fresh, album = now.album ?: "Радио")
+        }
     }
 
     fun stopMusic() { _queue.value = null }
@@ -398,6 +435,8 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
         val q = _queue.value ?: return
         val v = q.current
         trackJob?.cancel()
+        // The last song: similar ones are looked up while it plays.
+        if (!q.hasNext) extendWithRadio()
         _busy.value = true
         trackJob = viewModelScope.launch {
             try {
@@ -409,7 +448,8 @@ class YouTubeViewModel(app: Application) : AndroidViewModel(app) {
                     headers = mapOf("User-Agent" to a.userAgent),
                     key = v.url,
                     artwork = a.thumb ?: v.thumb,
-                    nextRef = MUSIC_NEXT.takeIf { q.hasNext },
+                    // There is always a next song: past the queue the radio picks one.
+                    nextRef = MUSIC_NEXT,
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

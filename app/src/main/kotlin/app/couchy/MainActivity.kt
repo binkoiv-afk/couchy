@@ -280,6 +280,7 @@ private fun MainScreen(
     var statsOpen by remember { mutableStateOf(false) }
     var pickOpen by remember { mutableStateOf(false) }
     var calendarOpen by remember { mutableStateOf(false) }
+    var guideOpen by remember { mutableStateOf(false) }
     val togetherAsked by app.couchy.together.Room.sheetRequest.collectAsStateWithLifecycle()
     val kids = LocalKidsMode.current
     var askPin by remember { mutableStateOf(false) }
@@ -869,7 +870,24 @@ private fun MainScreen(
         onAdd = { addPlaylist = "" },
         onRefresh = tvVm::refreshAll,
         onPlaylists = { showPlaylists = true },
+        onGuide = { guideOpen = true },
     )
+    if (guideOpen) {
+        app.couchy.ui.tv.GuideGrid(
+            groups = tv.groups,
+            group = tv.group,
+            channels = tv.channels,
+            load = tvVm::guide,
+            onGroup = tvVm::selectGroup,
+            onLive = { ch -> guideOpen = false; vm.playDirect(tvVm.live(ch, tv.channels.map { it.channel })) },
+            onArchive = { ch, p ->
+                val archived = tvVm.archive(ch, p)
+                if (archived != null) { guideOpen = false; vm.playDirect(archived) }
+                else vm.showNotice("Архив этого канала не доходит до этой передачи.")
+            },
+            onDismiss = { guideOpen = false },
+        )
+    }
 
     // Back on another tab goes home first; only on Главная does it leave the app.
     BackHandler(enabled = destination != Destination.HOME) { destination = Destination.HOME }

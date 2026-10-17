@@ -183,7 +183,10 @@ fun SheetRow(
                 style = MaterialTheme.typography.labelMedium,
                 color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // A long tag is cut short instead of squeezing the name into a column of letters.
                 modifier = Modifier
+                    .widthIn(max = 150.dp)
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )

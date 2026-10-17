@@ -764,8 +764,15 @@ fun PlayerScreen(
                         if (onLivePick != null && playback.live != null) { poke(); sheet = Sheet.CHANNELS } else controls.onTogglePlay()
                         true
                     }
-                    Key.DirectionLeft -> { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)); true }
-                    Key.DirectionRight -> { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)); true }
+                    // Live TV: left and right switch channels too; a held key does not race through the list.
+                    Key.DirectionLeft -> {
+                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount == 0) onZap(-1) } else { seekingByKey = true; controls.onSeekBy(-seekStep(event.nativeKeyEvent.repeatCount)) }
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        if (onZap != null) { if (event.nativeKeyEvent.repeatCount == 0) onZap(1) } else { seekingByKey = true; controls.onSeekBy(seekStep(event.nativeKeyEvent.repeatCount)) }
+                        true
+                    }
                     Key.DirectionUp -> { if (onZap != null) onZap(-1) else poke(); true }
                     Key.DirectionDown -> { if (onZap != null) onZap(1) else poke(); true }
                     Key.Menu -> { poke(); true }

@@ -80,14 +80,15 @@ fun LibraryContent(
             Modifier.fillMaxWidth().padding(start = side, end = side, top = 20.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Моё", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
+            // One line always: the buttons beside it never push a letter onto the next line.
+            Text("Моё", style = MaterialTheme.typography.headlineLarge, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 actions.onStats?.let { open ->
                     app.couchy.ui.components.SecondaryButton("Итоги", Icons.Rounded.Insights, onClick = open)
                 }
                 // Phones keep settings here; TV and tablets have them in the side menu.
                 if (!form.wide) actions.onSettings?.let { open ->
-                    app.couchy.ui.components.SecondaryButton("Настройки", Icons.Rounded.Settings, onClick = open)
+                    app.couchy.ui.components.SecondaryButton(null, Icons.Rounded.Settings, onClick = open)
                 }
             }
         }

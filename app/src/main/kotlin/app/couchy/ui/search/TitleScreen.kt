@@ -420,7 +420,7 @@ private fun SourceRows(state: TitleUi, actions: TitleActions, onClose: () -> Uni
         val tag = when (hit.site) {
             app.couchy.core.sources.Rutube.ID -> "авто"
             app.couchy.core.sources.Seasonvar.ID -> "озвучки"
-            app.couchy.core.sources.Filmix.ID -> "озвучки · до 1080p"
+            app.couchy.core.sources.Filmix.ID -> "озвучки"
             else -> "1080p"
         }
         SheetRow(siteName(hit.site), onClick = { onClose(); actions.onSite(hit) }, icon = Icons.Rounded.PlayCircle, tag = tag, badge = badge())

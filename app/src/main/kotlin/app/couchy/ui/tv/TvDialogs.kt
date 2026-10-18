@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -48,6 +49,8 @@ fun AddPlaylistDialog(
     onDismiss: () -> Unit,
     /** Picks an .m3u file on the device instead of typing a link. */
     onPickFile: (() -> Unit)? = null,
+    /** Sends an .m3u file from the phone by QR. */
+    onPhone: (() -> Unit)? = null,
 ) {
     // An Xtream panel link fills the login form; it keeps working when the panel changes the list.
     val panel = remember(initialUrl) { Links.xtream(initialUrl) }
@@ -87,6 +90,9 @@ fun AddPlaylistDialog(
                     )
                     if (onPickFile != null && !url.startsWith("file:")) {
                         app.couchy.ui.components.SecondaryButton("Выбрать файл на устройстве", Icons.Rounded.FolderOpen, onClick = { onDismiss(); onPickFile() })
+                    }
+                    if (onPhone != null && !url.startsWith("file:")) {
+                        app.couchy.ui.components.SecondaryButton("Файл с телефона по QR", Icons.Rounded.QrCode2, onClick = { onDismiss(); onPhone() })
                     }
                     OutlinedTextField(
                         epg, { epg = it }, label = { Text("Телепрограмма XMLTV (необязательно)") }, singleLine = true,

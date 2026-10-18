@@ -251,6 +251,7 @@ private fun MainScreen(
     var showOpen by rememberSaveable { mutableStateOf(false) }
     // Couchy's own file browser, for flash drives and boxes with no system file picker.
     var showFiles by remember { mutableStateOf(false) }
+    var showPhoneFile by remember { mutableStateOf(false) }
     var searchFocus by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
     val tv by tvVm.state.collectAsStateWithLifecycle()
@@ -565,6 +566,7 @@ private fun MainScreen(
             onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
             onDismiss = { addPlaylist = null },
             onPickFile = { if (form.isTv) showFiles = true else runCatching { pickFile.launch(arrayOf("*/*")) }.onFailure { showFiles = true } },
+            onPhone = { showPhoneFile = true },
         )
     }
 
@@ -1165,6 +1167,7 @@ private fun MainScreen(
                 }
             },
             onFiles = { showFiles = true },
+            onPhone = { showPhoneFile = true },
             onDismiss = { showOpen = false },
         )
     }
@@ -1172,6 +1175,12 @@ private fun MainScreen(
         app.couchy.ui.open.FilesDialog(
             onOpen = { uri -> showFiles = false; showOpen = false; addPlaylist = null; vm.open(uri) },
             onDismiss = { showFiles = false },
+        )
+    }
+    if (showPhoneFile) {
+        app.couchy.pair.PhoneFileDialog(
+            onFile = { uri -> showPhoneFile = false; showOpen = false; addPlaylist = null; vm.open(uri.toString()) },
+            onDismiss = { showPhoneFile = false },
         )
     }
 

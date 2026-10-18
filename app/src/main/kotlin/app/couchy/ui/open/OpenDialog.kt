@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
@@ -30,8 +31,9 @@ import app.couchy.core.Links
 import app.couchy.ui.components.SecondaryButton
 
 /** "Открыть видео": paste or type a link, or pick a file on the device. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -> Unit, onFiles: () -> Unit = {}) {
+fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -> Unit, onFiles: () -> Unit = {}, onPhone: () -> Unit = {}) {
     var link by rememberSaveable { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     val valid = Links.looksLikeLink(link)
@@ -50,12 +52,13 @@ fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -
                     keyboardActions = KeyboardActions(onGo = { if (valid) onOpen(link.trim()) }),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Вставить", Icons.Rounded.ContentPaste, onClick = {
                         clipboard.getText()?.text?.trim()?.let { link = it }
                     })
                     SecondaryButton("Файл", Icons.Rounded.FolderOpen, onClick = onPickFile)
                     SecondaryButton("Флешка", Icons.Rounded.Usb, onClick = onFiles)
+                    SecondaryButton("С телефона", Icons.Rounded.QrCode2, onClick = onPhone)
                 }
                 Text(
                     "Поддерживаются mp4, mkv, webm, потоки HLS (.m3u8) и DASH (.mpd), торренты и плейлисты IPTV (.m3u).",

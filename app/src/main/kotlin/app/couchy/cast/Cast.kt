@@ -87,6 +87,13 @@ class Cast(private val context: Context) {
                 val n = c.getInputStream().read(chunk)
                 if (n < 0) break
                 buffer.write(chunk, 0, n)
+                // A file from the phone: written to storage as it comes, never held in memory.
+                if (need < 0) app.couchy.pair.PhoneFile.upload(buffer.toByteArray())?.let { upload ->
+                    c.soTimeout = 30_000
+                    val answer = runCatching { app.couchy.pair.PhoneFile.receive(upload, c.getInputStream()) }.getOrElse { CastHttp.response(500, "{}") }
+                    runCatching { c.getOutputStream().apply { write(answer); flush() } }
+                    return@use
+                }
                 if (need < 0) need = CastHttp.totalLength(buffer.toByteArray())
                 if (need >= 0 && buffer.size() >= need) break
             }
@@ -127,6 +134,7 @@ class Cast(private val context: Context) {
             r.method == "POST" && r.path == "/pair" -> if (app.couchy.pair.Transfer.receive(r.body)) CastHttp.response(200, "{}") else CastHttp.response(403, "{}")
             // Typing on the phone for a field on this TV.
             r.method == "GET" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.page(r.path).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
+            r.method == "GET" && r.path.startsWith("/file") -> app.couchy.pair.PhoneFile.page(r.path).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             r.method == "POST" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.receive(r.body).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             r.method == "POST" && r.path == "/play" -> {
                 val cast = CastRequest.fromJson(r.body)

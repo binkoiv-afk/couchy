@@ -527,7 +527,7 @@ fun PlayerScreen(
                     return
                 }
                 if (!offline && !started && fallback?.invoke() == true) return
-                ui = ui.copy(error = errorText(error), buffering = false)
+                ui = ui.copy(error = errorText(error) + "\n\n" + errorDetail(error), buffering = false)
                 overlay = true
             }
         }
@@ -1738,6 +1738,13 @@ private fun currentTextLanguage(player: Player): String? =
     if (textDisabled(player)) "" else currentLanguage(player, C.TRACK_TYPE_TEXT)
 
 private fun speedLabel(speed: Float) = (if (speed % 1f == 0f) "${speed.toInt()}" else "$speed").replace('.', ',') + "×"
+
+/** The technical side, small, for a photo of the screen when something only fails on one device. */
+private fun errorDetail(error: PlaybackException): String {
+    val causes = generateSequence(error.cause) { it.cause }.take(3)
+        .map { c -> c.javaClass.simpleName + (c.message?.take(90)?.let { ": $it" } ?: "") }.toList()
+    return (listOf(error.errorCodeName) + causes).joinToString(" · ")
+}
 
 private fun errorText(error: PlaybackException): String = when (error.errorCode) {
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,

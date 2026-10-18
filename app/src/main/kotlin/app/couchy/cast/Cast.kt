@@ -94,14 +94,20 @@ class Cast(private val context: Context) {
         }
         val r = request
         // A malformed request gets an error back; it never takes Couchy down.
-        val answer = runCatching { answer(r) }.getOrElse { CastHttp.response(500, "{}") }
+        val answer = runCatching { answer(r, c.inetAddress?.hostAddress) }.getOrElse { CastHttp.response(500, "{}") }
         runCatching { c.getOutputStream().apply { write(answer); flush() } }
     }
 
-    private fun answer(r: CastHttp.Request?): ByteArray =
+    /** The port this device listens on. */
+    val port: Int get() = server?.localPort ?: CastHttp.PORT
+
+    private fun answer(r: CastHttp.Request?, from: String?): ByteArray =
         when {
             r == null -> CastHttp.response(400, "{}")
-            r.method == "GET" && r.path == "/hello" -> CastHttp.response(200, "{\"name\":\"${deviceName.replace("\"", "")}\"}")
+            r.method == "GET" && r.path == "/hello" -> CastHttp.response(200, org.json.JSONObject().put("name", deviceName).put("id", app.couchy.sync.LanSync.myId).toString())
+            // Wi‑Fi sync between linked devices.
+            r.method == "POST" && r.path == "/lan/link" -> app.couchy.sync.LanSync.answerLink(r.body).let { (code, body) -> CastHttp.response(code, body) }
+            r.method == "POST" && r.path == "/lan/sync" -> app.couchy.sync.LanSync.answerSync(r.body, from).let { (code, body) -> CastHttp.response(code, body) }
             // The phone remote: what plays here, and its buttons.
             r.method == "GET" && r.path == "/state" -> CastHttp.response(200, RemoteBridge.state?.toJson() ?: "{}")
             r.method == "POST" && r.path == "/control" -> {

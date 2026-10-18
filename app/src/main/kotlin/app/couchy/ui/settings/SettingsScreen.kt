@@ -132,7 +132,7 @@ enum class SettingsPage(val title: String, val icon: ImageVector, val hint: Stri
     ),
     SYNC(
         "Синхронизация", Icons.Rounded.Sync,
-        "История, места остановки, избранное, плейлисты ТВ и список заблокированных сайтов одинаковые на всех устройствах. Хранится в одном файле на вашем диске.",
+        "История, места остановки, избранное, плейлисты ТВ и список заблокированных сайтов одинаковые на всех устройствах: по Wi‑Fi напрямую или через ваш облачный диск.",
     ),
     KIDS(
         "Детский режим", Icons.Rounded.ChildCare,
@@ -724,6 +724,8 @@ private fun KidsSettings(prefs: Prefs, actions: SettingsActions) {
 private fun SyncSettings(sync: SyncUi, actions: SettingsActions) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LanSyncSettings()
+        Text("Через облако", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
         if (sync.connected) {
             val where = when (sync.url.trimEnd('/')) {
                 YANDEX_DAV, app.couchy.sync.WebDav.YANDEX_ACCOUNT -> "Яндекс Диск"

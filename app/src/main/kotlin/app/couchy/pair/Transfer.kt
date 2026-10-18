@@ -48,6 +48,8 @@ object Transfer {
             .put("settings", JSONObject(app.settings.exportTransfer()))
             .put("prefs", prefs)
             .put("state", runCatching { app.sync.snapshot() }.getOrNull())
+            // Playlists added from a file go with their text: the TV cannot read the phone's storage.
+            .put("files", runCatching { app.couchy.sync.PlaylistFiles.export(app) }.getOrNull())
             .put("google", app.settings.prefs.first().syncUrl == WebDav.GOOGLE_ACCOUNT)
             .toString()
     }
@@ -69,6 +71,7 @@ object Transfer {
         // Google Drive needs this device's own account: Couchy asks for it right after the restart.
         if (o.optBoolean("google")) context.getSharedPreferences("pair", Context.MODE_PRIVATE).edit().putBoolean(ASK_GOOGLE, true).commit()
         o.optString("state").takeIf { it.isNotBlank() }?.let { runCatching { app.sync.absorb(it) } }
+        o.optJSONArray("files")?.let { runCatching { app.couchy.sync.PlaylistFiles.import(app, it) } }
         // In the background: a slow sync server must not keep the TV waiting on this screen.
         runCatching { app.sync.syncSoon() }
     }

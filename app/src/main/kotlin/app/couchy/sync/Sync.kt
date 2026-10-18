@@ -117,6 +117,26 @@ class Sync(
     /** Syncs in the background when an account is set up; quiet about failures except in [status]. */
     fun syncSoon() {
         scope.launch { runCatching { syncNow() } }
+        LanSync.soon()
+    }
+
+    private fun peerBase(peer: String) = File(context.filesDir, "lan-base-${peer.filter { it.isLetterOrDigit() }}.json")
+
+    /**
+     * Wi‑Fi sync with another device: three ways against what the two agreed on last time, so
+     * deletions travel too. Returns the agreed state, which the other side takes in the same way.
+     */
+    suspend fun mergePeer(peer: String, incoming: String): String = lock.withLock {
+        val local = localState(settings.prefs.first())
+        val remote = SyncState.fromJson(incoming)
+        val file = peerBase(peer)
+        val base = withContext(Dispatchers.IO) { file.takeIf { it.exists() }?.readText() }
+            ?.let { runCatching { SyncState.fromJson(it) }.getOrNull() } ?: SyncState()
+        val merged = LibrarySync.merge(base, local, remote)
+        apply(local, merged)
+        val text = merged.toJson()
+        withContext(Dispatchers.IO) { file.writeText(text) }
+        text
     }
 
     /** Checks an account with a real sync and keeps it only if that works. */

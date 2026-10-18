@@ -910,6 +910,8 @@ private fun MainScreen(
             onDismiss = { multiOpen = false },
         )
     }
+    val lanAsk by app.couchy.sync.LanSync.asking.collectAsStateWithLifecycle()
+    lanAsk?.let { app.couchy.ui.settings.LanLinkQuestion(it) }
     if (radioOpen) {
         app.couchy.ui.radio.RadioDialog(
             onPlay = { stations, i -> radioOpen = false; vm.playDirect(app.couchy.radio.RadioPlayer.play(stations, i)) },

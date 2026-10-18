@@ -38,7 +38,13 @@ import kotlinx.coroutines.launch
  * Devices announce themselves; an address can be typed where the network hides them.
  */
 @Composable
-fun CastDialog(cast: Cast, request: CastRequest, onSent: (CastDevice) -> Unit, onDismiss: () -> Unit) {
+fun CastDialog(cast: Cast, request: CastRequest, onSent: (CastDevice) -> Unit, onDismiss: () -> Unit) =
+    DeviceSendDialog(cast, "Смотреть на ТВ", request.title, send = { d -> cast.send(d, request) }, onSent = onSent, onDismiss = onDismiss)
+
+/** Picks another Couchy in the home network and hands it something with [send]. */
+@Composable
+fun DeviceSendDialog(cast: Cast, title: String, subtitle: String, send: suspend (CastDevice) -> Unit, onSent: (CastDevice) -> Unit, onDismiss: () -> Unit) {
+    val handOver = send
     val devices by remember { cast.discover() }.collectAsState(initial = emptyList())
     var sending by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -49,7 +55,7 @@ fun CastDialog(cast: Cast, request: CastRequest, onSent: (CastDevice) -> Unit, o
         error = null
         scope.launch {
             try {
-                cast.send(device, request)
+                handOver(device)
                 onSent(device)
             } catch (e: Exception) {
                 error = e.message
@@ -62,10 +68,10 @@ fun CastDialog(cast: Cast, request: CastRequest, onSent: (CastDevice) -> Unit, o
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = { SecondaryButton("Отмена", null, onClick = onDismiss) },
-        title = { Text("Смотреть на ТВ") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(request.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 if (devices.isEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)

@@ -252,6 +252,7 @@ private fun MainScreen(
     // Couchy's own file browser, for flash drives and boxes with no system file picker.
     var showFiles by remember { mutableStateOf(false) }
     var showPhoneFile by remember { mutableStateOf(false) }
+    var sendPlaylist by remember { mutableStateOf<app.couchy.tv.PlaylistEntity?>(null) }
     var searchFocus by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
     val tv by tvVm.state.collectAsStateWithLifecycle()
@@ -1208,6 +1209,20 @@ private fun MainScreen(
             onDelete = tvVm::delete,
             onAdd = { showPlaylists = false; addPlaylist = "" },
             onDismiss = { showPlaylists = false },
+            onSend = { p -> showPlaylists = false; sendPlaylist = p },
+        )
+    }
+    sendPlaylist?.let { p ->
+        app.couchy.ui.components.DeviceSendDialog(
+            cast,
+            "Отправить плейлист",
+            p.name,
+            send = { d -> app.couchy.sync.PlaylistSend.send(context.applicationContext as app.couchy.CouchyApp, d, p) },
+            onSent = { d ->
+                sendPlaylist = null
+                android.widget.Toast.makeText(context, "Плейлист «${p.name}» отправлен на ${d.name}", android.widget.Toast.LENGTH_LONG).show()
+            },
+            onDismiss = { sendPlaylist = null },
         )
     }
 

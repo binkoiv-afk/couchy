@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Delete
@@ -135,7 +136,14 @@ fun AddPlaylistDialog(
 }
 
 @Composable
-fun PlaylistsDialog(playlists: List<PlaylistEntity>, onDelete: (PlaylistEntity) -> Unit, onAdd: () -> Unit, onDismiss: () -> Unit) {
+fun PlaylistsDialog(
+    playlists: List<PlaylistEntity>,
+    onDelete: (PlaylistEntity) -> Unit,
+    onAdd: () -> Unit,
+    onDismiss: () -> Unit,
+    /** Sends the playlist to another Couchy in the home network. */
+    onSend: ((PlaylistEntity) -> Unit)? = null,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Плейлисты") },
@@ -151,6 +159,7 @@ fun PlaylistsDialog(playlists: List<PlaylistEntity>, onDelete: (PlaylistEntity) 
                                 color = if (p.lastError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        onSend?.let { send -> IconButton(onClick = { send(p) }) { Icon(Icons.AutoMirrored.Rounded.Send, "Отправить на другое устройство") } }
                         IconButton(onClick = { onDelete(p) }) { Icon(Icons.Rounded.Delete, "Удалить") }
                     }
                 }

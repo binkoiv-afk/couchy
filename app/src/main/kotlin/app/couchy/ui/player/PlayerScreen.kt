@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Download
@@ -431,6 +432,9 @@ fun PlayerScreen(
         val cues = runCatching { app.couchy.sources.SubtitleFinder.cues(context, url, playback.headers) }.getOrNull().orEmpty()
         SubTranslate.ahead(from, cues.map { it.text })
     }
+    // The glow in the black bars around the picture.
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var ambient by remember { mutableStateOf(Ambient.on(context)) }
     fun setAudioShift(ms: Long) {
         val v = ms.coerceIn(-5_000, 5_000)
         audioMs = v
@@ -992,9 +996,11 @@ fun PlayerScreen(
                 )
             },
     ) {
+        AmbientGlow(playerView, player, ambient && !mini && playback.artwork == null, Modifier.fillMaxSize())
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
+                    playerView = this
                     useController = false
                     keepScreenOn = true
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
@@ -1264,6 +1270,10 @@ fun PlayerScreen(
                     controls.onPip?.let { p -> app.couchy.ui.components.Tile("Окно", Icons.Rounded.PictureInPictureAlt, state = "Поверх приложений") { sheet = null; p() } },
                     app.couchy.ui.components.Tile("Синхронизация", Icons.Rounded.Sync, audioMs != 0L || subMs != 0L, if (audioMs != 0L || subMs != 0L) "Сдвинуто" else "Звук и субтитры") { sheet = Sheet.SYNC },
                     app.couchy.ui.components.Tile("Вид субтитров", Icons.Rounded.ClosedCaption, state = subSize.label) { sheet = Sheet.SUBSTYLE },
+                    app.couchy.ui.components.Tile("Подсветка", Icons.Rounded.BlurOn, ambient, if (ambient) "Цвета вокруг видео" else "Выключена") {
+                        ambient = !ambient
+                        Ambient.set(context, ambient)
+                    },
                     if (app.couchy.ui.components.LocalFormFactor.current.isTv && playback.live == null) {
                         var on by remember { mutableStateOf(PlayerTuning.frameRate(context)) }
                         app.couchy.ui.components.Tile("Частота кадров", Icons.Rounded.Tv, on, if (on) "Как у фильма" else "Выключено") {

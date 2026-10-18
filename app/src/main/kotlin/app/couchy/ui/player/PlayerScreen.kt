@@ -189,6 +189,8 @@ fun PlayerScreen(
     onQueuePick: ((Int) -> Unit)? = null,
     /** YouTube Music: a music player instead of a video, its controls in the notification shade too. */
     music: Boolean = false,
+    /** Internet radio: the song comes from the stream, next and previous go round the stations. */
+    radio: Boolean = false,
     /** The album or playlist the songs come from, shown over the cover. */
     musicAlbum: String? = null,
     modifier: Modifier = Modifier,
@@ -201,7 +203,28 @@ fun PlayerScreen(
 
     // The system knows what plays: "Окей Гугл, пауза", the Now Playing card, TV and Bluetooth media keys.
     val nextNow by androidx.compose.runtime.rememberUpdatedState(if (hasNext && playback.live == null) ({ onFinished() }) else null)
-    val previousNow by androidx.compose.runtime.rememberUpdatedState(if (music && queueAt > 0 && onQueuePick != null) ({ onQueuePick(queueAt - 1) }) else null)
+    val previousNow by androidx.compose.runtime.rememberUpdatedState(
+        when {
+            radio && queue.size > 1 && onQueuePick != null -> ({ onQueuePick((queueAt - 1 + queue.size) % queue.size) })
+            music && queueAt > 0 && onQueuePick != null -> ({ onQueuePick(queueAt - 1) })
+            else -> null
+        },
+    )
+    // What a radio station says is playing (ICY), as "Artist — Title".
+    var onAirSong by remember(playback.key) { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.DisposableEffect(player, radio) {
+        if (!radio) return@DisposableEffect onDispose { }
+        val listener = object : Player.Listener {
+            override fun onMetadata(metadata: androidx.media3.common.Metadata) {
+                for (i in 0 until metadata.length()) {
+                    (metadata[i] as? androidx.media3.extractor.metadata.icy.IcyInfo)?.let { onAirSong = app.couchy.core.radio.RadioBrowser.songLine(it.title) }
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    val radioSong by androidx.compose.runtime.rememberUpdatedState(onAirSong)
     androidx.compose.runtime.DisposableEffect(player) {
         val shown = object : androidx.media3.common.ForwardingPlayer(player) {
             private fun canNext() = nextNow != null
@@ -218,13 +241,13 @@ fun PlayerScreen(
             override fun seekToNext() { nextNow?.invoke() ?: super.seekToNext() }
             override fun seekToNextMediaItem() { nextNow?.invoke() ?: super.seekToNextMediaItem() }
             // A song past its first seconds starts over, as in any music app; earlier, the one before.
-            override fun seekToPrevious() { if (player.currentPosition > 3_000 || previousNow == null) player.seekTo(0) else previousNow?.invoke() }
+            override fun seekToPrevious() { if (!radio && player.currentPosition > 3_000 || previousNow == null) player.seekTo(0) else previousNow?.invoke() }
             override fun seekToPreviousMediaItem() { previousNow?.invoke() ?: super.seekToPreviousMediaItem() }
             override fun getMediaMetadata(): androidx.media3.common.MediaMetadata =
                 super.getMediaMetadata().buildUpon()
                     .setTitle(playback.title)
                     .apply { playback.artwork?.let { setArtworkUri(android.net.Uri.parse(it)) } }
-                    .apply { if (music) songParts(playback.title).let { (t, a) -> setTitle(t); setArtist(a.ifBlank { null }); setAlbumTitle(musicAlbum) } }
+                    .apply { if (music) songParts(radioSong ?: playback.title).let { (t, a) -> setTitle(t); setArtist(a.ifBlank { null }); setAlbumTitle(if (radio) playback.title else musicAlbum) } }
                     .build()
         }
         val session = runCatching {
@@ -378,6 +401,35 @@ fun PlayerScreen(
             }
             delay(100)
         }
+    }
+    // Foreign subtitles put into Russian on the device; the original can stay on top.
+    var translateMode by remember { mutableStateOf(SubTranslate.mode(context)) }
+    var translatedCues by remember(player) { mutableStateOf<List<androidx.media3.common.text.Cue>?>(null) }
+    var originalLine by remember(player) { mutableStateOf<String?>(null) }
+    LaunchedEffect(subCues, translateMode) {
+        val from = SubTranslate.source(currentTextLanguage(player))
+        if (translateMode == SubTranslation.OFF || from == null) { translatedCues = null; originalLine = null; return@LaunchedEffect }
+        val text = subCues.mapNotNull { it.text?.toString() }.joinToString("\n").trim()
+        if (text.isEmpty()) { translatedCues = emptyList(); originalLine = null; return@LaunchedEffect }
+        translatedCues = emptyList()
+        val ru = SubTranslate.translate(from, text)
+        translatedCues = ru?.let { listOf(androidx.media3.common.text.Cue.Builder().setText(it).build()) }
+        originalLine = if (ru != null && translateMode == SubTranslation.BOTH) text else null
+    }
+    // The model comes down once; a subtitle file is then translated ahead, so lines show on time.
+    LaunchedEffect(player, translateMode, tracks) {
+        if (translateMode == SubTranslation.OFF) return@LaunchedEffect
+        val from = SubTranslate.source(currentTextLanguage(player)) ?: return@LaunchedEffect
+        if (!SubTranslate.hasModel(from)) {
+            flash("Загружаю переводчик, около 30 МБ…")
+            if (!SubTranslate.prepare(from)) { flash("Переводчик не загрузился: нужен интернет и сервисы Google"); return@LaunchedEffect }
+            flash("Переводчик готов")
+        }
+        val label = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+            .flatMap { g -> (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it).label } }.firstOrNull()
+        val url = playback.subtitles.firstOrNull { it.first == label }?.second ?: return@LaunchedEffect
+        val cues = runCatching { app.couchy.sources.SubtitleFinder.cues(context, url, playback.headers) }.getOrNull().orEmpty()
+        SubTranslate.ahead(from, cues.map { it.text })
     }
     fun setAudioShift(ms: Long) {
         val v = ms.coerceIn(-5_000, 5_000)
@@ -785,8 +837,8 @@ fun PlayerScreen(
         MusicView(
             ui = ui,
             artwork = playback.artwork,
-            track = queue.getOrNull(queueAt) ?: playback.title,
-            album = musicAlbum,
+            track = if (radio) onAirSong ?: playback.title else queue.getOrNull(queueAt) ?: playback.title,
+            album = if (radio) (if (onAirSong != null) playback.title else "Радио") else musicAlbum,
             queueAt = queueAt,
             queueSize = queue.size,
             sleepLabel = when {
@@ -797,7 +849,7 @@ fun PlayerScreen(
             onDown = ::leave,
             onToggle = { if (player.isPlaying) player.pause() else player.play() },
             onSeekTo = { player.seekTo(it) },
-            onPrevious = { if (player.currentPosition > 3_000 || queueAt == 0 || onQueuePick == null) player.seekTo(0) else { save(); onQueuePick(queueAt - 1) } },
+            onPrevious = { if (radio) previousNow?.invoke() else if (player.currentPosition > 3_000 || queueAt == 0 || onQueuePick == null) player.seekTo(0) else { save(); onQueuePick(queueAt - 1) } },
             onNext = if (hasNext) ({ save(); onFinished() }) else null,
             onQueue = if (queue.size > 1 && onQueuePick != null) ({ sheet = Sheet.QUEUE }) else null,
             onSave = onSaveAudio,
@@ -962,7 +1014,7 @@ fun PlayerScreen(
             factory = { ctx -> androidx.media3.ui.SubtitleView(ctx) },
             update = { v ->
                 PlayerTuning.style(v, subSize, subBack, subPlace)
-                v.setCues(subCues)
+                v.setCues(translatedCues ?: subCues)
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -977,7 +1029,7 @@ fun PlayerScreen(
         recapNote?.let { note ->
             RecapCard(note, Modifier.align(Alignment.Center)) { recapNote = null; player.play(); runCatching { rootFocus.requestFocus() } }
         }
-        secondText?.let { text ->
+        (secondText ?: originalLine)?.let { text ->
             Text(
                 text,
                 color = Color.White,
@@ -1056,6 +1108,16 @@ fun PlayerScreen(
                     ) + trackOptions(player, tracks, C.TRACK_TYPE_TEXT) { lang -> onTracksChosen(currentAudioLanguage(player), lang) } +
                         (if (onSubtitle != null && playback.live == null) listOf(Option("Найти в интернете…", false) { findSecond = false; findSubs = true }) else emptyList()),
                 ),
+                if (playback.live == null) OptionSection(
+                    "ПЕРЕВОД НА РУССКИЙ",
+                    SubTranslation.entries.map { m ->
+                        Option(m.label, translateMode == m) {
+                            translateMode = m
+                            SubTranslate.setMode(context, m)
+                            if (m != SubTranslation.OFF && textDisabled(player)) flash("Включите субтитры на другом языке, и они будут переведены")
+                        }
+                    },
+                ) else null,
                 if (playback.live == null) OptionSection(
                     "ВТОРЫЕ СУБТИТРЫ · СВЕРХУ",
                     listOf(Option("Выключены", second == null) { second = null; secondWanted = null }) +

@@ -139,6 +139,22 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Going home while a video plays shrinks it into a window instead of stopping it. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.keyCode in remoteKeys) app.couchy.ui.components.RemoteSeen.onRemoteKey(this)
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        app.couchy.ui.components.RemoteSeen.onTouch()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private val remoteKeys = setOf(
+        android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+        android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+    )
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (vm.playback.value != null) {
@@ -269,6 +285,8 @@ private fun MainScreen(
     val ytBusy by ytVm.busy.collectAsStateWithLifecycle()
     val ytError by ytVm.error.collectAsStateWithLifecycle()
     val musicQueue by ytVm.queue.collectAsStateWithLifecycle()
+    val radioQueue by app.couchy.radio.RadioPlayer.queue.collectAsStateWithLifecycle()
+    var radioOpen by remember { mutableStateOf(false) }
     LaunchedEffect(destination) { if (destination == Destination.YOUTUBE) ytVm.start() }
     LaunchedEffect(ytAutoPlay) { ytAutoPlay?.let { vm.playDirect(it); ytVm.autoPlayHandled() } }
     val siteWindow by searchVm.siteWindow.collectAsStateWithLifecycle()
@@ -571,12 +589,15 @@ private fun MainScreen(
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
-        LaunchedEffect(current.key) { if (current.live == null) searchVm.prefetch(current) }
+        val radioOn = app.couchy.radio.RadioPlayer.isRadio(current.key)
+        LaunchedEffect(current.key) { if (current.live == null && !radioOn) searchVm.prefetch(current) }
         // YouTube on a phone or tablet: Back shrinks the video into a corner and it plays on.
-        val youTube = !form.isTv && live == null && app.couchy.core.youtube.YouTubeLinks.isVideo(current.key)
+        val youTube = !form.isTv && live == null && (app.couchy.core.youtube.YouTubeLinks.isVideo(current.key) || radioOn)
         val mini = miniWanted && youTube
         // Music from YouTube: the queue of songs, while one of them is playing.
         val songs = musicQueue?.takeIf { q -> q.current.url == current.key }
+        // Internet radio: the list the station came from, flipped with next and previous.
+        val radio = radioQueue?.takeIf { radioOn && current.uri == it.current.url }
         // Only the film itself switches sources: a trailer or a song that fails just shows its error.
         val film = current.torrent != null || app.couchy.core.sources.NativeRef.isRef(current.key) ||
             app.couchy.core.sources.SiteRef.isRef(current.key) || app.couchy.core.sources.Rezka.isRef(current.key)
@@ -610,10 +631,13 @@ private fun MainScreen(
             }
         }
         PlayerScreen(
-            queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }.orEmpty(),
-            queueAt = songs?.index ?: 0,
-            onQueuePick = songs?.let { { i: Int -> ytVm.nextTrack(i); Unit } },
-            music = songs != null,
+            queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }
+                ?: radio?.stations?.map { it.name }.orEmpty(),
+            queueAt = songs?.index ?: radio?.index ?: 0,
+            onQueuePick = songs?.let { { i: Int -> ytVm.nextTrack(i); Unit } }
+                ?: radio?.let { { i: Int -> app.couchy.radio.RadioPlayer.pick(i)?.let(vm::playDirect); Unit } },
+            music = songs != null || radio != null,
+            radio = radio != null,
             musicAlbum = songs?.album,
             mini = mini,
             onMinimize = if (youTube) ({ vm.mini.value = true }) else null,
@@ -696,6 +720,7 @@ private fun MainScreen(
                 when {
                     next != null -> scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
                     nextRef == app.couchy.youtube.YouTubeViewModel.MUSIC_NEXT -> { if (!ytVm.nextTrack()) vm.closePlayer() }
+                    nextRef == app.couchy.radio.RadioPlayer.NEXT -> app.couchy.radio.RadioPlayer.step(1)?.let(vm::playDirect) ?: vm.closePlayer()
                     nextRef != null -> searchVm.playRef(nextRef)
                     else -> vm.closePlayer()
                 }
@@ -885,6 +910,12 @@ private fun MainScreen(
             onDismiss = { multiOpen = false },
         )
     }
+    if (radioOpen) {
+        app.couchy.ui.radio.RadioDialog(
+            onPlay = { stations, i -> radioOpen = false; vm.playDirect(app.couchy.radio.RadioPlayer.play(stations, i)) },
+            onDismiss = { radioOpen = false },
+        )
+    }
     if (guideOpen) {
         app.couchy.ui.tv.GuideGrid(
             groups = tv.groups,
@@ -958,6 +989,7 @@ private fun MainScreen(
                         onSaveAlbum = ytVm::saveAlbum,
                         onMusicSignedIn = ytVm::musicSignedIn,
                         onMusicSignOut = ytVm::musicSignOut,
+                        onRadio = { radioOpen = true },
                     ),
                 )
                 if (ytBusy) {

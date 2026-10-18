@@ -46,6 +46,8 @@ media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "medi
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 # AC3, DTS and the like decoded in software: Media3's FFmpeg module as Jellyfin builds and publishes it.
 media3-ffmpeg = { group = "org.jellyfin.media3", name = "media3-ffmpeg-decoder", version = "1.5.0+1" }
+# Subtitles translated on the device (the language model is fetched once, about 30 MB).
+mlkit-translate = { module = "com.google.mlkit:translate", version = "17.0.3" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

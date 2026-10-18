@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Radio
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -101,6 +102,8 @@ class YouTubeActions(
     /** After Google's sign-in window: load the person's own music. */
     val onMusicSignedIn: () -> Unit = {},
     val onMusicSignOut: () -> Unit = {},
+    /** Internet radio stations. */
+    val onRadio: () -> Unit = {},
 )
 
 /**
@@ -225,6 +228,9 @@ private fun Header(state: YouTubeUi, actions: YouTubeActions) {
             // YouTube Music comes first: it is easy to miss further along the row.
             item {
                 Chip("Музыка", state.shelf is YtShelf.Music, onClick = { actions.onShelf(YtShelf.Music()) }, icon = Icons.Rounded.MusicNote)
+            }
+            item {
+                Chip("Радио", false, onClick = actions.onRadio, icon = Icons.Rounded.Radio)
             }
             item {
                 Chip("Подписки", state.shelf == YtShelf.Subscriptions, onClick = { actions.onShelf(YtShelf.Subscriptions) }, icon = Icons.Rounded.Subscriptions)

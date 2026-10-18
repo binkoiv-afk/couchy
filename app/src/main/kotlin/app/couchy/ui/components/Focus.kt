@@ -15,6 +15,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -63,6 +65,13 @@ fun Modifier.couchyClickable(
         .graphicsLayer { scaleX = scale; scaleY = scale }
         // A dark line inside the ring keeps it visible on white buttons too.
         .then(if (focused) Modifier.border(5.dp, androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f), shape).border(3.dp, ring, shape) else Modifier)
+        // On a projector or a dim TV a thin ring is easy to miss: the focused element also lights up.
+        .then(
+            if (focused) Modifier.drawWithContent {
+                drawContent()
+                drawOutline(shape.createOutline(size, layoutDirection, this), ring.copy(alpha = 0.16f))
+            } else Modifier,
+        )
         .onKeyEvent { event ->
             if (onLongClick != null && event.type == KeyEventType.KeyUp && event.key == Key.Menu) {
                 onLongClick(); true

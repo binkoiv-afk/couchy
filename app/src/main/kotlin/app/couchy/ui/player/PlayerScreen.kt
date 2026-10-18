@@ -532,6 +532,7 @@ fun PlayerScreen(
                 }
                 if (!offline && !started && fallback?.invoke() == true) return
                 ui = ui.copy(error = errorText(error) + "\n\n" + errorDetail(error), buffering = false)
+                app.couchy.ui.settings.LastPlayError.text = playback.title + " · " + playback.uri.take(60) + "\n" + errorDetail(error)
                 overlay = true
             }
         }

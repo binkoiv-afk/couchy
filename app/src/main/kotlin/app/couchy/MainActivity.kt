@@ -249,6 +249,8 @@ private fun MainScreen(
     // Each tab and title page keeps its scroll while the player covers it, so Back returns to the same place.
     val screens = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showOpen by rememberSaveable { mutableStateOf(false) }
+    // Couchy's own file browser, for flash drives and boxes with no system file picker.
+    var showFiles by remember { mutableStateOf(false) }
     var searchFocus by remember { mutableStateOf(0) }
     var actionsFor by remember { mutableStateOf<MediaEntity?>(null) }
     val tv by tvVm.state.collectAsStateWithLifecycle()
@@ -562,7 +564,7 @@ private fun MainScreen(
             onM3u = { name, url, epg -> tvVm.addM3u(name, url, epg) },
             onXtream = { name, server, user, password -> tvVm.addXtream(name, server, user, password) },
             onDismiss = { addPlaylist = null },
-            onPickFile = { runCatching { pickFile.launch(arrayOf("*/*")) } },
+            onPickFile = { if (form.isTv) showFiles = true else runCatching { pickFile.launch(arrayOf("*/*")) }.onFailure { showFiles = true } },
         )
     }
 
@@ -1135,11 +1137,18 @@ private fun MainScreen(
                         ),
                     )
                 } catch (e: ActivityNotFoundException) {
-                    showOpen = false
-                    vm.showNotice("На этом устройстве нет выбора файлов. Откройте видео по ссылке.")
+                    // TV boxes and projectors often have no system picker: Couchy's own browser instead.
+                    showFiles = true
                 }
             },
+            onFiles = { showFiles = true },
             onDismiss = { showOpen = false },
+        )
+    }
+    if (showFiles) {
+        app.couchy.ui.open.FilesDialog(
+            onOpen = { uri -> showFiles = false; showOpen = false; addPlaylist = null; vm.open(uri) },
+            onDismiss = { showFiles = false },
         )
     }
 

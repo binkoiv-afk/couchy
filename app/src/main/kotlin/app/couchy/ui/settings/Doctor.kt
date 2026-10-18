@@ -64,6 +64,12 @@ internal fun ConnectionDoctor(prefs: Prefs, actions: SettingsActions) {
         }
         checks.clear()
         checks.addAll((sites.map { it.first } + extra).map { Check(it) })
+        // This device: what differs between a phone that plays and a box or projector that does not.
+        checks.add(Check("Устройство", Health.OK, DeviceChecks.device(context)))
+        DeviceChecks.decoders().let { (ok, text) -> checks.add(Check("Декодеры видео", if (ok) Health.OK else Health.FAIL, text)) }
+        DeviceChecks.webView(context).let { (ok, text) -> checks.add(Check("WebView", if (ok) Health.OK else Health.WARN, text)) }
+        checks.add(Check("Тестовое видео"))
+        LastPlayError.text?.let { checks.add(Check("Последняя ошибка плеера", Health.WARN, it)) }
         fun put(name: String, health: Health, text: String) {
             val i = checks.indexOfFirst { it.name == name }
             if (i >= 0) checks[i] = Check(name, health, text)
@@ -91,6 +97,10 @@ internal fun ConnectionDoctor(prefs: Prefs, actions: SettingsActions) {
                 if (internet.await() == null) Health.OK else Health.FAIL,
                 if (internet.await() == null) "Есть" else "Нет связи. Проверьте Wi‑Fi или кабель и роутер.",
             )
+            async {
+                val error = DeviceChecks.testVideo(context)
+                put("Тестовое видео", if (error == null) Health.OK else Health.FAIL, error?.let { "Не играет: $it" } ?: "Играет: плеер и декодер на этом устройстве в порядке.")
+            }
             if (prefs.bypassMode != BypassMode.OFF) async {
                 val text = report { actions.onCheckBypass(it) }
                 val ok = text.startsWith("Работает")

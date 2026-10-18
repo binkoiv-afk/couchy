@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +31,7 @@ import app.couchy.ui.components.SecondaryButton
 
 /** "Открыть видео": paste or type a link, or pick a file on the device. */
 @Composable
-fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -> Unit) {
+fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -> Unit, onFiles: () -> Unit = {}) {
     var link by rememberSaveable { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     val valid = Links.looksLikeLink(link)
@@ -54,6 +55,7 @@ fun OpenDialog(onOpen: (String) -> Unit, onPickFile: () -> Unit, onDismiss: () -
                         clipboard.getText()?.text?.trim()?.let { link = it }
                     })
                     SecondaryButton("Файл", Icons.Rounded.FolderOpen, onClick = onPickFile)
+                    SecondaryButton("Флешка", Icons.Rounded.Usb, onClick = onFiles)
                 }
                 Text(
                     "Поддерживаются mp4, mkv, webm, потоки HLS (.m3u8) и DASH (.mpd), торренты и плейлисты IPTV (.m3u).",

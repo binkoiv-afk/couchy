@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Videos, music and playlists on a flash drive, read by Couchy's own file browser. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- One APK for phones, tablets and TV boxes: neither a touchscreen nor leanback is required. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -56,6 +60,7 @@
 
     <application
         android:name=".CouchyApp"
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"

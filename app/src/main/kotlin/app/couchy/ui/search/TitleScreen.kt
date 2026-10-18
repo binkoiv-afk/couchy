@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -54,6 +55,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -233,7 +235,15 @@ private fun Sections(state: TitleUi, actions: TitleActions, modifier: Modifier, 
                 Heading(state, details)
                 Spacer(Modifier.height(4.dp))
                 // Step one is right here on the page: where to watch. The voice-over and the quality follow.
-                WhereToWatch(state, actions, onStep = { voiceOnly = false; step = it })
+                // With a remote, the focus starts on the first way to watch, not somewhere off screen.
+                val start = remember { androidx.compose.ui.focus.FocusRequester() }
+                if (LocalFormFactor.current.isTv) LaunchedEffect(state.title.key) {
+                    kotlinx.coroutines.delay(250)
+                    runCatching { start.requestFocus() }
+                }
+                Box(Modifier.focusRequester(start).focusGroup()) {
+                    WhereToWatch(state, actions, onStep = { voiceOnly = false; step = it })
+                }
                 Spacer(Modifier.height(4.dp))
                 Keep(state, actions)
                 state.info?.trailer?.let { id ->

@@ -135,7 +135,7 @@ class Cast(private val context: Context) {
             // Typing on the phone for a field on this TV.
             r.method == "GET" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.page(r.path).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             // An IPTV playlist sent from the phone's list of playlists.
-            r.method == "POST" && r.path == "/playlist" -> CastHttp.response(app.couchy.sync.PlaylistSend.receive(app, r.body), "{}")
+            r.method == "POST" && r.path == "/playlist" -> CastHttp.response(app.couchy.sync.PlaylistSend.receive(context.applicationContext as app.couchy.CouchyApp, r.body), "{}")
             r.method == "GET" && r.path.startsWith("/file") -> app.couchy.pair.PhoneFile.page(r.path).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             r.method == "POST" && r.path.startsWith("/type") -> app.couchy.pair.PhoneType.receive(r.body).let { (code, html) -> CastHttp.response(code, html, "text/html; charset=utf-8") }
             r.method == "POST" && r.path == "/play" -> {

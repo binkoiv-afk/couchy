@@ -175,6 +175,8 @@ fun PlayerScreen(
     onSources: (() -> Unit)? = null,
     /** Hands the video to another player app from the given position; null where it cannot. */
     onExternal: ((positionMs: Long) -> Unit)? = null,
+    /** The same video in VLC, which plays every codec, from the given position; null where it does not apply. */
+    onVlc: ((positionMs: Long) -> Unit)? = null,
     /** «Ранее в сериале»: the episode before, after a break; null when not wanted. */
     recap: (suspend () -> app.couchy.core.sources.EpisodeNote?)? = null,
     /** Small in a corner over the app, still playing (YouTube after Back). */
@@ -263,6 +265,7 @@ fun PlayerScreen(
         }
     }
     val fallback by androidx.compose.runtime.rememberUpdatedState(onUnplayable)
+    val toVlc by androidx.compose.runtime.rememberUpdatedState(onVlc)
     val variantNow by androidx.compose.runtime.rememberUpdatedState(onVariant)
     var ui by remember(playback.uri) { mutableStateOf(PlayerUi(playback.title)) }
     var tracks by remember(playback.uri) { mutableStateOf(Tracks.EMPTY) }
@@ -530,6 +533,20 @@ fun PlayerScreen(
                     variantNow?.invoke(lower.second, player.currentPosition)
                     return
                 }
+                // A codec or container the device cannot play: VLC decodes it by itself.
+                val codec = error.errorCode in setOf(
+                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                    PlaybackException.ERROR_CODE_DECODING_FAILED,
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                )
+                val vlc = toVlc
+                if (codec && vlc != null) {
+                    flash("Этот формат не идёт, включаю VLC")
+                    vlc(player.currentPosition.coerceAtLeast(playback.startMs))
+                    return
+                }
                 if (!offline && !started && fallback?.invoke() == true) return
                 ui = ui.copy(error = errorText(error) + "\n\n" + errorDetail(error), buffering = false)
                 app.couchy.ui.settings.LastPlayError.text = playback.title + " · " + playback.uri.take(60) + "\n" + errorDetail(error)
@@ -781,6 +798,7 @@ fun PlayerScreen(
     val controls = PlayerControls(
         onOtherSource = onSources?.let { back -> { save(); back() } },
         onExternal = onExternal?.let { open -> { save(); open(player.currentPosition) } },
+        onVlc = onVlc?.let { open -> { save(); open(player.currentPosition) } },
         onBack = ::leave,
         onTogglePlay = { poke(); if (player.isPlaying) player.pause() else player.play() },
         onSeekTo = { poke(); player.seekTo(it) },
@@ -1140,6 +1158,7 @@ fun PlayerScreen(
                 ),
                 listOfNotNull(
                     onSources?.let { back -> Option("Другой источник…", false) { save(); back() } },
+                    onVlc?.let { open -> Option("Включить в VLC (все кодеки)", false) { save(); open(player.currentPosition) } },
                     onExternal?.let { open -> Option("Открыть во внешнем плеере", false) { save(); open(player.currentPosition) } },
                 ).takeIf { it.isNotEmpty() }?.let { OptionSection("ИСТОЧНИК", it) },
             ),

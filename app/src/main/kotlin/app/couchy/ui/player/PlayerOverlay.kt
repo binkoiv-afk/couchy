@@ -170,6 +170,8 @@ class PlayerControls(
     val onEpisodes: (() -> Unit)? = null,
     /** The same video in another player app; null where none fits. */
     val onExternal: (() -> Unit)? = null,
+    /** The same video in VLC, which plays every codec; null where it does not apply. */
+    val onVlc: (() -> Unit)? = null,
     /** TV channels: the list of channels and groups; null for videos. */
     val onChannels: (() -> Unit)? = null,
     /** TV channels: the previous (-1) or next (+1) channel; null for videos. */
@@ -514,6 +516,7 @@ private fun ErrorPanel(message: String, controls: PlayerControls, modifier: Modi
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             controls.onOtherSource?.let { Pill(Icons.Rounded.SwapHoriz, "Другой источник", Modifier.focusRequester(retry), highlighted = true, onClick = it) }
             Pill(Icons.Rounded.Refresh, "Повторить", if (controls.onOtherSource == null) Modifier.focusRequester(retry) else Modifier, highlighted = controls.onOtherSource == null, onClick = controls.onRetry)
+            controls.onVlc?.let { Pill(Icons.Rounded.SwapHoriz, "VLC (все кодеки)", onClick = it) }
             controls.onExternal?.let { Pill(Icons.AutoMirrored.Rounded.OpenInNew, "Внешний плеер", onClick = it) }
             Pill(Icons.AutoMirrored.Rounded.ArrowBack, "Назад", onClick = controls.onBack)
         }

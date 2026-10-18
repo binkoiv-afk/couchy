@@ -560,15 +560,26 @@ private fun MirrorField(id: String, default: String) {
 private fun PlaybackSettings() {
     var quality by remember { mutableStateOf(app.couchy.QualityChoice.label) }
     var external by remember { mutableStateOf(app.couchy.ExternalPlayer.always) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var vlc by remember { mutableStateOf(app.couchy.ui.player.PlayerEngine.vlc(context)) }
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Group("Качество", "Видео начинается в нём, а если такого нет, то в ближайшем ниже. Касается онлайн-источников и YouTube.") {
             app.couchy.QualityChoice.options.forEach { option ->
                 Chip(app.couchy.QualityChoice.name(option), option == quality, onClick = { app.couchy.QualityChoice.label = option; quality = option })
             }
         }
-        Group("Плеер", "Внешний: VLC, MX Player или другой установленный. Место остановки он в Couchy не возвращает. Из плеера Couchy видео тоже можно отдать: «Озвучка» → «Открыть во внешнем плеере».") {
-            Chip("Couchy", !external, onClick = { app.couchy.ExternalPlayer.always = false; external = false })
-            Chip("Внешний", external, onClick = { app.couchy.ExternalPlayer.always = true; external = true })
+        Group(
+            "Плеер",
+            "Встроенный VLC играет любые форматы и кодеки (AVI, MKV с DTS, HEVC, MPEG‑2), если устройство не тянет видео само. " +
+                "Couchy и без этого включает VLC, когда видео не пошло. Внешний: другое установленное приложение, место остановки оно не возвращает.",
+        ) {
+            fun pick(e: Int) {
+                app.couchy.ExternalPlayer.always = e == 2; external = e == 2
+                app.couchy.ui.player.PlayerEngine.setVlc(context, e == 1); vlc = e == 1
+            }
+            Chip("Couchy", !external && !vlc, onClick = { pick(0) })
+            Chip("VLC, все кодеки", !external && vlc, onClick = { pick(1) })
+            Chip("Внешний", external, onClick = { pick(2) })
         }
         var auto by remember { mutableStateOf(app.couchy.AutoDownload.on) }
         Group("Следующие серии", "Пока смотрите серию, две следующие скачиваются по Wi‑Fi и потом играют без ожидания. Просмотренные удаляются сами.") {

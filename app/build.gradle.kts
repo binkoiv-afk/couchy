@@ -32,6 +32,8 @@ android {
         manifestPlaceholders["YANDEX_CLIENT_ID"] = yandexClientId
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
         buildConfigField("String", "TMDB_KEY", "\"$tmdbKey\"")
+        // ARM only: TV boxes, projectors and phones. The x86 copies of the native players would only add size.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -119,6 +121,7 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.ffmpeg)
     implementation(libs.mlkit.translate)
+    implementation(libs.libvlc)
 
     testImplementation(libs.junit)
 }

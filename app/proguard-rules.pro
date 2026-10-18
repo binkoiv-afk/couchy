@@ -15,3 +15,6 @@
 
 # The FFmpeg sound decoder is found by name at run time.
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
+
+# libVLC calls back into its Java classes from native code.
+-keep class org.videolan.libvlc.** { *; }

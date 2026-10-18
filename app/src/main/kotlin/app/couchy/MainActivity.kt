@@ -588,6 +588,8 @@ private fun MainScreen(
     LaunchedEffect(current?.key) { vm.mini.value = false }
     // Sources already tried for this film, so a broken one is never offered twice; kept while the player closes and reopens.
     val tried = remember(titlePage?.title?.key) { mutableSetOf<String>() }
+    // VLC or Couchy's own player, chosen for one video from the player; else the setting decides.
+    var engineFor by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     if (current != null) {
         val live = current.live
         val onAir = live?.takeIf { it.archiveOf == null }
@@ -631,6 +633,34 @@ private fun MainScreen(
                     else -> false
                 }
             }
+        }
+        val finished: () -> Unit = {
+            // Series: the next episode starts by itself, from the torrent or the online source.
+            val next = current.torrent?.nextFileId
+            val nextRef = current.nextRef
+            when {
+                next != null -> scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
+                nextRef == app.couchy.youtube.YouTubeViewModel.MUSIC_NEXT -> { if (!ytVm.nextTrack()) vm.closePlayer() }
+                nextRef == app.couchy.radio.RadioPlayer.NEXT -> app.couchy.radio.RadioPlayer.step(1)?.let(vm::playDirect) ?: vm.closePlayer()
+                nextRef != null -> searchVm.playRef(nextRef)
+                else -> vm.closePlayer()
+            }
+        }
+        val vlc = songs == null && radio == null && !mini &&
+            (engineFor?.takeIf { it.first == current.key }?.second ?: (live == null && app.couchy.ui.player.PlayerEngine.vlc(context)))
+        if (vlc) {
+            app.couchy.ui.player.VlcPlayerScreen(
+                playback = current,
+                touch = !form.isTv,
+                onProgress = { pos, dur -> vm.saveProgress(current.key, pos, dur) },
+                onExit = vm::closePlayer,
+                onFinished = finished,
+                onCouchyPlayer = { position ->
+                    engineFor = current.key to false
+                    vm.playDirect(current.copy(startMs = position))
+                },
+            )
+            return
         }
         PlayerScreen(
             queue = songs?.tracks?.map { t -> listOf(t.channel, t.title).filter { it.isNotBlank() }.joinToString(" — ") }
@@ -715,18 +745,11 @@ private fun MainScreen(
                     Unit
                 }
             },
-            onFinished = {
-                // Series: the next episode starts by itself, from the torrent or the online source.
-                val next = current.torrent?.nextFileId
-                val nextRef = current.nextRef
-                when {
-                    next != null -> scope.launch { torrentVm.prepare(next)?.let(vm::playDirect) ?: vm.closePlayer() }
-                    nextRef == app.couchy.youtube.YouTubeViewModel.MUSIC_NEXT -> { if (!ytVm.nextTrack()) vm.closePlayer() }
-                    nextRef == app.couchy.radio.RadioPlayer.NEXT -> app.couchy.radio.RadioPlayer.step(1)?.let(vm::playDirect) ?: vm.closePlayer()
-                    nextRef != null -> searchVm.playRef(nextRef)
-                    else -> vm.closePlayer()
-                }
-            },
+            onFinished = finished,
+            onVlc = if (songs == null && radio == null) ({ position ->
+                engineFor = current.key to true
+                vm.playDirect(current.copy(startMs = position))
+            }) else null,
         )
         if (!mini) return
     }

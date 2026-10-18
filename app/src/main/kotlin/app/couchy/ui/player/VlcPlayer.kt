@@ -63,6 +63,7 @@ import kotlinx.coroutines.delay
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 
 /** Which player plays videos: Couchy's own (Media3), or VLC for every codec. */
@@ -121,11 +122,11 @@ fun VlcPlayerScreen(
                 }
             }
             if (playback.startMs > 0 && playback.live == null) addOption(":start-time=${playback.startMs / 1000}")
-            playback.audioUri?.let { addSlave(Media.Slave(Media.Slave.Type.Audio, 4, it)) }
+            playback.audioUri?.let { addSlave(IMedia.Slave(IMedia.Slave.Type.Audio, 4, it)) }
         }
         player.media = media
         media.release()
-        playback.subtitles.firstOrNull()?.let { (_, url) -> runCatching { player.addSlave(Media.Slave.Type.Subtitle, Uri.parse(url), false) } }
+        playback.subtitles.firstOrNull()?.let { (_, url) -> runCatching { player.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(url), false) } }
         player.setEventListener { e ->
             when (e.type) {
                 MediaPlayer.Event.Playing -> { playing = true; buffering = false; error = null }
@@ -161,7 +162,7 @@ fun VlcPlayerScreen(
     fun seekBy(ms: Long) {
         if (playback.live != null) return
         val to = (player.time + ms).coerceIn(0, (player.length - 1_000).coerceAtLeast(0))
-        player.time = to
+        player.setTime(to)
         position = to
     }
     fun toggle() { if (player.isPlaying) player.pause() else player.play() }
@@ -227,7 +228,7 @@ fun VlcPlayerScreen(
                             Slider(
                                 value = position.toFloat() / length,
                                 onValueChange = { f -> poke(); position = (f * length).toLong() },
-                                onValueChangeFinished = { player.time = position },
+                                onValueChangeFinished = { player.setTime(position) },
                                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                                 modifier = Modifier.weight(1f),
                             )
@@ -257,12 +258,12 @@ fun VlcPlayerScreen(
             val audio = player.audioTracks.orEmpty().filter { it.id >= 0 }
             if (audio.isNotEmpty()) {
                 SheetHeader("Озвучка")
-                audio.forEach { t -> SheetRow(t.name, onClick = { player.audioTrack = t.id; tracks = false }, selected = player.audioTrack == t.id) }
+                audio.forEach { t -> SheetRow(t.name, onClick = { player.setAudioTrack(t.id); tracks = false }, selected = player.audioTrack == t.id) }
             }
             SheetHeader("Субтитры")
-            SheetRow("Выключены", onClick = { player.spuTrack = -1; tracks = false }, selected = player.spuTrack == -1)
+            SheetRow("Выключены", onClick = { player.setSpuTrack(-1); tracks = false }, selected = player.spuTrack == -1)
             player.spuTracks.orEmpty().filter { it.id >= 0 }.forEach { t ->
-                SheetRow(t.name, onClick = { player.spuTrack = t.id; tracks = false }, selected = player.spuTrack == t.id)
+                SheetRow(t.name, onClick = { player.setSpuTrack(t.id); tracks = false }, selected = player.spuTrack == t.id)
             }
         }
     }

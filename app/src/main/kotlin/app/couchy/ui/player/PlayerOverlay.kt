@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import app.couchy.ui.components.LocalFormFactor
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -171,6 +172,8 @@ class PlayerControls(
     val onExternal: (() -> Unit)? = null,
     /** TV channels: the list of channels and groups; null for videos. */
     val onChannels: (() -> Unit)? = null,
+    /** TV channels: the previous (-1) or next (+1) channel; null for videos. */
+    val onZap: ((Int) -> Unit)? = null,
     /** A small frame of the video at a position, shown over the timeline while seeking; null where frames cannot be read. */
     val thumbnail: (suspend (Long) -> androidx.compose.ui.graphics.ImageBitmap?)? = null,
 )
@@ -307,12 +310,15 @@ private fun Chrome(ui: PlayerUi, controls: PlayerControls, touch: Boolean) {
         if (touch) {
             Row(
                 Modifier.align(Alignment.Center),
-                horizontalArrangement = Arrangement.spacedBy(56.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (controls.onZap != null) 24.dp else 56.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Live TV: the channel before and after, on either side of the 10-second jumps.
+                controls.onZap?.let { zap -> RoundIcon(Icons.Rounded.SkipPrevious, "Предыдущий канал", 44.dp) { zap(-1) } }
                 RoundIcon(Icons.Rounded.Replay10, "Назад на 10 секунд", 44.dp) { controls.onSeekBy(-10_000) }
                 RoundIcon(if (ui.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "Пауза", 72.dp, filled = true, onClick = controls.onTogglePlay)
                 RoundIcon(Icons.Rounded.Forward10, "Вперёд на 10 секунд", 44.dp) { controls.onSeekBy(10_000) }
+                controls.onZap?.let { zap -> RoundIcon(Icons.Rounded.SkipNext, "Следующий канал", 44.dp) { zap(1) } }
             }
         }
 

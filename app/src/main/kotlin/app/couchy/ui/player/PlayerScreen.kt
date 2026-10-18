@@ -747,6 +747,7 @@ fun PlayerScreen(
         onMore = { poke(); sheet = Sheet.MORE },
         onEpisodes = if (episodes.size > 1) ({ poke(); sheet = Sheet.EPISODES }) else null,
         onChannels = if (onLivePick != null && playback.live != null) ({ overlay = false; sheet = Sheet.CHANNELS }) else null,
+        onZap = if (onZap != null) ({ d -> poke(); zapBy(d) }) else null,
         thumbnail = thumbs?.let { t -> t::at },
         onIntro = if (series != null) ({ poke(); sheet = Sheet.INTRO }) else null,
         onPip = if (touch && PlayerWindow.supported(context)) ({ (context as? android.app.Activity)?.let { PlayerWindow.enter(it) }; Unit }) else null,

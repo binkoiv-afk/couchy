@@ -234,8 +234,9 @@ object PlaylistFiles {
         val have = app.tv.allPlaylists().filter { it.url.startsWith("file:") }
         for (i in 0 until files.length()) {
             val o = files.optJSONObject(i) ?: continue
-            val name = o.optString("file").replace(Regex("[^\\p{L}\\p{N} ._-]"), "_").ifBlank { continue }
-            val text = o.optString("text").ifBlank { continue }
+            val name = o.optString("file").replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")
+            val text = o.optString("text")
+            if (name.isBlank() || text.isBlank()) continue
             val target = File(dir(app), name)
             val existing = have.firstOrNull { runCatching { File(java.net.URI(it.url)).name }.getOrNull() == name }
             if (existing != null && target.exists() && target.readText() == text) continue

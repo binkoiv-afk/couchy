@@ -493,10 +493,38 @@ fun PlayerScreen(
     fun finished() { if (sleepAfterEpisode || nextCancelled) onExit() else onFinished() }
 
     DisposableEffect(player) {
+        /** The video played at least once; a failure after that is a dropped stream, not a broken source. */
+        var started = false
+        // Video that stalls or fails through the bypass tunnel (WARP is often slow for video servers) is tried directly once.
+        val bypass = (context.applicationContext as app.couchy.CouchyApp).bypass
+        val hosts = mutableSetOf<String>().apply { android.net.Uri.parse(playback.uri).host?.let(::add) }
+        var direct = emptyList<String>()
+        fun tryDirect(): Boolean {
+            if (direct.isNotEmpty() || started) return false
+            val tunnelled = hosts.filter { bypass.tunnels(it) }
+            if (tunnelled.isEmpty()) return false
+            direct = tunnelled
+            bypass.goDirect(tunnelled)
+            flash("Через обход видео не идёт, включаю напрямую")
+            val at = player.currentPosition
+            player.stop()
+            player.seekTo(at)
+            player.prepare()
+            player.playWhenReady = true
+            return true
+        }
+        val loads = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onLoadStarted(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+                mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+            ) { loadEventInfo.uri.host?.let(hosts::add) }
+        }
+        player.addAnalyticsListener(loads)
+        val stallCheck = android.os.Handler(android.os.Looper.getMainLooper())
+        val stall = Runnable { if (!started && player.playbackState == Player.STATE_BUFFERING) tryDirect() }
+        stallCheck.postDelayed(stall, 15_000)
         val listener = object : Player.Listener {
-            /** The video played at least once; a failure after that is a dropped stream, not a broken source. */
-            var started = false
-
             override fun onEvents(p: Player, events: Player.Events) {
                 if (p.isPlaying) started = true
                 ui = ui.copy(
@@ -521,6 +549,9 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (error.errorCode in 2000..2999 && tryDirect()) return
+                // Directly did not work either: the tunnel was needed after all.
+                if (direct.isNotEmpty()) { bypass.undoDirect(direct); direct = emptyList() }
                 // A source that never started (not a dropped connection) gives way to the next one by itself.
                 val offline = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
@@ -556,6 +587,8 @@ fun PlayerScreen(
         player.addListener(listener)
         onDispose {
             save()
+            stallCheck.removeCallbacks(stall)
+            player.removeAnalyticsListener(loads)
             player.removeListener(listener)
             player.release()
         }

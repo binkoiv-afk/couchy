@@ -102,9 +102,24 @@ class Bypass(private val context: Context, private val settings: Settings) {
         }
     }
 
+    /** Video servers that played badly through the tunnel: straight to them until Couchy restarts. */
+    private val direct = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Sends [hosts] past the tunnel; for video that stalls through WARP but plays directly. */
+    fun goDirect(hosts: Collection<String>) {
+        hosts.forEach { h -> direct += BypassRules.domainOf(h) }
+        Log.i("Couchy", "Bypass: direct for $hosts")
+    }
+
+    fun undoDirect(hosts: Collection<String>) { hosts.forEach { h -> direct -= BypassRules.domainOf(h) } }
+
+    /** Whether [host] goes through the tunnel or the DNS tier right now. */
+    fun tunnels(host: String?): Boolean = wants(host) && ((ready && process?.isAliveCompat() == true) || dns.running)
+
     /** Whether a request to [host] should go through the tunnel under the current settings. */
     fun wants(host: String?): Boolean {
         if (host == null || BypassRules.isLocal(host) || !available) return false
+        if (direct.isNotEmpty() && BypassRules.domainOf(host) in direct) return false
         return when (prefs.bypassMode) {
             BypassMode.OFF -> false
             BypassMode.ALWAYS -> true

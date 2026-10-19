@@ -125,6 +125,10 @@ internal fun ConnectionDoctor(prefs: Prefs, actions: SettingsActions) {
             style = MaterialTheme.typography.titleMedium,
         )
         checks.forEach { CheckRow(it) }
+        // An old WebView cannot pass the sites' «я не робот» checks; the update is one press away where the store is.
+        if (checks.any { it.name == "WebView" && it.health == Health.WARN }) {
+            SecondaryButton("Обновить WebView", Icons.Rounded.Refresh, onClick = { DeviceChecks.updateWebView(context) })
+        }
         if (!running) SecondaryButton("Проверить ещё раз", Icons.Rounded.Refresh, onClick = { round++ })
     }
 }

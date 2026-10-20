@@ -1,0 +1,103 @@
+name: Stereo build
+
+# «Объём 3D», the 2D-to-stereo player in stereo/. Each build becomes a stereo-build-N
+# pre-release with stereo.apk; it never becomes the repository's latest release, which is Couchy's.
+on:
+  push:
+    branches: [main, claude/project-thread-pu3alj]
+    paths: [stereo/**, .github/workflows/stereo.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stereo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Create signing key on first run
+        if: env.KEYSTORE_PASSWORD != '' && hashFiles('stereo/app/signing/stereo.jks') == ''
+        run: |
+          mkdir -p app/signing
+          keytool -genkeypair -keystore app/signing/stereo.jks -storetype PKCS12 -alias stereo \
+            -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" -dname "CN=Stereo"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/signing/stereo.jks
+          git commit -m "Add Stereo release signing key"
+          git push origin HEAD:${GITHUB_REF_NAME}
+      - uses: actions/cache@v4
+        with:
+          path: stereo/app/src/main/assets/models
+          key: depth-anything-v2-small-onnx-1
+      # Depth Anything V2 Small (Apache 2.0), exported to ONNX by onnx-community.
+      - name: Fetch depth models
+        run: |
+          set -e
+          mkdir -p app/src/main/assets/models
+          base=https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx
+          for f in model.onnx model_quantized.onnx; do
+            [ -s app/src/main/assets/models/$f ] || curl -fL --retry 3 -o app/src/main/assets/models/$f "$base/$f"
+          done
+          ls -la app/src/main/assets/models
+          test $(stat -c %s app/src/main/assets/models/model.onnx) -gt 50000000
+          test $(stat -c %s app/src/main/assets/models/model_quantized.onnx) -gt 10000000
+      - name: Build
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease 2>&1 | tee build.log
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+      - name: Publish build log on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view stereo-probe >/dev/null 2>&1 || \
+            gh release create stereo-probe --prerelease --latest=false --title "Объём 3D: служебное" --notes "Служебные отчёты сборки, не для установки."
+          touch build.log
+          cp build.log stereo-build-log.txt
+          gh release upload stereo-probe stereo-build-log.txt --clobber
+      - name: Name the APK
+        run: cp app/build/outputs/apk/release/app-release.apk stereo.apk
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stereo-build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Объём 3D, сборка ${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
+          files: stereo/stereo.apk
+          prerelease: true
+          make_latest: false
+
+  # Lists ready-made mobile builds of depth models, for the GPU engine of later builds.
+  probe:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: List model files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for r in qualcomm/Depth-Anything-V2 qualcomm/Depth-Anything qualcomm/Midas-V2 onnx-community/depth-anything-v2-small; do
+            echo "== $r"
+            curl -sfL "https://huggingface.co/api/models/$r/tree/main?recursive=true" | python3 -c 'import json,sys; [print(f.get("path"), f.get("size")) for f in json.load(sys.stdin)]' || echo "(failed)"
+          done > hf-models.txt 2>&1
+          cat hf-models.txt
+          gh release view stereo-probe -R ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create stereo-probe -R ${{ github.repository }} --prerelease --latest=false --title "Объём 3D: служебное" --notes "Служебные отчёты сборки, не для установки."
+          gh release upload stereo-probe hf-models.txt -R ${{ github.repository }} --clobber

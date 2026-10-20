@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Two overlapping lenses: red left, cyan right. -->
+    <path android:fillColor="#E6FF4D6D"
+        android:pathData="M30,42h20a6,6 0,0 1,6 6v10a8,8 0,0 1,-8 8h-12a12,12 0,0 1,-12 -12v-6a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#E64DD8FF"
+        android:pathData="M58,42h20a6,6 0,0 1,6 6v6a12,12 0,0 1,-12 12h-12a8,8 0,0 1,-8 -8v-10a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M50,48h8v4h-8z" />
+</vector>

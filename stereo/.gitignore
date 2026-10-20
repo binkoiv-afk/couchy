@@ -1,0 +1,5 @@
+.gradle/
+build/
+local.properties
+# Fetched by CI from Hugging Face.
+app/src/main/assets/models/

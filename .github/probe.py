@@ -51,7 +51,9 @@ def rezka():
     _, _, page, _ = get(film)
     m = re.search(r"initCDNMoviesEvents\((\d+),\s*(\d+)", page)
     if not m:
-        return f"film page has no initCDNMoviesEvents ({film})"
+        title = re.search(r"<title>(.*?)</title>", page, re.S)
+        hints = re.findall(r"(init\w*Events\([^)]{0,60}\)|недоступ\w*[^<]{0,80}|b-player[^>]{0,80})", page)[:4]
+        return f"film page has no initCDNMoviesEvents ({film}) title={title.group(1).strip()[:80] if title else None!r} hints={hints}"
     _, _, cdn, _ = get(base + "/ajax/get_cdn_series/", {"id": m.group(1), "translator_id": m.group(2), "action": "get_movie"},
                        {"X-Requested-With": "XMLHttpRequest", "Referer": film})
     j = json.loads(cdn)
@@ -78,7 +80,7 @@ def filmix():
                 links = pj.get("player_links", {})
                 movie = links.get("movie") or []
                 link = movie[0].get("link") if movie else None
-                post = f" post movies={len(movie)} link={str(link)[:80]!r}"
+                post = f" post keys={list(pj.keys())[:25]} player_links={json.dumps(links, ensure_ascii=False)[:300]} movies={len(movie)} link={str(link)[:80]!r}"
                 if link:
                     q = (movie[0].get("qualities") or [480])[0]
                     vurl = link.replace("%s", str(q)) if "%s" in link else link

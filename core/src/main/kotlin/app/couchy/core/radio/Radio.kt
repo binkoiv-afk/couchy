@@ -48,7 +48,7 @@ enum class RadioGenre(val label: String, val tag: String) {
  */
 object RadioBrowser {
     /** Mirrors, tried in turn. */
-    val hosts = listOf("de1.api.radio-browser.info", "de2.api.radio-browser.info", "fi1.api.radio-browser.info", "at1.api.radio-browser.info")
+    val hosts = listOf("de1.api.radio-browser.info", "de2.api.radio-browser.info", "all.api.radio-browser.info")
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private const val COMMON = "hidebroken=true&order=clickcount&reverse=true"

@@ -17,6 +17,14 @@ import kotlin.coroutines.resume
 /** The last video that would not play here, with the technical reason, for «Проверка связи». */
 object LastPlayError {
     @Volatile var text: String? = null
+    /** The last few failures, newest last, for the report. */
+    val recent = java.util.concurrent.ConcurrentLinkedDeque<String>()
+
+    fun add(what: String) {
+        text = what
+        recent.add(java.text.SimpleDateFormat("dd.MM HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date()) + " " + what)
+        while (recent.size > 10) recent.pollFirst()
+    }
 }
 
 /** What this device is and can play: the things that differ between a phone and a cheap projector. */

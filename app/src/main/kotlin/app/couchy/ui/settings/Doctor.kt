@@ -35,6 +35,10 @@ import app.couchy.sources.ChallengeException
 import app.couchy.sources.Web
 import app.couchy.ui.components.SecondaryButton
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -130,6 +134,7 @@ internal fun ConnectionDoctor(prefs: Prefs, actions: SettingsActions) {
             SecondaryButton("Обновить WebView", Icons.Rounded.Refresh, onClick = { DeviceChecks.updateWebView(context) })
         }
         if (!running) SecondaryButton("Проверить ещё раз", Icons.Rounded.Refresh, onClick = { round++ })
+        if (!running) ReportButton(prefs, checks.joinToString("\n") { "${it.name} [${it.health}]: ${it.text}" })
     }
 }
 
@@ -161,4 +166,49 @@ private suspend fun site(web: Web, url: String): Exception? = try {
 /** Waits for a check that answers through a callback. */
 private suspend fun report(start: ((String) -> Unit) -> Unit): String = suspendCancellableCoroutine { c ->
     start { if (c.isActive) c.resume(it) }
+}
+
+/** «Отчёт для разработчика»: the phone shares it; a TV shows a QR that opens it on the phone. */
+@Composable
+private fun ReportButton(prefs: Prefs, checks: String) {
+    val context = LocalContext.current
+    val tv = app.couchy.ui.components.LocalFormFactor.current.isTv
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var qr by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    SecondaryButton("Отчёт для разработчика", Icons.AutoMirrored.Rounded.Send, onClick = {
+        scope.launch {
+            val text = Report.build(context, prefs, checks)
+            if (!tv) {
+                Report.share(context, text)
+                return@launch
+            }
+            val couchy = context.applicationContext as app.couchy.CouchyApp
+            couchy.cast.start()
+            val address = couchy.cast.address()
+            if (address == null) {
+                Report.share(context, text)
+                return@launch
+            }
+            val code = app.couchy.core.pair.PairLink.newCode()
+            Report.shown = code to text
+            qr = "http://${address.substringBefore(':')}:${couchy.cast.port}/report?c=$code"
+        }
+    })
+    qr?.let { link ->
+        androidx.compose.runtime.DisposableEffect(link) { onDispose { Report.shown = null } }
+        app.couchy.ui.components.CouchySheet("Отчёт на телефон", onDismiss = { qr = null }, scroll = false) {
+            val bitmap = remember(link) { app.couchy.pair.qrBitmap(link) }
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+                androidx.compose.foundation.Image(
+                    bitmap.asImageBitmap(), "QR", filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                    modifier = Modifier.background(Color.White, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(12.dp).size(200.dp),
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Наведите камеру телефона на код и откройте ссылку.", style = MaterialTheme.typography.bodyLarge)
+                    Text("Нажмите «Скопировать отчёт» и вставьте его в чат.", style = MaterialTheme.typography.bodyLarge)
+                    Text("Телефон должен быть в той же сети Wi‑Fi.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
 }

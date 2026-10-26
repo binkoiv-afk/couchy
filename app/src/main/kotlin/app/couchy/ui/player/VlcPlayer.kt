@@ -135,7 +135,7 @@ fun VlcPlayerScreen(
                 MediaPlayer.Event.TimeChanged -> { position = e.timeChanged; buffering = false }
                 MediaPlayer.Event.LengthChanged -> length = e.lengthChanged
                 MediaPlayer.Event.EndReached -> { save(); finished() }
-                MediaPlayer.Event.EncounteredError -> { error = "VLC тоже не смог открыть это видео."; buffering = false }
+                MediaPlayer.Event.EncounteredError -> { error = "VLC тоже не смог открыть это видео."; buffering = false; app.couchy.ui.settings.LastPlayError.add("VLC · " + playback.title + " · " + playback.uri.take(60)) }
             }
         }
         player.play()

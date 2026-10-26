@@ -1,7 +1,8 @@
 name: Probe sources
 
-# Fetches sample answers from search sources so their formats can be checked from
-# environments that cannot reach them. Results land on the "probe" pre-release.
+# Checks from a server outside Russia that every source Couchy plays from still answers, and that
+# YouTube still gives streams with the NewPipe Extractor in use and with its newest release.
+# The report lands on the "probe" pre-release as health.txt.
 on:
   workflow_dispatch:
   push:
@@ -16,17 +17,99 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.14.3" }
+      - name: Sources
+        run: python3 .github/probe.py || true
+      - name: NewPipe test project
+        run: |
+          mkdir -p /tmp/np/src/main/java
+          cat > /tmp/np/settings.gradle.kts <<'KTS'
+          rootProject.name = "nptest"
+          dependencyResolutionManagement {
+              repositories {
+                  mavenCentral()
+                  maven("https://jitpack.io")
+              }
+          }
+          KTS
+          cat > /tmp/np/build.gradle.kts <<'KTS'
+          plugins { application }
+          val npVersion = (findProperty("np") as String?) ?: "v0.26.5"
+          dependencies { implementation("com.github.TeamNewPipe:NewPipeExtractor:$npVersion") }
+          java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
+          application { mainClass.set("NpTest") }
+          KTS
+          cat > /tmp/np/src/main/java/NpTest.java <<'JAVA'
+          import org.schabi.newpipe.extractor.NewPipe;
+          import org.schabi.newpipe.extractor.ServiceList;
+          import org.schabi.newpipe.extractor.downloader.Downloader;
+          import org.schabi.newpipe.extractor.downloader.Request;
+          import org.schabi.newpipe.extractor.downloader.Response;
+          import org.schabi.newpipe.extractor.stream.StreamInfo;
+          import org.schabi.newpipe.extractor.search.SearchInfo;
+          import java.io.*;
+          import java.net.*;
+          import java.util.*;
+
+          /** Plays nothing: asks YouTube for a video's streams the way Couchy does, and prints what came back. */
+          public class NpTest {
+              static class Http extends Downloader {
+                  @Override public Response execute(Request r) throws IOException {
+                      HttpURLConnection c = (HttpURLConnection) new URL(r.url()).openConnection();
+                      c.setRequestMethod(r.httpMethod());
+                      c.setConnectTimeout(15000); c.setReadTimeout(20000);
+                      c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0");
+                      for (Map.Entry<String, List<String>> h : r.headers().entrySet()) for (String v : h.getValue()) c.addRequestProperty(h.getKey(), v);
+                      if (r.dataToSend() != null) { c.setDoOutput(true); c.getOutputStream().write(r.dataToSend()); }
+                      int code = c.getResponseCode();
+                      InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                      String body = in == null ? "" : new String(in.readAllBytes(), "UTF-8");
+                      return new Response(code, c.getResponseMessage(), c.getHeaderFields(), body, c.getURL().toString());
+                  }
+              }
+              public static void main(String[] a) throws Exception {
+                  NewPipe.init(new Http());
+                  try {
+                      StreamInfo s = StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=jNQXAC9IVRw");
+                      System.out.println("YouTube stream: OK title=" + s.getName() + " video=" + s.getVideoStreams().size() + " audio=" + s.getAudioStreams().size() + " hls=" + !s.getHlsUrl().isEmpty());
+                      if (!s.getAudioStreams().isEmpty()) {
+                          HttpURLConnection c = (HttpURLConnection) new URL(s.getAudioStreams().get(0).getContent()).openConnection();
+                          c.setRequestProperty("Range", "bytes=0-1023");
+                          System.out.println("YouTube audio fetch: " + c.getResponseCode());
+                      }
+                  } catch (Throwable t) {
+                      System.out.println("YouTube stream: FAIL " + t);
+                      Throwable c = t.getCause(); int n = 0;
+                      while (c != null && n++ < 3) { System.out.println("    cause " + c); c = c.getCause(); }
+                  }
+                  try {
+                      SearchInfo r = SearchInfo.getInfo(ServiceList.YouTube, ServiceList.YouTube.getSearchQHFactory().fromQuery("music"));
+                      System.out.println("YouTube search: OK items=" + r.getRelatedItems().size());
+                  } catch (Throwable t) {
+                      System.out.println("YouTube search: FAIL " + t);
+                  }
+              }
+          }
+          JAVA
+      - name: NewPipe in use
+        run: |
+          V=$(grep -oP 'NewPipeExtractor", version = "\K[^"]+' gradle/libs.versions.toml)
+          echo "== NewPipe $V" | tee -a health.txt
+          (cd /tmp/np && gradle -q run -Pnp=$V 2>&1 | tail -20) | tee -a health.txt || true
+      - name: NewPipe newest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 .github/probe.py || true
-          cat out/summary.txt
-          cd out && tar czf ../probe-sources.tgz *.txt
+          L=$(gh api repos/TeamNewPipe/NewPipeExtractor/releases/latest -q .tag_name)
+          echo "== NewPipe newest $L" | tee -a health.txt
+          (cd /tmp/np && gradle -q run -Pnp=$L 2>&1 | tail -20) | tee -a health.txt || true
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view probe >/dev/null 2>&1 || \
             gh release create probe --prerelease --latest=false --title "Служебное" --notes "Служебные отчёты сборки, не для установки."
-          gh release upload probe probe-sources.tgz --clobber
+          gh release upload probe health.txt --clobber
